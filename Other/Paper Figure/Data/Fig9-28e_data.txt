@@ -1,0 +1,15 @@
+File Fig9-28e_data.nc (NC_FORMAT_NETCDF4_CLASSIC):
+
+     1 variables (excluding dimension variables):
+        double SL_Change[Latitude,Longitude]   (Chunking: [180,361])  
+
+     2 dimensions:
+        Latitude  Size:180 
+        Longitude  Size:361 
+
+    5 global attributes:
+        title: Regional Sea Level Rise at 2100 for SSP5-8.5 (with respect to 1995-2014)
+        units: meters
+        creator: Brodie Pearson (brodie.pearson@oregonstate.edu)
+        activity: IPCC AR6 (Chapter 9)
+        comments: Data is for panel (e) of Figure 9.28 in the IPCC Working Group I contribution to the Sixth Assesment Report
