@@ -20,7 +20,7 @@
                 'trend', 'htmlTable', 'lubridate', 'Metrics')
       
       # Source functions
-      source('Scripts/R/Functions/TideFittingFunction.R')
+      source('Scripts/Functions/TideFittingFunction.R')
       
       # Read in Datasets
       HdG <- read.csv('Data/Tidied/HavreDeGraceTides.csv')
