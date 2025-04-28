@@ -86,24 +86,6 @@
           CB2.2_Salinity <- merge(CB2.2_Salinity, HdG_Salinity, by = c('DateTime', 'Salinity'), all.x = TRUE, all.y = TRUE)
           rm(HdG_Salinity)
           
-      # Read in more Eyes on the Bay DNR Data (monthly, for CB1.0, CB1.1, and CB2.2)
-          # DNR_Monthly <- read.csv('Data/Raw/CSV/EOTB_SaltData.csv')
-          # DNR_Monthly <- DNR_Monthly %>%
-          #   mutate(DateTime = paste(SampleDate, SampleTime)) %>%
-          #   mutate(DateTime = as.POSIXct(DateTime, format = '%m/%d/%y %H:%M', tz = 'UTC')) %>%
-          #   dplyr::select(1, 8, 9, 11, 12, 13) %>%
-          #   relocate(DateTime, .after = Station) %>%
-          #   filter(Parameter == 'SALINITY')
-          # 
-          # CB1.0 <- DNR_Monthly %>%
-          #   filter(Station == 'CB1.0')
-          # 
-          # CB1.1 <- DNR_Monthly %>%
-          #   filter(Station == 'CB1.1')
-          # CB1.1 <- CB1.1[!duplicated(CB1.1[, 2], fromLast = TRUE),]
-          # 
-          # CB2.2 <- DNR_Monthly %>%
-          #   filter(Station == 'CB2.2')
       
       # Read in tidal data for Havre de Grace and Chesapeake City (datum = mean lower low water, units = m, timezone = Greenwich mean time)
           HdG_Tide <- read.csv('Data/Raw/CSV/HdG_Tides.csv')
@@ -127,7 +109,7 @@
             rename(Tide_CCity = Verified..m.) %>%
             mutate(Tide_CCity = as.numeric(Tide_CCity, na.rm = TRUE))
         
-######################## Write Tidied Data to Files ############################
+############################ Write Tidied Data #################################
       write.csv(CB2.2_Salinity, 'Data/Tidied/CB2.2_SalinityData.csv')
       write.csv(CCity_Tide, 'Data/Tidied/ChesapeakeCityTides.csv')
       write.csv(HdG_Tide, 'Data/Tidied/HavreDeGraceTides.csv')
