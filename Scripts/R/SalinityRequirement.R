@@ -1,5 +1,5 @@
 ################################################################################
-# Written by Ethan Heidtman, March 2025
+# Written by Ethan Heidtman, April 2025
 
 # This script uses modeled tidal data, observed discharge data for the Conowingo 
 # Dam, and observed/modeled salinity data at Havre de Grace to first develop a 
@@ -23,14 +23,55 @@ data <- read.csv('Data/Tidied/HourlyDataFinal.csv',
                  colClasses = c('NULL', NA, NA, NA, NA, NA, NA, NA, NA, NA, NA, NA, NA))
 data <- data %>%
    mutate(DateTime = as_datetime(DateTime)) # Make dates class datetime
+  
+#################### Prepare data to send to the Stan model ####################
+
+# Susquehanna Morphological Characteristics
+d = 9.9 * 1.609 * 1000  # dam's distance from the mouth in meters (~9.9 miles)
+depth = 6               # average depth of the river from the dam to the mouth in meters
+width = 1600            # average width of the river from the dam to the mouth in meters
+area = depth * width    # average cross-sectional area of the river below the dam  (m^2)
+
+# Define Salinity threshold
+salinity_threshold = 1 # practical salt units (PSU)
+
+# Filter for times with salinity data
+model_data <- data %>%
+   filter(!is.na(Salinity))
+
+# Check for exceedances
+model_data <- model_data %>%
+   mutate(Exceedance = ifelse(Salinity > salinity_threshold, 1, 0))
+
+# Outcome Vector: Exceedances
+y <- model_data$Exceedance
+
+# Matrix of Predictors
+
+
+
+# Prepare Stan inputs
+stan_data <- list(
+   N = length(valid_idx),
+   y = data$exceedance[valid_idx],
+   Discharge = data$Discharge[valid_idx],
+   Tide = data$Tide[valid_idx],
+   Salinity = data$Salinity[valid_idx],
+   Inflows = data$Inflows[valid_idx],       # used for soft prior
+   ferc_6hr = data$ferc_6hr[valid_idx],       # soft constraint on 6-hour average
+   Discharge_6hr = data$Discharge_6hr[valid_idx],  # known part of total 6-hr discharge
+   Salinity_mu = mean(data$Salinity, na.rm = TRUE),
+   Salinity_sd = sd(data$Salinity, na.rm = TRUE),
+   Tide_mu = mean(data$Tide, na.rm = TRUE),
+   Tide_sd = sd(data$Tide, na.rm = TRUE),
+   FERC_prior_sd = 300,     # Strength of the FERC prior
+   Inflows_prior_sd = 500  # Strength of the Marietta prior, how much we trust it
+)
+
 
 ########### Predictive Relationship for Salt with Bayesian Inference ###########
 
-# Susquehanna Morphological Characteristics
-d = 9.9 * 1.609 * 1000 # dam's distance from the mouth in meters (~9.9 miles)
-depth = 6 # average depth of the river from the dam to the mouth in meters
-width = 1600 # average width of the river from the dam to the mouth in meters
-area = depth * width # average cross-sectional area of the river below the dam  (m^2)
+
 
 
 
