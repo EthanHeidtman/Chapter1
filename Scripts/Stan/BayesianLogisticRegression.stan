@@ -4,9 +4,11 @@
 data {
    int <lower=1> N;                     // number of observations (minimum 1)
    int <lower=0,upper=1> Exceedance[N]; // binary outcome (exceeds the threshold or it does not)
-   vector[N] Normalized_Discharge;      // normalized discharge from the Conowingo USGS gauge
+   vector[N] Discharge_norm;            // normalized discharge from the Conowingo USGS gauge
    vector[N] Tide;                      // normalized tide (reconstructed from Chesapeake City tides)
    vector[N] Salinity;                  // normalized salinity (measured by MD DNR)
+   vector[N] Discharge_6hr;             // normalized 6-hour discharge from Conowingo USGS gauge
+   
    
    // These are un-normalized for the priors
    vector[N] Discharge;  // raw, un-normalized discharge from the Conowingo USGS gauge
