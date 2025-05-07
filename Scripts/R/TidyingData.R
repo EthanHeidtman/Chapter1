@@ -21,7 +21,7 @@
           DNR_Salinity <- DNR_Salinity %>%
             dplyr::select(3,6,7)
           colnames(DNR_Salinity) <- c('DateTime', 'Salinity', 'Temp')
-          DNR_Salinity$DateTime <- round_date(DNR_Salinity$DateTime, unit = '15 mins') # Round dates to nearest 15 minutes
+          DNR_Salinity$DateTime <- round_date(DNR_Salinity$DateTime, unit = '15 mins'). # Round dates to nearest 15 minutes
           
       # Read in Conowingo Dam discharge data taken from USGS 01578310
       # Data are every 15 minutes from 02/02/1988 through 10/31/2024, measured discharge in cubic feet per second
@@ -29,14 +29,15 @@
           other <- read.csv('Data/Raw/CSV/Conowingo_Discharge2.csv')
           CON_Obs <- rbind(CON_Obs, other)
           rm(other)
-          CON_Obs$DateTime <- paste(CON_Obs$Date, CON_Obs$Time, sep = ' ') # Join date and time column
-          CON_Obs$DateTime <- as.POSIXct(CON_Obs$DateTime, format = '%m/%d/%y %H:%M', tz = 'UTC') # Parse to class DateTime
+          CON_Obs$DateTime <- paste(CON_Obs$Date, CON_Obs$Time, sep = ' ')              # Join date and time column
+          CON_Obs$DateTime <- as.POSIXct(CON_Obs$DateTime, 
+                                         format = '%m/%d/%y %H:%M', tz = 'UTC')         # Parse to class DateTime
           CON_Obs <- CON_Obs %>%
             relocate(DateTime, .after = 'Time') %>%
-            mutate(CON_m3s = Discharge * 0.0283) %>% # convert to cubic meters per second
+            mutate(CON_m3s = Discharge * 0.0283) %>%                                    # convert to cubic meters per second
             mutate_if(is.numeric, round, digits = 2) %>%
             dplyr::select(4,6) %>%
-            mutate(DateTime = round_date(DateTime, unit = '15 mins')) # Round dates to nearest 15 minutes
+            mutate(DateTime = round_date(DateTime, unit = '15 mins'))                   # Round dates to nearest 15 minutes
       
       # Read in FERC Minimum Flow Requirement
           ferc <- data.frame(read.table('Data/Raw/Text/min_flow_req.txt'))
@@ -47,19 +48,20 @@
             rename(flow = V1) %>%
             relocate(Day, Date) %>%
             mutate(Discharge = flow * 0.0283,
-                   Discharge_log = log10(Discharge)) %>% # Convert from cfs to cubic feet per second
-            slice(307:365, 1:306) %>% # order days so day 1 is Jan 1
+                   Discharge_log = log10(Discharge)) %>%                                # Convert from cfs to cubic feet per second
+            slice(307:365, 1:306) %>%                                                   # order days so day 1 is Jan 1
             mutate(Day = seq(1, 365, 1)) %>%
             mutate_if(is.numeric, round, digits = 4)
       
       # Read in Marietta Discharge Data from USGS 01576000
       # Data are every 30 minutes from 1985 through 
           MAR_Obs <- read.csv('Data/Raw/CSV/Marietta_Discharge.csv')
-          MAR_Obs$DateTime <- paste(MAR_Obs$Date, MAR_Obs$Time, sep = ' ') # Join date and time column
-          MAR_Obs$DateTime <- as.POSIXct(MAR_Obs$DateTime, format = '%m/%d/%y %H:%M', tz = 'UTC') # Parse to class DateTime
+          MAR_Obs$DateTime <- paste(MAR_Obs$Date, MAR_Obs$Time, sep = ' ')              # Join date and time column
+          MAR_Obs$DateTime <- as.POSIXct(MAR_Obs$DateTime, 
+                                         format = '%m/%d/%y %H:%M', tz = 'UTC')         # Parse to class DateTime
           MAR_Obs <- MAR_Obs %>%
             relocate(DateTime, .after = 'Time') %>%
-            mutate(MAR_m3s = Discharge * 0.0283) %>% # convert to cubic meters per second
+            mutate(MAR_m3s = Discharge * 0.0283) %>%                                    # convert to cubic meters per second
             mutate_if(is.numeric, round, digits = 2) %>%
             dplyr::select(4, 6) %>%
             filter(DateTime < '2024-11-01 00:00:00') %>%
@@ -69,13 +71,14 @@
       # This model output is from Ming Li's group 
           CB2.2_Salinity <- read.csv('Data/Raw/CSV/CB2.2.csv')
           CB2.2_Salinity$DateTime <- paste(CB2.2_Salinity$date, CB2.2_Salinity$time, sep = ' ')
-          CB2.2_Salinity$DateTime <- as_datetime(CB2.2_Salinity$DateTime, format = '%m/%d/%y %H:%M', tz = 'UTC')
+          CB2.2_Salinity$DateTime <- as_datetime(CB2.2_Salinity$DateTime, 
+                                                 format = '%m/%d/%y %H:%M', tz = 'UTC')
           CB2.2_Salinity <- CB2.2_Salinity %>%
             dplyr::select(3,4) %>%
             relocate(DateTime)
           colnames(CB2.2_Salinity) <- c('DateTime', 'Salinity')
           
-      # Read More Modeled Hourly Salinity Data (units ppt): I THINK THIS IS ALSO AT CB2.2, BUT COULD BE AT HDG (1.1)
+      # Read More Modeled Hourly Salinity Data (units ppt): THIS LOCATION IS CB1.1, HAVRE DE GRACE
           HdG_Salinity <- read.csv('Data/Raw/CSV/Havre_de_Grace.csv')
           HdG_Salinity$DateTime <- as_datetime(HdG_Salinity$time, format = '%m/%d/%y %H:%M', tz = 'UTC')
           HdG_Salinity <- HdG_Salinity %>%
@@ -92,8 +95,8 @@
           HdG_Tide <- HdG_Tide %>%
             mutate(Time..GMT. = paste(Time..GMT., ':00', sep = '')) %>%
             mutate(DateTime = paste(Date, Time..GMT., sep = ' ')) %>%
-            mutate(DateTime = as_datetime(DateTime, tz = 'GMT')) %>% # Convert to datetime
-            mutate(DateTime = with_tz(DateTime, 'UTC')) %>% # Set proper timzeone
+            mutate(DateTime = as_datetime(DateTime, tz = 'GMT')) %>%                    # Convert to datetime
+            mutate(DateTime = with_tz(DateTime, 'UTC')) %>%                             # Set proper timzeone
             dplyr::select(5, 6) %>%
             relocate(DateTime) %>%
             rename(Tide_HdG = Verified..m.) %>%
@@ -102,7 +105,7 @@
           CCity_Tide <- CCity_Tide %>%
             mutate(Time..GMT. = paste(Time..GMT., ':00', sep = '')) %>%
             mutate(DateTime = paste(Date, Time..GMT., sep = ' ')) %>%
-            mutate(DateTime = as_datetime(DateTime, format = '%m/%d/%y %H:%M:%S')) %>% # Convert to Datetime
+            mutate(DateTime = as_datetime(DateTime, format = '%m/%d/%y %H:%M:%S')) %>%  # Convert to Datetime
             mutate(DateTime = with_tz(DateTime, 'UTC')) %>% # Set proper timezone
             dplyr::select(5, 6) %>%
             relocate(DateTime) %>%
