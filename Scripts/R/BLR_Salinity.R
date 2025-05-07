@@ -7,16 +7,12 @@
 # intake. The predictive relationship is then formulated into an objective function
 # that represents a shortage index, the amount of time/probability that the Dam's
 # releases are not enough to dilute salt below the safe threshold.
-# 
-#  
-# 2006 FERC report: 
-# HdG drinking water intake is exposed to tidal influence when dam discharge 
-# falls below 4000 cfs (113.2 m3/sec)  # 4000 or 4500 cfs?
+
 
 ############################ Load Data and Packages ############################
 
 library(easypackages)
-libraries('dplyr', 'lubridate', 'tidyverse', 'ggplot2')
+libraries('dplyr', 'lubridate', 'tidyverse', 'ggplot2', 'cmdstanr')
 
 # Read in final hourly data
 data <- read.csv('Data/Tidied/HourlyDataFinal.csv', 
@@ -33,7 +29,7 @@ width = 1600            # average width of the river from the dam to the mouth i
 area = depth * width    # average cross-sectional area of the river below the dam  (m^2)
 
 # Define Salinity threshold
-salinity_threshold = 1 # practical salt units (PSU)
+salinity_threshold = 1  # practical salt units (PSU)
 
 # Filter for times with salinity data
 model_data <- data %>%
@@ -42,11 +38,6 @@ model_data <- data %>%
 # Check for exceedances
 model_data <- model_data %>%
    mutate(Exceedance = ifelse(Salinity > salinity_threshold, 1, 0))
-
-# Outcome Vector: Exceedances
-y <- model_data$Exceedance
-
-# Matrix of Predictors
 
 
 

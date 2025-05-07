@@ -43,7 +43,7 @@
                 Day = day(DateTime)) %>%
          relocate(time_hours, .after = DateTime) %>%
          relocate(Year, Month, Day, .after = DateTime) %>%
-         mutate(time_years = as.numeric(Year - Year[1])) # Count years from first year 
+         mutate(time_years = as.numeric(Year - Year[1]))                                      # Count years from first year 
 
 ########################### Fit and Transform Tidal Data #######################
       # see /Scripts/Functions/TideFittingFunction.R for details
@@ -51,16 +51,17 @@
       # Weighting Method: Transforming CCity tides to HdG tides
       
          # Initial Parameter Estimates for Sine Fit
-         A <- (max(tides$HdG, na.rm = TRUE) - min(tides$HdG, na.rm = TRUE)) / 2 # Amplitude
+         A <- (max(tides$HdG, na.rm = TRUE) - min(tides$HdG, na.rm = TRUE)) / 2               # Amplitude
          B <- 2 * pi / 12.42 # Tidal frequency
          C <- 0 # Phase shift
          D <- mean(tides$HdG, na.rm = TRUE) # mean height
          
          # Assign weights to higher tides (we care about salt events)
+         # assign weight of 4 to highest and lowest 25%, 1 to middle 50%
          tides$HdG_weights <- ifelse(tides$HdG > quantile(tides$HdG, 0.75, na.rm = TRUE) | 
-                                        tides$HdG < quantile(tides$HdG, 0.25, na.rm = TRUE), 4, 1) # assign weight of 4 to highest and lowest 25%, 1 to middle 50$
+                                        tides$HdG < quantile(tides$HdG, 0.25, na.rm = TRUE), 4, 1) 
          tides$CCity_weights <- ifelse(tides$CCity > quantile(tides$CCity, 0.75, na.rm = TRUE) | 
-                                          tides$CCity < quantile(tides$CCity, 0.25, na.rm = TRUE), 4, 1) # assign weight of 4 to highest and lowest 25%, 1 to middle 50%
+                                          tides$CCity < quantile(tides$CCity, 0.25, na.rm = TRUE), 4, 1) 
       
          # Perform the model fit
          tides <- tidal_fitting(tides, A, B, C, D)
