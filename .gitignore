@@ -1,6 +1,22 @@
+# R and RStudio files
 .Rproj.user
 .Rhistory
-.Rdata
+.RData
+.Ruserdata
+.Renviron
+*.Rproj
+
+# renv - EXCLUDE these (machine-specific)
+/renv/library/
+/renv/staging/
+/renv/python/
+
+# renv - INCLUDE these (critical for reproducibility)
+!renv.lock
+!renv/activate.R
+!renv/settings.json
+
+# Your existing ignores (keep these)
 .httr-oauth
 .DS_Store
 .quarto
