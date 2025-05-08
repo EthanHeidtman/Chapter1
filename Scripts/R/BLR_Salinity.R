@@ -11,36 +11,72 @@
 
 ############################ Load Data and Packages ############################
 
+# Source all external functions
+lapply(list.files(path = 'Scripts/Functions', pattern = "\\.R$", full.names = TRUE), source)
+
 library(easypackages)
-libraries('dplyr', 'lubridate', 'tidyverse', 'ggplot2', 'cmdstanr')
+libraries('dplyr', 'lubridate', 'tidyverse', 'ggplot2', 'cmdstanr', 'zoo')
 
 # Read in final hourly data
 data <- read.csv('Data/Tidied/HourlyDataFinal.csv', 
                  colClasses = c('NULL', NA, NA, NA, NA, NA, NA, NA, NA, NA, NA, NA, NA))
 data <- data %>%
-   mutate(DateTime = as_datetime(DateTime)) # Make dates class datetime
+   mutate(DateTime = as_datetime(DateTime)) %>%           # Make dates class datetime
+   filter(DateTime < as_datetime('2024-11-01 00:00:00'))  # Keep only dates before 
   
-#################### Prepare data to send to the Stan model ####################
+####################### Prepare all data for modeling ##########################
 
 # Susquehanna Morphological Characteristics
-d = 9.9 * 1.609 * 1000  # dam's distance from the mouth in meters (~9.9 miles)
-depth = 6               # average depth of the river from the dam to the mouth in meters
-width = 1600            # average width of the river from the dam to the mouth in meters
-area = depth * width    # average cross-sectional area of the river below the dam  (m^2)
+d = 9.9 * 1.609 * 1000          # dam's distance from the mouth in meters (~9.9 miles)
+depth = 6                       # average depth of the river from the dam to the mouth in meters
+width = 1600                    # average width of the river from the dam to the mouth in meters
+area = depth * width            # average cross-sectional area of the river below the dam  (m^2)
 
 # Define Salinity threshold
-salinity_threshold = 1  # practical salt units (PSU)
+salinity_threshold = 1          # practical salt units (PSU), equivalent to parts per thousand
 
-# Filter for times with salinity data
+# Define window-length for rolling mean
+rolling_window = 6              # 6 hour rolling window
+
+# Create data for modeling
 model_data <- data %>%
-   filter(!is.na(Salinity))
+   mutate(Exceedance = ifelse(Salinity > salinity_threshold, 1, 0)) %>%         # Create an Exceedance Variable
+   filter(!is.na(Salinity)) %>%                                                 # Keep only timestamps with measured salinity
+   mutate(Normalized_Discharge = normalize(Discharge),                          # Normalize Conowingo Discharge data
+          Normalized_Salinity = normalize(Salinity),                            # Normalize measured HdG salinity data
+          Normalized_Tide = normalize(Fitted_HdG),                              # Normalize fitted HdG tide data
+          Normalized_Rolling_Discharge = normalize(zoo::rollmean(Discharge, 
+                                                            rolling_window, 
+                                                            fill = NA,
+                                                            align = "right")))  # Compute rolling average of Conowingo discharge and normalize
 
-# Check for exceedances
-model_data <- model_data %>%
-   mutate(Exceedance = ifelse(Salinity > salinity_threshold, 1, 0))
+############# Run Simple Logistic Model to Inform Bayesian Priors ##############
+initial_model <- glm(Exceedance ~ Normalized_Discharge + 
+                    Normalized_Tide + 
+                    Normalized_Salinity + 
+                    Normalized_Rolling_Discharge + 
+                    Inflows + 
+                    FERC, 
+                 family = binomial(link = "logit"), data = model_data)
+
+# Summary of coefficients
+summary(initial_model)
+
+# Extract coefficients and standard errors
+coefs <- coef(glm_model)
+se <- sqrt(diag(vcov(glm_model)))
+
+# Inform Bayesian priors
+prior_means <- coefs  # Set mean of priors to point estimates
+prior_sds <- se * 2   # Set SD of priors to twice the standard error
+print(prior_means)
+print(prior_sds)
 
 
 
+
+
+#################### Run the Bayesian Regression with Stan #####################
 # Prepare Stan inputs
 stan_data <- list(
    N = length(valid_idx),
