@@ -63,8 +63,8 @@ initial_model <- glm(Exceedance ~ Normalized_Discharge +
 summary(initial_model)
 
 # Extract coefficients and standard errors
-coefs <- coef(glm_model)
-se <- sqrt(diag(vcov(glm_model)))
+coefs <- coef(initial_model)
+se <- sqrt(diag(vcov(initial_model)))
 
 # Inform Bayesian priors
 prior_means <- coefs  # Set mean of priors to point estimates

@@ -1,10 +1,9 @@
 ########################### Read in packages ###################################
       library(here)
       library('easypackages')
-      libraries('tidyverse', 'sf', 'ggplot2', 'dplyr', 'maps', 'mapdata', 'cowplot',
-                'rnaturalearth', 'rnaturalearthdata', 'readxl', 'raster', 'viridis', 
-                'zoo', 'Kendall', 'ggpmisc', 'rtrend', 'RColorBrewer', 'EnvStats', 
-                'trend', 'htmlTable', 'lubridate', 'Metrics')
+      libraries('tidyverse', 'ggplot2', 'dplyr', 'cowplot',
+                'readxl','viridis', 
+                'zoo', 'RColorBrewer', 'lubridate')
     
     
 ################################### Read in and Tidy Data ###############################
@@ -21,7 +20,7 @@
           DNR_Salinity <- DNR_Salinity %>%
             dplyr::select(3,6,7)
           colnames(DNR_Salinity) <- c('DateTime', 'Salinity', 'Temp')
-          DNR_Salinity$DateTime <- round_date(DNR_Salinity$DateTime, unit = '15 mins'). # Round dates to nearest 15 minutes
+          DNR_Salinity$DateTime <- round_date(DNR_Salinity$DateTime, unit = '15 mins') # Round dates to nearest 15 minutes
           
       # Read in Conowingo Dam discharge data taken from USGS 01578310
       # Data are every 15 minutes from 02/02/1988 through 10/31/2024, measured discharge in cubic feet per second
