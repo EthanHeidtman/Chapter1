@@ -11,12 +11,12 @@
 /renv/staging/
 /renv/python/
 
-# renv - INCLUDE these (critical for reproducibility)
+# renv: To be included
 !renv.lock
 !renv/activate.R
 !renv/settings.json
 
-# Your existing ignores (keep these)
+# Existing Ignores
 .httr-oauth
 .DS_Store
 .quarto
