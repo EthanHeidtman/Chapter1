@@ -1,22 +1,39 @@
+# ======================
 # R and RStudio files
-.Rproj.user
+# ======================
 .Rhistory
 .RData
 .Ruserdata
-.Renviron
+.Rproj.user
 *.Rproj
+*.Rmd~
+*.html
+*.pdf
 
-# renv - EXCLUDE these (machine-specific)
-/renv/library/
-/renv/staging/
-/renv/python/
+# ======================
+# renv directories
+# ======================
+renv/library/
+renv/staging/
+renv/python/
+renv/local/
 
-# renv: To be included
-!renv.lock
-!renv/activate.R
-!renv/settings.json
+# ======================
+# Stan/cmdstanr
+# ======================
+.cmdstanr/
+cmdstan/
+cmdstan-*.tar.gz
 
-# Existing Ignores
+# ======================
+# Session and temporary files
+# ======================
 .httr-oauth
 .DS_Store
 .quarto
+*.o
+*.so
+*.dll
+*.log
+*.aux
+*.out
