@@ -3379,6 +3379,11 @@
       "Maintainer": "Lionel Henry <lionel@posit.co>",
       "Repository": "RSPM"
     },
+    "tidyverse": {
+      "Package": "tidyverse",
+      "Version": "2.0.0",
+      "Source": "Repository"
+    },
     "tinytex": {
       "Package": "tinytex",
       "Version": "0.57",
