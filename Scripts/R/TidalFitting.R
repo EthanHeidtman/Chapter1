@@ -13,11 +13,15 @@
       
       # Load packages
       library(here)
-      library('easypackages')
-      libraries('tidyverse', 'sf', 'ggplot2', 'dplyr', 'maps', 'mapdata', 'cowplot',
-                'rnaturalearth', 'rnaturalearthdata', 'readxl', 'raster', 'viridis', 
-                'zoo', 'Kendall', 'ggpmisc', 'rtrend', 'RColorBrewer', 'EnvStats', 
-                'trend', 'htmlTable', 'lubridate', 'Metrics')
+      library(tidyverse)
+      library(ggplot2)
+      library(dplyr)
+      library(cowplot)
+      library(readxl)
+      library(viridis)
+      library(zoo)
+      library(lubridate)
+      library(RColorBrewer)
       
       # Source functions
       source('Scripts/Functions/TideFittingFunction.R')
