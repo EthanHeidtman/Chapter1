@@ -26,6 +26,7 @@ library(lubridate)
 library(RColorBrewer)
 library(cmdstanr)
 library(svglite)
+library(logistf)
 
 # Read in final hourly data
 data <- read.csv('Data/Tidied/HourlyDataFinal.csv', 
@@ -56,54 +57,46 @@ model_data <- data %>%
           Normalized_Salinity = normalize(Salinity),                            # Normalize measured HdG salinity data
           Normalized_Tide = normalize(Fitted_HdG),                              # Normalize fitted HdG tide data
           Normalized_Rolling_Discharge = normalize(zoo::rollmean(Discharge, 
-                                                            rolling_window, 
-                                                            fill = NA,
-                                                            align = "right")))  # Compute rolling average of Conowingo discharge and normalize
+                                                         rolling_window, 
+                                                         fill = NA,
+                                                         align = "right"))) %>% # Compute rolling average of Conowingo discharge and normalize
+   mutate(across(where(is.numeric), ~ifelse(is.na(.), 
+                                            median(., na.rm=TRUE), .)))         # Deal with NAs (assign median value)
+
+
 
 ############# Run Simple Logistic Model to Inform Bayesian Priors ##############
-initial_model <- glm(Exceedance ~ Normalized_Discharge + 
-                    Normalized_Tide + 
-                    Normalized_Salinity + 
-                    Normalized_Rolling_Discharge + 
-                    Inflows + 
-                    FERC, 
-                 family = binomial(link = "logit"), data = model_data)
 
-# Summary of coefficients
-summary(initial_model)
+# Calculate weights (upweight rare exceedances)
+model_data$weights <- ifelse(
+   model_data$Exceedance == 1, 
+   1 / mean(model_data$Exceedance == 1),  # Weight for exceedances (e.g., ~100 if 1% prevalence)
+   1  # Weight for non-exceedances
+)
 
-# Extract coefficients and standard errors
-coefs <- coef(initial_model)
-se <- sqrt(diag(vcov(initial_model)))
+firth_regression <- logistf(
+   formula = Exceedance ~ Normalized_Discharge + 
+                          Normalized_Tide + 
+                          Normalized_Salinity + 
+                          Normalized_Rolling_Discharge +
+                          Inflows + 
+                          FERC,
+   data = model_data,
+   weights = weights,
+   control = logistf.control(
+      maxit = 2000,
+      maxstep = 0.5,
+      lconv = 1e-6
+   ),
+   alpha = 0.6
+)
 
-# Inform Bayesian priors
-prior_means <- coefs  # Set mean of priors to point estimates
-prior_sds <- se * 2   # Set SD of priors to twice the standard error
-print(prior_means)
-print(prior_sds)
 
 
 
 
 
 #################### Run the Bayesian Regression with Stan #####################
-# Prepare Stan inputs
-stan_data <- list(
-   N = length(valid_idx),
-   y = data$exceedance[valid_idx],
-   Discharge = data$Discharge[valid_idx],
-   Tide = data$Tide[valid_idx],
-   Salinity = data$Salinity[valid_idx],
-   Inflows = data$Inflows[valid_idx],       # used for soft prior
-   ferc_6hr = data$ferc_6hr[valid_idx],       # soft constraint on 6-hour average
-   Discharge_6hr = data$Discharge_6hr[valid_idx],  # known part of total 6-hr discharge
-   Salinity_mu = mean(data$Salinity, na.rm = TRUE),
-   Salinity_sd = sd(data$Salinity, na.rm = TRUE),
-   Tide_mu = mean(data$Tide, na.rm = TRUE),
-   Tide_sd = sd(data$Tide, na.rm = TRUE),
-   FERC_prior_sd = 300,     # Strength of the FERC prior
-   Inflows_prior_sd = 500  # Strength of the Marietta prior, how much we trust it
-)
 
 
 ########### Predictive Relationship for Salt with Bayesian Inference ###########
