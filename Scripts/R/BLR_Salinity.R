@@ -65,34 +65,13 @@ model_data <- data %>%
 
 
 
-############# Run Simple Logistic Model to Inform Bayesian Priors ##############
+############### Priors Part 1: Regularized Logistic Regression #################
 
-# Calculate weights (upweight rare exceedances)
-model_data$weights <- ifelse(
-   model_data$Exceedance == 1, 
-   1 / mean(model_data$Exceedance == 1),  # Weight for exceedances (e.g., ~100 if 1% prevalence)
-   1  # Weight for non-exceedances
-)
+############### Priors Part 2: Residual Modeling, Latent Component #############
 
-firth_regression <- logistf(
-   formula = Exceedance ~ Normalized_Discharge + 
-                          Normalized_Tide + 
-                          Normalized_Salinity + 
-                          Normalized_Rolling_Discharge +
-                          Inflows + 
-                          FERC,
-   data = model_data,
-   weights = weights,
-   control = logistf.control(
-      maxit = 2000,
-      maxstep = 0.5,
-      lconv = 1e-6
-   ),
-   alpha = 0.6
-)
+############### Priors Part 3: Clustering, Flow Regime Effects #################
 
-
-
+########## Priors Part 4: Rolling Regression, Time Varying Coefficients ########
 
 
 
