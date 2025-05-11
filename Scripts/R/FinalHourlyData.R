@@ -6,10 +6,19 @@
 
 ############################ Load Data and Packages ############################
 
-      library('easypackages')
-      libraries('here', 'rstan', 'dplyr', 'tidyverse', 
-                'lubridate', 'zoo', 'ggplot2', 'ggthemes')
-     
+      library(here)
+      library(tidyverse)
+      library(ggplot2)
+      library(dplyr)
+      library(cowplot)
+      library(readxl)
+      library(viridis)
+      library(zoo)
+      library(lubridate)
+      library(RColorBrewer)
+      library(ggthemes)
+
+      
       # Create DateTime Object 
       datetime <- as.data.frame(seq(ymd_hms('1985-10-01 00:00:00'), 
                                     ymd_hms('2024-08-31 00:00:00'), 

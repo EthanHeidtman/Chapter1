@@ -14,8 +14,18 @@
 # Source all external functions
 lapply(list.files(path = 'Scripts/Functions', pattern = "\\.R$", full.names = TRUE), source)
 
-library(easypackages)
-libraries('dplyr', 'lubridate', 'tidyverse', 'ggplot2', 'cmdstanr', 'zoo')
+library(here)
+library(tidyverse)
+library(ggplot2)
+library(dplyr)
+library(cowplot)
+library(readxl)
+library(viridis)
+library(zoo)
+library(lubridate)
+library(RColorBrewer)
+library(cmdstanr)
+library(svglite)
 
 # Read in final hourly data
 data <- read.csv('Data/Tidied/HourlyDataFinal.csv', 

@@ -1,10 +1,15 @@
 ########################### Read in packages ###################################
       library(here)
-      library('easypackages')
-      libraries('tidyverse', 'ggplot2', 'dplyr', 'cowplot',
-                'readxl','viridis', 
-                'zoo', 'RColorBrewer', 'lubridate')
-    
+      library(tidyverse)
+      library(ggplot2)
+      library(dplyr)
+      library(cowplot)
+      library(readxl)
+      library(viridis)
+      library(zoo)
+      library(lubridate)
+      library(RColorBrewer)
+      
     
 ################################### Read in and Tidy Data ###############################
       # Create a DateTime column
