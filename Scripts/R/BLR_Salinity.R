@@ -38,16 +38,16 @@ data <- data %>%
 ####################### Prepare all data for modeling ##########################
 
 # Susquehanna Morphological Characteristics
-d = 9.9 * 1.609 * 1000          # dam's distance from the mouth in meters (~9.9 miles)
-depth = 6                       # average depth of the river from the dam to the mouth in meters
-width = 1600                    # average width of the river from the dam to the mouth in meters
-area = depth * width            # average cross-sectional area of the river below the dam  (m^2)
+d = 9.9 * 1.609 * 1000                   # dam's distance from the mouth in meters (~9.9 miles)
+depth = 6                                # average depth of the river from the dam to the mouth in meters
+width = 1600                             # average width of the river from the dam to the mouth in meters
+area = depth * width                     # average cross-sectional area of the river below the dam  (m^2)
 
 # Define Salinity threshold
-salinity_threshold = 1          # practical salt units (PSU), equivalent to parts per thousand
+salinity_threshold = 1                   # practical salt units (PSU), equivalent to parts per thousand
 
 # Define window-length for rolling mean
-rolling_window = 6              # 6 hour rolling window
+rolling_window = 6                       # 6 hour rolling window
 
 # Create data for modeling
 model_data <- data %>%
