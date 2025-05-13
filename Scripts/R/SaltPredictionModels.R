@@ -14,11 +14,13 @@
 # Source all external functions
 lapply(list.files(path = 'Scripts/Functions', pattern = "\\.R$", full.names = TRUE), source)
 
+# Load necessary packages
 library(here)
 library(tidyverse)
 library(ggplot2)
 library(dplyr)
 library(cowplot)
+library(patchwork)
 library(readxl)
 library(viridis)
 library(zoo)
@@ -31,51 +33,121 @@ library(logistf)
 # Read in final hourly data
 data <- read.csv('Data/Tidied/HourlyDataFinal.csv', 
                  colClasses = c('NULL', NA, NA, NA, NA, NA, NA, NA, NA, NA, NA, NA, NA))
+
 data <- data %>%
-   mutate(DateTime = as_datetime(DateTime)) %>%           # Make dates class datetime
-   filter(DateTime < as_datetime('2024-11-01 00:00:00'))  # Keep only dates before 
-  
+   dplyr::select(-c(9, 10)) %>%                              # Remove extra columns
+   mutate(DateTime = as_datetime(DateTime),                  # Make dates class datetime
+          Season = case_when(
+             Month %in% c(12, 1, 2) ~ "Winter",
+             Month %in% c(3, 4, 5) ~ "Spring",
+             Month %in% c(6, 7, 8) ~ "Summer",
+             Month %in% c(9, 10, 11) ~ "Fall"),
+          Season = factor(Season, 
+                          levels = c("Winter", 
+                                     "Spring", 
+                                     "Summer", 
+                                     "Fall"))) %>%           # Create a season factor
+   relocate(Season, .after = Day) %>%
+   rename(Tide = Fitted_HdG) %>%
+   filter(DateTime < as_datetime('2024-11-01 00:00:00'))     # Keep only dates before 
+   
 ####################### Prepare all data for modeling ##########################
 
-# Susquehanna Morphological Characteristics
-d = 9.9 * 1.609 * 1000                   # dam's distance from the mouth in meters (~9.9 miles)
-depth = 6                                # average depth of the river from the dam to the mouth in meters
-width = 1600                             # average width of the river from the dam to the mouth in meters
-area = depth * width                     # average cross-sectional area of the river below the dam  (m^2)
-
-# Define Salinity threshold
+# Salinity threshold
 salinity_threshold = 1                   # practical salt units (PSU), equivalent to parts per thousand
 
-# Define window-length for rolling mean
-rolling_window = 6                       # 6 hour rolling window
+# Rolling Average Window Size
+rolling_window = 6                       # Hours
 
-# Create data for modeling
 model_data <- data %>%
-   mutate(Exceedance = ifelse(Salinity > salinity_threshold, 1, 0)) %>%         # Create an Exceedance Variable
-   filter(!is.na(Salinity)) %>%                                                 # Keep only timestamps with measured salinity
-   mutate(Normalized_Discharge = normalize(Discharge),                          # Normalize Conowingo Discharge data
-          Normalized_Salinity = normalize(Salinity),                            # Normalize measured HdG salinity data
-          Normalized_Tide = normalize(Fitted_HdG),                              # Normalize fitted HdG tide data
-          Normalized_Rolling_Discharge = normalize(zoo::rollmean(Discharge, 
-                                                         rolling_window, 
-                                                         fill = NA,
-                                                         align = "right"))) %>% # Compute rolling average of Conowingo discharge and normalize
+   filter(!is.na(Salinity)) %>%                                   # Keep only times when salinity observations are available
+   mutate(RollingDischarge = zoo::rollmean(Discharge, 
+                                            rolling_window, 
+                                            fill = NA,
+                                            align = "right")) %>% # Rolling average discharge 
+   mutate(LagDischarge1 = lag(Discharge, 1),
+          LagDischarge3 = lag(Discharge, 3),
+          LagDischarge6 = lag(Discharge, 6))                     # Lagged Discharge variables (number = # of hours)
+
+# Create Normalized Versions of Data 
+# Save original stats for return transformation
+Norm_Inflows <- normalize_with_parameters(model_data$Inflows)
+Norm_Discharge <- normalize_with_parameters(model_data$Discharge)
+Norm_Tide <- normalize_with_parameters(model_data$Tide)
+Norm_RollingDischarge <- normalize_with_parameters(model_data$RollingDischarge) 
+Norm_LagDischarge1 <- normalize_with_parameters(model_data$LagDischarge1)
+Norm_LagDischarge3 <- normalize_with_parameters(model_data$LagDischarge3)
+Norm_LagDischarge6 <- normalize_with_parameters(model_data$LagDischarge6)
+
+# Add these normalized data to the model data
+model_data <- model_data %>%
+   mutate(Norm_Discharge = Norm_Discharge$normalized,
+          Norm_Tide = Norm_Tide$normalized,
+          Norm_RollingDischarge = Norm_RollingDischarge$normalized,
+          Norm_Inflows = Norm_Inflows$normalized,
+          Norm_LagDischarge1 = Norm_LagDischarge1$normalized,
+          Norm_LagDischarge3 = Norm_LagDischarge3$normalized,
+          Norm_LagDischarge6 = Norm_LagDischarge6$normalized) %>%
    mutate(across(where(is.numeric), ~ifelse(is.na(.), 
                                             median(., na.rm=TRUE), .)))         # Deal with NAs (assign median value)
 
+# Collect the normalization parameters for later
+norm_params <- list(
+   Discharge = list(mean = Norm_Discharge$mean, sd = Norm_Discharge$sd),
+   Tide = list(mean = Norm_Tide$mean, sd = Norm_Tide$sd),
+   RollingDischarge = list(mean = Norm_RollingDischarge$mean, sd = Norm_RollingDischarge$sd),
+   Inflows = list(mean = Norm_Inflows$mean, sd = Norm_Inflows$sd),
+   LagDischarge1 = list(mean = Norm_LagDischarge1$mean, sd = Norm_LagDischarge1$sd),
+   LagDischarge3 = list(mean = Norm_LagDischarge3$mean, sd = Norm_LagDischarge3$sd),
+   LagDischarge6 = list(mean = Norm_LagDischarge6$mean, sd = Norm_LagDischarge6$sd)
+)
 
 
-############### Priors Part 1: Regularized Logistic Regression #################
+######################### Increasingly Complex Models ##########################
 
-############### Priors Part 2: Residual Modeling, Latent Component #############
+## Model 1: Basic
+model1 <- lm(Salinity ~ Norm_Discharge + Norm_Tide, data = model_data)
 
-############### Priors Part 3: Clustering, Flow Regime Effects #################
+## Model 2: Lagged Discharge
+model2 <- lm(Salinity ~ Norm_Discharge + Norm_Tide + Norm_LagDischarge1 + 
+                Norm_LagDischarge3 + Norm_LagDischarge6, data = model_data)
 
-########## Priors Part 4: Rolling Regression, Time Varying Coefficients ########
+## Model 3: Rolling Average
+model3 <- lm(Salinity ~ Norm_RollingDischarge + Norm_Tide, data = model_data)
 
+## Model 4: Seasonal Effects
+model4 <- lm(Salinity ~ Norm_RollingDischarge + Norm_Tide + Season, data = model_data)
 
+## Model 5: Discharge/Tide Interactions
+model5 <- lm(Salinity ~ Norm_RollingDischarge * Norm_Tide + Season, data = model_data)
 
-#################### Run the Bayesian Regression with Stan #####################
+## Model 6: One Layer Bayesian Hierarchical Model
+model6 <- cmdstan_model()
+
+## Model 7: Two Layer Bayesian Hierarchical Model
+model7 <- cmdstan_model()
+
+## Model 8: Three Layer Bayesian Hierarchical Model
+model8 <- cmdstan_model()
+
+############################### Model Evaluation ###############################
+
+models <- list(model1, model2, model3, model4, model5)
+model_names <- c('Basic', 'LaggedQ', 'RollingQ', 'Seasons', 'Interactions')
+
+# Evaluate each model
+results <- lapply(models, evaluate_model, data = model_data, threshold = salinity_threshold)
+
+# Summarise Results in Dataframe
+results <- data.frame(
+   Model = model_names,
+   Overall_RMSE = sapply(results, function(x) x$overall_rmse),
+   Weighted_RMSE = sapply(results, function(x) x$weighted_rmse),
+   High_Salinity_RMSE = sapply(results, function(x) x$high_salinity_rmse),
+   High_Salinity_MAE = sapply(results, function(x) x$high_salinity_mae),
+   High_Salinity_Bias = sapply(results, function(x) x$high_salinity_bias),
+   High_Salinity_R2 = sapply(results, function(x) x$high_salinity_r2)
+)
 
 
 ########### Predictive Relationship for Salt with Bayesian Inference ###########
@@ -182,7 +254,11 @@ ggplot(monthly_fdc, aes(x = exceedance_prob, y = Flow, color = Location)) +
    theme(legend.title = element_blank()) + 
    scale_color_manual(values = c('Inflows' = 'red', 'Discharge' = 'forestgreen', 'FERC' = 'black'))
 
-
+# Susquehanna Morphological Characteristics
+d = 9.9 * 1.609 * 1000                   # dam's distance from the mouth in meters (~9.9 miles)
+depth = 6                                # average depth of the river from the dam to the mouth in meters
+width = 1600                             # average width of the river from the dam to the mouth in meters
+area = depth * width                     # average cross-sectional area of the river below the dam  (m^2)
 
 
 #### Formulate Predictive Relationship as Shortage Objective Function to Minimize ####
