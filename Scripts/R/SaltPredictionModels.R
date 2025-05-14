@@ -91,7 +91,7 @@ model_data <- model_data %>%
    mutate(across(where(is.numeric), ~ifelse(is.na(.), 
                                             median(., na.rm=TRUE), .)))         # Deal with NAs (assign median value)
 
-# Collect the normalization parameters for later
+# Collect the normalization parameters so we can return to raw data later for interpretation
 norm_params <- list(
    Discharge = list(mean = Norm_Discharge$mean, sd = Norm_Discharge$sd),
    Tide = list(mean = Norm_Tide$mean, sd = Norm_Tide$sd),
