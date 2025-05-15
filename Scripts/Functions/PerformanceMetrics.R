@@ -56,3 +56,23 @@ evaluate_model <- function(model, data, threshold) {
       high_salinity_r2 = high_r2
    ))
 }
+
+
+# Function to gather the model predictions with confidence intervals
+get_predictions <- function(model, data) {
+   # Get predictions with standard errors
+   preds <- predict(model, newdata = data, se.fit = TRUE)
+   
+   # Create prediction dataframe
+   pred_df <- data.frame(
+      date_time = data$DateTime,
+      observed = data$Salinity,
+      predicted = preds$fit,
+      lower_ci = preds$fit - 1.96 * preds$se.fit,
+      upper_ci = preds$fit + 1.96 * preds$se.fit,
+      is_high = data$Salinity > salinity_threshold
+   )
+   
+   return(pred_df)
+}
+# 

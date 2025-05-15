@@ -29,6 +29,8 @@ library(RColorBrewer)
 library(cmdstanr)
 library(svglite)
 library(logistf)
+library(bayesplot)
+library(posterior)
 
 # Read in final hourly data
 data <- read.csv('Data/Tidied/HourlyDataFinal.csv', 
@@ -54,40 +56,47 @@ data <- data %>%
 ####################### Prepare all data for modeling ##########################
 
 # Salinity threshold
-salinity_threshold = 1                   # practical salt units (PSU), equivalent to parts per thousand
+salinity_threshold = 1                                              # practical salt units (PSU), equivalent to parts per thousand
 
-# Rolling Average Window Size
-rolling_window = 6                       # Hours
 
 model_data <- data %>%
-   filter(!is.na(Salinity)) %>%                                   # Keep only times when salinity observations are available
-   mutate(RollingDischarge = zoo::rollmean(Discharge, 
-                                            rolling_window, 
+   filter(!is.na(Salinity)) %>%                                     # Keep only times when salinity observations are available
+   mutate(RollingDischarge6 = zoo::rollmean(Discharge, 
+                                            6, 
                                             fill = NA,
-                                            align = "right")) %>% # Rolling average discharge 
+                                            align = "right"),
+          RollingDischarge12 = zoo::rollmean(Discharge,
+                                              12, 
+                                              fill = NA,
+                                              align = 'right')) %>% # Rolling average discharge 
    mutate(LagDischarge1 = lag(Discharge, 1),
           LagDischarge3 = lag(Discharge, 3),
-          LagDischarge6 = lag(Discharge, 6))                     # Lagged Discharge variables (number = # of hours)
+          LagDischarge6 = lag(Discharge, 6)) %>%                    # Lagged Discharge variables (number = # of hours)
+   mutate(LogDischarge = round(log10(Discharge), digits = 4))
 
 # Create Normalized Versions of Data 
 # Save original stats for return transformation
 Norm_Inflows <- normalize_with_parameters(model_data$Inflows)
 Norm_Discharge <- normalize_with_parameters(model_data$Discharge)
 Norm_Tide <- normalize_with_parameters(model_data$Tide)
-Norm_RollingDischarge <- normalize_with_parameters(model_data$RollingDischarge) 
+Norm_RollingDischarge6 <- normalize_with_parameters(model_data$RollingDischarge6) 
+Norm_RollingDischarge12 <- normalize_with_parameters(model_data$RollingDischarge12) 
 Norm_LagDischarge1 <- normalize_with_parameters(model_data$LagDischarge1)
 Norm_LagDischarge3 <- normalize_with_parameters(model_data$LagDischarge3)
 Norm_LagDischarge6 <- normalize_with_parameters(model_data$LagDischarge6)
+Norm_LogDischarge <- normalize_with_parameters(model_data$LogDischarge)
 
 # Add these normalized data to the model data
 model_data <- model_data %>%
    mutate(Norm_Discharge = Norm_Discharge$normalized,
           Norm_Tide = Norm_Tide$normalized,
-          Norm_RollingDischarge = Norm_RollingDischarge$normalized,
+          Norm_RollingDischarge6 = Norm_RollingDischarge6$normalized,
+          Norm_RollingDischarge12 = Norm_RollingDischarge12$normalized,
           Norm_Inflows = Norm_Inflows$normalized,
           Norm_LagDischarge1 = Norm_LagDischarge1$normalized,
           Norm_LagDischarge3 = Norm_LagDischarge3$normalized,
-          Norm_LagDischarge6 = Norm_LagDischarge6$normalized) %>%
+          Norm_LagDischarge6 = Norm_LagDischarge6$normalized,
+          Norm_LogDischarge = Norm_LogDischarge$normalized) %>%
    mutate(across(where(is.numeric), ~ifelse(is.na(.), 
                                             median(., na.rm=TRUE), .)))         # Deal with NAs (assign median value)
 
@@ -95,11 +104,13 @@ model_data <- model_data %>%
 norm_params <- list(
    Discharge = list(mean = Norm_Discharge$mean, sd = Norm_Discharge$sd),
    Tide = list(mean = Norm_Tide$mean, sd = Norm_Tide$sd),
-   RollingDischarge = list(mean = Norm_RollingDischarge$mean, sd = Norm_RollingDischarge$sd),
+   RollingDischarge6 = list(mean = Norm_RollingDischarge6$mean, sd = Norm_RollingDischarge6$sd),
+   RollingDischarge12 = list(mean = Norm_RollingDischarge12$mean, sd = Norm_RollingDischarge12$sd),
    Inflows = list(mean = Norm_Inflows$mean, sd = Norm_Inflows$sd),
    LagDischarge1 = list(mean = Norm_LagDischarge1$mean, sd = Norm_LagDischarge1$sd),
    LagDischarge3 = list(mean = Norm_LagDischarge3$mean, sd = Norm_LagDischarge3$sd),
-   LagDischarge6 = list(mean = Norm_LagDischarge6$mean, sd = Norm_LagDischarge6$sd)
+   LagDischarge6 = list(mean = Norm_LagDischarge6$mean, sd = Norm_LagDischarge6$sd),
+   LogDischarge = list(mean = Norm_LogDischarge$mean, sd = Norm_LogDischarge$sd)
 )
 
 
@@ -108,37 +119,72 @@ norm_params <- list(
 ## Model 1: Basic
 model1 <- lm(Salinity ~ Norm_Discharge + Norm_Tide, data = model_data)
 
-## Model 2: Lagged Discharge
-model2 <- lm(Salinity ~ Norm_Discharge + Norm_Tide + Norm_LagDischarge1 + 
-                Norm_LagDischarge3 + Norm_LagDischarge6, data = model_data)
+## Model 2: Log of Discharge
+model2 <- lm(Salinity ~ Norm_LogDischarge + Norm_Tide, data = model_data)
 
-## Model 3: Rolling Average
-model3 <- lm(Salinity ~ Norm_RollingDischarge + Norm_Tide, data = model_data)
+## Model 3: Lagged Discharge (1hr)
+model3 <- lm(Salinity ~ Norm_LagDischarge1 + Norm_Tide, data = model_data)
 
-## Model 4: Seasonal Effects
-model4 <- lm(Salinity ~ Norm_RollingDischarge + Norm_Tide + Season, data = model_data)
+## Model 4: Lagged Discharge (3 hr)
+model4 <- lm(Salinity ~ Norm_LagDischarge3 + Norm_Tide, data = model_data)
 
-## Model 5: Discharge/Tide Interactions
-model5 <- lm(Salinity ~ Norm_RollingDischarge * Norm_Tide + Season, data = model_data)
+## Model 5: Lagged Discharge (6 hr)
+model5 <- lm(Salinity ~ Norm_LagDischarge6 + Tide, data = model_data)
 
-## Model 6: One Layer Bayesian Hierarchical Model
-model6 <- cmdstan_model()
+## Model 6: Rolling Average (6 hr)
+model6 <- lm(Salinity ~ Norm_RollingDischarge6 + Norm_Tide, data = model_data)
 
-## Model 7: Two Layer Bayesian Hierarchical Model
-model7 <- cmdstan_model()
+## Model 7: Rolling Average (12 hr) 
+model7 <- lm(Salinity ~ Norm_RollingDischarge12 + Tide, data = model_data)
 
-## Model 8: Three Layer Bayesian Hierarchical Model
-model8 <- cmdstan_model()
+## Model 8: Combined Effects (Raw + Rolling6)
+model8 <- lm(Salinity ~ Norm_Discharge + Norm_RollingDischarge6 + Tide, data = model_data)
+
+## Model 9:Combined Effects (Raw + Rolling12)
+model9 <- lm(Salinity ~ Norm_Discharge + Norm_RollingDischarge12 + Tide, data = model_data)
+
+## Model 10: One Layer Bayesian Hierarchical Model
+model10 <- cmdstan_model('Scripts/Stan/BayesOneLayer.stan')
+model10 <- model10$sample(
+   data = stan_data,
+   seed = 123,
+   chains = 4,
+   parallel_chains = 4,
+   iter_warmup = 1000,
+   iter_sampling = 1000
+)
+
+## Model 11: Two Layer Bayesian Hierarchical Model
+model11 <- cmdstan_model('Scripts/Stan/BayesTwoLayer.stan')
+model11 <- model11$sample(
+   data = stan_data,
+   seed = 123,
+   chains = 4,
+   parallel_chains = 4,
+   iter_warmup = 1000,
+   iter_sampling = 1000
+)
+
+## Model 12: Three Layer Bayesian Hierarchical Model
+model12 <- cmdstan_model('Scripts/Stan/BayesThreeLayer.stan')
+model12 <- model12$sample(
+   data = stan_data,
+   seed = 123,
+   chains = 4,
+   parallel_chains = 4,
+   iter_warmup = 1000,
+   iter_sampling = 1000
+)
 
 ############################### Model Evaluation ###############################
 
-models <- list(model1, model2, model3, model4, model5)
-model_names <- c('Basic', 'LaggedQ', 'RollingQ', 'Seasons', 'Interactions')
+models <- list(model1, model2, model3, model4, model5, model6, model7, model8, model9)
+model_names <- c('Basic', 'LogQ', 'LagQ1', 'LagQ3', 'LagQ6', 'RollQ6', 'RollQ12', 'ComboRoll6', 'ComboRoll12')
 
 # Evaluate each model
 results <- lapply(models, evaluate_model, data = model_data, threshold = salinity_threshold)
 
-# Summarise Results in Dataframe
+# Summarise results in dataframe
 results <- data.frame(
    Model = model_names,
    Overall_RMSE = sapply(results, function(x) x$overall_rmse),
@@ -150,6 +196,46 @@ results <- data.frame(
 )
 
 
+
+# ggplot(test, aes(x = date_time)) +
+#    geom_ribbon(aes(ymin = lower_ci, ymax = upper_ci), alpha = 0.2) +
+#    geom_line(aes(y = observed), color = "black") +
+#    geom_line(aes(y = predicted), color = "blue") +
+#    geom_point(data = subset(test, is_high), aes(y = observed), color = "red", size = 2) +
+#    labs(title = "Model Predictions vs Observed Salinity",
+#         subtitle = "Red points indicate high salinity events",
+#         x = "Date",
+#         y = "Salinity (ppt)") +
+#    theme_minimal() +
+#    theme(axis.text.x = element_text(angle = 45, hjust = 1))
+
+
+test <- get_predictions(model9, model_data)
+high_events <- test %>% 
+   filter(is_high) %>% 
+   arrange(date_time)
+
+if(nrow(high_events) > 0) {
+   # Get a window around the first high event
+   first_high_event <- high_events$date_time[1]
+   window_start <- first_high_event - days(5)
+   window_end <- first_high_event + days(5)
+   
+   p7 <- ggplot(filter(test, date_time >= window_start & date_time <= window_end), 
+                aes(x = date_time)) +
+      geom_ribbon(aes(ymin = lower_ci, ymax = upper_ci), alpha = 0.2) +
+      geom_line(aes(y = observed), color = "black") +
+      geom_line(aes(y = predicted), color = "blue") +
+      geom_point(data = filter(test, is_high & date_time >= window_start & date_time <= window_end), 
+                 aes(y = observed), color = "red", size = 2) +
+      labs(title = "10-Day Window Around a High Salinity Event",
+           x = "Date",
+           y = "Salinity (ppt)") +
+      theme_minimal() +
+      theme(axis.text.x = element_text(angle = 45, hjust = 1))
+   
+   print(p7)
+}
 ########### Predictive Relationship for Salt with Bayesian Inference ###########
 
 
