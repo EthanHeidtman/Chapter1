@@ -56,92 +56,250 @@ data <- data %>%
 ####################### Prepare all data for modeling ##########################
 
 # Salinity threshold
-salinity_threshold = 1                                              # practical salt units (PSU), equivalent to parts per thousand
-
+salinity_threshold = 0.8                                               # practical salt units (PSU), equivalent to parts per thousand
 
 model_data <- data %>%
-   filter(!is.na(Salinity)) %>%                                     # Keep only times when salinity observations are available
-   mutate(RollingDischarge6 = zoo::rollmean(Discharge, 
-                                            6, 
+   filter(!is.na(Salinity)) %>%                                      # Keep only times with available salinity data
+   mutate(
+      ## Lagged Discharges (Hours)
+      LagDischarge1 = lag(Discharge, 1),                             # 1 hour lagged discharge
+      LagDischarge3 = lag(Discharge, 3),                             # 3 hour lagged discharge
+      LagDischarge6 = lag(Discharge, 6),                             # 6 hour lagged discharge
+      LagDischarge12 = lag(Discharge, 12),
+      LagDischarge24 = lag(Discharge, 24),
+      
+      ## Lagged Salinities
+      LagSalinity1 = lag(Salinity, 1),
+      LagSalinity3 = lag(Salinity, 3),
+      LagSalinity6 = lag(Salinity, 6),
+      
+      ## Power Law Transformations of Discharge 
+      ## Kukulka & Jay (2003) suggested exponents around -0.35 to -0.4
+      PowDischarge1 = Discharge ^ (-0.35),
+      PowDischarge2 = Discharge ^ (-0.4),
+      PowLagDischarge21 = LagDischarge1 ^ (-0.4),                    # 1-hr lag, power transformation 2
+      PowLagDischarge23 = LagDischarge3 ^ (-0.4),                    # 3-hr lag, power transformation 2
+      PowLagDischarge26 = LagDischarge6 ^ (-0.4),                    # 6-hr lag, power transformation 2
+      PowLagDischarge212 = LagDischarge12 ^ (-0.4),
+      PowLagDischarge224 = LagDischarge24 ^ (-0.4),
+      
+      ## Log Transformations of Discharge
+      LogDischarge = log(Discharge),                                 # Log of raw hourly discharge
+      
+      ## Rolling Average Transformations of Discharge
+      ## Picked the best transformation: Power law, -0.4
+      RollingPowDischarge26 = zoo::rollmean(PowDischarge2, 
+                                           6,
+                                           fill = NA,
+                                           align = "right"),         # 6-hr rolling average of power-transformed discharge
+      RollingPowDischarge28 = zoo::rollmean(PowDischarge2, 
+                                            8,
                                             fill = NA,
-                                            align = "right"),
-          RollingDischarge12 = zoo::rollmean(Discharge,
-                                              12, 
-                                              fill = NA,
-                                              align = 'right')) %>% # Rolling average discharge 
-   mutate(LagDischarge1 = lag(Discharge, 1),
-          LagDischarge3 = lag(Discharge, 3),
-          LagDischarge6 = lag(Discharge, 6)) %>%                    # Lagged Discharge variables (number = # of hours)
-   mutate(LogDischarge = round(log10(Discharge), digits = 4))
+                                            align = "right"),        # 8-hr rolling average of power-transformed discharge
+      RollingPowDischarge210 = zoo::rollmean(PowDischarge2, 
+                                             10,
+                                             fill = NA,
+                                             align = "right"),       # 10-hr rolling average of power-transformed discharge
+      RollingPowDischarge212 = zoo::rollmean(PowDischarge2, 
+                                             12,
+                                             fill = NA,
+                                             align = "right"),       # 12-hr rolling average of power-transformed discharge
+      RollingPowDischarge224 = zoo::rollmean(PowDischarge2, 
+                                             24,
+                                             fill = NA,
+                                             align = "right"),       # 24-hr rolling average of power-transformed discharge
+      
+      ## Seasonal Cycle
+      SeasonSine = sin(2 * pi * Month / 12),
+      SeasonCosine = cos(2 * pi * Month / 12),
+      
+      ## Interaction Terms
+      ## Tide/Discharge, Discharge/Season, Tide/Season
+      TidePowLagDischarge23 = Tide * PowLagDischarge23,                      # Interaction btwn tide and best lagged discharge
+      TideRollingPowDischarge212 = Tide * RollingPowDischarge212,            # Interaction btwn tide and 12-hr rolling best power transformation
+      SeasonSinePowLagDischarge23 = SeasonSine * PowLagDischarge23,          # Interaction btwn season and best lagged discharge
+      SeasonCosPowLagDischarge23 = SeasonCosine * PowLagDischarge23,         # Interaction btwn season and best lagged discharge
+      SeasonSineRollingPowDischarge212 = SeasonSine * RollingPowDischarge212,# Interaction btwn season and 12-hr rolling best power transformation
+      SeasonCosRollingPowDischarge212 = SeasonCosine * RollingPowDischarge212# Interaction btwn season and 12-hr rolling best power transformation
+   ) %>%
+   na.omit()                                                         # Remove NAs from these calculations
 
-# Create Normalized Versions of Data 
-# Save original stats for return transformation
-Norm_Inflows <- normalize_with_parameters(model_data$Inflows)
-Norm_Discharge <- normalize_with_parameters(model_data$Discharge)
-Norm_Tide <- normalize_with_parameters(model_data$Tide)
-Norm_RollingDischarge6 <- normalize_with_parameters(model_data$RollingDischarge6) 
-Norm_RollingDischarge12 <- normalize_with_parameters(model_data$RollingDischarge12) 
-Norm_LagDischarge1 <- normalize_with_parameters(model_data$LagDischarge1)
-Norm_LagDischarge3 <- normalize_with_parameters(model_data$LagDischarge3)
-Norm_LagDischarge6 <- normalize_with_parameters(model_data$LagDischarge6)
-Norm_LogDischarge <- normalize_with_parameters(model_data$LogDischarge)
 
-# Add these normalized data to the model data
-model_data <- model_data %>%
-   mutate(Norm_Discharge = Norm_Discharge$normalized,
-          Norm_Tide = Norm_Tide$normalized,
-          Norm_RollingDischarge6 = Norm_RollingDischarge6$normalized,
-          Norm_RollingDischarge12 = Norm_RollingDischarge12$normalized,
-          Norm_Inflows = Norm_Inflows$normalized,
-          Norm_LagDischarge1 = Norm_LagDischarge1$normalized,
-          Norm_LagDischarge3 = Norm_LagDischarge3$normalized,
-          Norm_LagDischarge6 = Norm_LagDischarge6$normalized,
-          Norm_LogDischarge = Norm_LogDischarge$normalized) %>%
-   mutate(across(where(is.numeric), ~ifelse(is.na(.), 
-                                            median(., na.rm=TRUE), .)))         # Deal with NAs (assign median value)
+# Normalize Predictors and Add to model_data
+preds_to_normalize <- c('Discharge', 'Tide', 'PowDischarge1', 
+                        'PowDischarge2', 'PowLagDischarge21', 
+                        'PowLagDischarge23', 'PowLagDischarge26', 'PowLagDischarge212',
+                        'PowLagDischarge224',
+                        'LogDischarge', 'RollingPowDischarge26', 'RollingPowDischarge28',
+                        'RollingPowDischarge210', 'RollingPowDischarge212', 
+                        'RollingPowDischarge224', 'TidePowLagDischarge23',
+                        'TideRollingPowDischarge212', 'SeasonSinePowLagDischarge23', 
+                        'SeasonCosPowLagDischarge23', 'SeasonSineRollingPowDischarge212',
+                        'SeasonCosRollingPowDischarge212', 'LagSalinity1', 'LagSalinity3',
+                        'LagSalinity6')
 
-# Collect the normalization parameters so we can return to raw data later for interpretation
-norm_params <- list(
-   Discharge = list(mean = Norm_Discharge$mean, sd = Norm_Discharge$sd),
-   Tide = list(mean = Norm_Tide$mean, sd = Norm_Tide$sd),
-   RollingDischarge6 = list(mean = Norm_RollingDischarge6$mean, sd = Norm_RollingDischarge6$sd),
-   RollingDischarge12 = list(mean = Norm_RollingDischarge12$mean, sd = Norm_RollingDischarge12$sd),
-   Inflows = list(mean = Norm_Inflows$mean, sd = Norm_Inflows$sd),
-   LagDischarge1 = list(mean = Norm_LagDischarge1$mean, sd = Norm_LagDischarge1$sd),
-   LagDischarge3 = list(mean = Norm_LagDischarge3$mean, sd = Norm_LagDischarge3$sd),
-   LagDischarge6 = list(mean = Norm_LagDischarge6$mean, sd = Norm_LagDischarge6$sd),
-   LogDischarge = list(mean = Norm_LogDischarge$mean, sd = Norm_LogDischarge$sd)
+
+
+# Apply the normalization function
+normalized_predictors <- normalize_multiple_predictors(model_data, preds_to_normalize)
+
+model_data <- normalized_predictors$data
+norm_params <- normalized_predictors$parameters
+
+
+################ Model Development with Increasing Complexity ######################
+
+### BASIC MODELS: COMPARISON OF TRANSFORMATIONS ###
+### Which base transformation performs the best?
+
+## Model 1a: Basic
+model1a <- lm(Salinity ~ Norm_Discharge + Norm_Tide, data = model_data)
+
+## Model 1b: Power law, -0.35
+model1b <- lm(Salinity ~ Norm_PowDischarge1 + Norm_Tide, data = model_data)
+
+## Model 1c: Power Law, -0.4
+model1c <- lm(Salinity ~ Norm_PowDischarge2 + Norm_Tide, data = model_data)
+
+## Model 1d: Log Transformation
+model1d <- lm(Salinity ~ Norm_LogDischarge + Norm_Tide, data = model_data)
+
+models <- list(model1a, model1b, model1c, model1d)
+model_names <- c('Basic', 'Power0.35', 'Power0.4', 'Log')
+
+# Evaluate each model
+results <- lapply(models, evaluate_model, data = model_data, threshold = salinity_threshold)
+
+# Summarise results in dataframe
+results <- data.frame(
+   Model = model_names,
+   Overall_RMSE = sapply(results, function(x) x$overall_rmse),
+   Weighted_RMSE = sapply(results, function(x) x$weighted_rmse),
+   Overall_R2 = sapply(results, function(x) x$overall_r2),
+   High_Salinity_RMSE = sapply(results, function(x) x$high_salinity_rmse),
+   High_Salinity_MAE = sapply(results, function(x) x$high_salinity_mae),
+   High_Salinity_Bias = sapply(results, function(x) x$high_salinity_bias),
+   High_Salinity_R2 = sapply(results, function(x) x$high_salinity_r2)
 )
 
+### TESTING DIFFERENT LAGS ###
+### Which lag performs best with the best base transformation (MODEL1C, POWER LAW -0.4)
+### The best lag turns out to be the 3-hr lag with the power law: MODEL2e
 
-######################### Increasingly Complex Models ##########################
+## Model 2a: 1-hr lag with power law
+model2a <- lm(Salinity ~ Norm_PowLagDischarge21 + Norm_Tide, data = model_data)
 
-## Model 1: Basic
-model1 <- lm(Salinity ~ Norm_Discharge + Norm_Tide, data = model_data)
+## Model 2b: 3-hr lag with power law
+model2b <- lm(Salinity ~ Norm_PowLagDischarge23 + Norm_Tide, data = model_data)
 
-## Model 2: Log of Discharge
-model2 <- lm(Salinity ~ Norm_LogDischarge + Norm_Tide, data = model_data)
+## Model 2c: 6-hr lag with power law
+model2c <- lm(Salinity ~ Norm_PowLagDischarge26 + Norm_Tide, data = model_data)
 
-## Model 3: Lagged Discharge (1hr)
-model3 <- lm(Salinity ~ Norm_LagDischarge1 + Norm_Tide, data = model_data)
+## Model 2d: 12-hr lag with power law
+model2d <- lm(Salinity ~ Norm_PowLagDischarge212 + Norm_Tide, data = model_data)
 
-## Model 4: Lagged Discharge (3 hr)
-model4 <- lm(Salinity ~ Norm_LagDischarge3 + Norm_Tide, data = model_data)
+## Model 2e: 24-hr lag with power law
+model2e <- lm(Salinity ~ Norm_PowLagDischarge224 + Norm_Tide, data = model_data)
 
-## Model 5: Lagged Discharge (6 hr)
-model5 <- lm(Salinity ~ Norm_LagDischarge6 + Tide, data = model_data)
+models <- list(model2a, model2b, model2c, model2d, model2e)
+model_names <- c('1hour', '3hour', '6hour', '12hour', '24hour')
 
-## Model 6: Rolling Average (6 hr)
-model6 <- lm(Salinity ~ Norm_RollingDischarge6 + Norm_Tide, data = model_data)
+# Evaluate each model
+results <- lapply(models, evaluate_model, data = model_data, threshold = salinity_threshold)
 
-## Model 7: Rolling Average (12 hr) 
-model7 <- lm(Salinity ~ Norm_RollingDischarge12 + Tide, data = model_data)
+# Summarise results in dataframe
+results <- data.frame(
+   Model = model_names,
+   Overall_RMSE = sapply(results, function(x) x$overall_rmse),
+   Weighted_RMSE = sapply(results, function(x) x$weighted_rmse),
+   Overall_R2 = sapply(results, function(x) x$overall_r2),
+   High_Salinity_RMSE = sapply(results, function(x) x$high_salinity_rmse),
+   High_Salinity_MAE = sapply(results, function(x) x$high_salinity_mae),
+   High_Salinity_Bias = sapply(results, function(x) x$high_salinity_bias),
+   High_Salinity_R2 = sapply(results, function(x) x$high_salinity_r2)
+)
 
-## Model 8: Combined Effects (Raw + Rolling6)
-model8 <- lm(Salinity ~ Norm_Discharge + Norm_RollingDischarge6 + Tide, data = model_data)
+### TESTING DIFFERENT ROLLING AVERAGES ###
+### Which rolling average is the best?
+### MODEL3B turns out to be the best
 
-## Model 9:Combined Effects (Raw + Rolling12)
-model9 <- lm(Salinity ~ Norm_Discharge + Norm_RollingDischarge12 + Tide, data = model_data)
+## Model 3a: 6-hr rolling average with power law
+model3a <- lm(Salinity ~ Norm_RollingPowDischarge26 + Norm_Tide, data = model_data)
+
+## Model 3b: 8-hr rolling average with power law
+model3b <- lm(Salinity ~ Norm_RollingPowDischarge28 + Norm_Tide, data = model_data)
+
+## Model 3c: 10-hr rolling average with power law
+model3c <- lm(Salinity ~ Norm_RollingPowDischarge210 + Norm_Tide, data = model_data)
+
+## Model 3d: 12-hr rolling average with power law
+model3d <- lm(Salinity ~ Norm_RollingPowDischarge212 + Norm_Tide, data = model_data)
+
+## Model 3e: 24-hr rolling average with power law
+model3e <- lm(Salinity ~ Norm_RollingPowDischarge224 + Norm_Tide, data = model_data)
+
+models <- list(model3a, model3b, model3c, model3d, model3e)
+model_names <- c('6hour', '8hour', '10hour', '12hour', '24hour')
+
+# Evaluate each model
+results <- lapply(models, evaluate_model, data = model_data, threshold = salinity_threshold)
+
+# Summarise results in dataframe
+results <- data.frame(
+   Model = model_names,
+   Overall_RMSE = sapply(results, function(x) x$overall_rmse),
+   Weighted_RMSE = sapply(results, function(x) x$weighted_rmse),
+   Overall_R2 = sapply(results, function(x) x$overall_r2),
+   High_Salinity_RMSE = sapply(results, function(x) x$high_salinity_rmse),
+   High_Salinity_MAE = sapply(results, function(x) x$high_salinity_mae),
+   High_Salinity_Bias = sapply(results, function(x) x$high_salinity_bias),
+   High_Salinity_R2 = sapply(results, function(x) x$high_salinity_r2)
+)
+### COMBINED MODELS ###
+### What are the best combinations of predictors?
+### Model 4d is the best of these
+
+## Model 4a: Best Raw Discharge Transformation + Best Lag
+model4a <- lm(Salinity ~ Norm_PowDischarge2 + Norm_PowLagDischarge23 + Norm_Tide,
+              data = model_data)
+
+## Model 4b: Best raw discharge transformation + best rolling average
+model4b <- lm(Salinity ~ Norm_PowDischarge2 + Norm_RollingPowDischarge212 + Norm_Tide,
+              data = model_data)
+
+## Model 4c: Best lag + best rolling average
+model4c <- lm(Salinity ~ Norm_PowLagDischarge23 + Norm_RollingPowDischarge212 + Norm_Tide,
+              data = model_data)
+
+## Model 4d: Best raw discharge + best lag + best rolling average
+model4d <- lm(Salinity ~ Norm_PowDischarge2 + Norm_PowLagDischarge23 + 
+                 Norm_RollingPowDischarge212 + Norm_Tide, data = model_data)
+
+### SEASONALITY AND INTERACTIONS ###
+### Adding seasonal effects and other interactions to the best from 4: Model4d
+### Best of this section:
+
+## Model 5a: Add seasonality
+model5a <- lm(Salinity ~ Norm_PowDischarge2 + Norm_PowLagDischarge23 + 
+                 Norm_RollingPowDischarge212 + Norm_Tide + 
+                 SeasonSine + SeasonCosine, data = model_data)
+
+## Model 5b: Add Tide- 3hr Lagged Discharge Interaction
+model5b <- lm(Salinity ~ Norm_PowDischarge2 + Norm_PowLagDischarge23 + 
+                 Norm_RollingPowDischarge212 + 
+                 Norm_Tide + Norm_TidePowLagDischarge2 +
+                 SeasonSine + SeasonCosine, data = model_data)
+
+## Model 5c: Add Tide-12-hr rolling discharge interaction
+model5c <- lm(Salinity ~ Norm_PowDischarge2 + Norm_PowLagDischarge23 + 
+                 Norm_RollingPowDischarge212 + 
+                 Norm_Tide + Norm_TideRollingPowDischarge212 +
+                 SeasonSine + SeasonCosine, data = model_data)
+
+### FULL MODEL ###
+### Combining all of the best components
+
+
 
 ## Model 10: One Layer Bayesian Hierarchical Model
 model10 <- cmdstan_model('Scripts/Stan/BayesOneLayer.stan')

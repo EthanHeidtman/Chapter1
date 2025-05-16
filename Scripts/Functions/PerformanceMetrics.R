@@ -35,6 +35,10 @@ evaluate_model <- function(model, data, threshold) {
    overall_rmse <- sqrt(mean((observed - predicted)^2))
    weighted_rmse_val <- weighted_rmse(observed, predicted)
    
+   # Overall R-squared
+   overall_r2 <- 1 - sum((observed - predicted)^2, na.rm = TRUE) / 
+      sum((observed - mean(observed, na.rm = TRUE))^2, na.rm = TRUE)
+   
    # High salinity metrics
    high_metrics <- extreme_event_metrics(observed, predicted, threshold)
    
@@ -50,6 +54,7 @@ evaluate_model <- function(model, data, threshold) {
    return(list(
       overall_rmse = overall_rmse,
       weighted_rmse = weighted_rmse_val,
+      overall_r2 = overall_r2,
       high_salinity_rmse = high_metrics$rmse,
       high_salinity_mae = high_metrics$mae,
       high_salinity_bias = high_metrics$bias,
