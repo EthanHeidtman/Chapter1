@@ -142,7 +142,6 @@ preds_to_normalize <- c('Discharge', 'Tide', 'PowDischarge1',
 
 # Apply the normalization function
 normalized_predictors <- normalize_multiple_predictors(model_data, preds_to_normalize)
-
 model_data <- normalized_predictors$data
 norm_params <- normalized_predictors$parameters
 
