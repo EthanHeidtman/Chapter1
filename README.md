@@ -18,28 +18,28 @@ To clone and run this project, you need:
 
 ### Installation Steps
 
-1.  **Clone the repository**
+1.  **Clone the repository in a terminal (RStudio or other)**
 
 ```{bash}
 git clone https://github.com/EthanHeidtman/Chapter1.git <YourDesiredFolder>
 cd YourDesiredFolder
 ```
 
-2.  **Open the project in RStudio**
+2.  **Open the project in RStudio:**
 
--   Double click the `.Rproj` file or use:
+-   Double click the `.Rproj` file or use this line in the terminal:
 
 ```{bash}
 rstudio repo_name.Rproj
 ```
 
-3.  **Install `renv` if it isn't already:**
+3.  **Install `renv` if it isn't already (in the RStudio Console):**
 
 ```{r}
 install.packages('renv')
 ```
 
-4.  **Restore the Project's environment**
+4.  **Restore the Project's environment (in the RStudio Console):**
 
 ```{r}
 renv::restore()
@@ -47,13 +47,13 @@ renv::restore()
 
 -   This will restore the project's environment, all of the packages and dependencies that are specified in the `renv.lock` file
 
-5.  **Install the `cmdstanr` package**
+5.  **Install the `cmdstanr` package (in the RStudio Console):**
 
 ```{r}
 install.packages("cmdstanr", repos = c("https://mc-stan.org/r-packages/", getOption("repos")))
 ```
 
--   You will also need to install the back-end software CmdStan:
+-   You will also need to install the back-end software CmdStan (in the RStudio console):
 
 ```{r}
 cmdstanr::install_cmdstan()
@@ -86,14 +86,14 @@ This will execute all necessary steps in the correct order and produce all figur
 
 ## Troubleshooting
 
-If you encounter issues related to missing packages, ensure that `renv` has correctly restored the environment. Try:
+If you encounter issues related to missing packages, ensure that `renv` has correctly restored the environment. Try this in the RStudio Console:
 
 ```{r}
 renv::diagnostics()
 renv::restore()
 ```
 
-For `cmdstanr` issues, check the installation using:
+For `cmdstanr` issues, check the installation using (in the RStudio Console):
 
 ```{r}
 cmdstanr::cmdstan_version()
