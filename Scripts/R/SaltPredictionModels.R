@@ -56,7 +56,7 @@ data <- data %>%
 ####################### Prepare all data for modeling ##########################
 
 # Salinity threshold
-salinity_threshold = 0.8                                               # practical salt units (PSU), equivalent to parts per thousand
+salinity_threshold = 0.8                                             # practical salt units (PSU), equivalent to parts per thousand
 
 model_data <- data %>%
    filter(!is.na(Salinity)) %>%                                      # Keep only times with available salinity data
@@ -65,13 +65,13 @@ model_data <- data %>%
       LagDischarge1 = lag(Discharge, 1),                             # 1 hour lagged discharge
       LagDischarge3 = lag(Discharge, 3),                             # 3 hour lagged discharge
       LagDischarge6 = lag(Discharge, 6),                             # 6 hour lagged discharge
-      LagDischarge12 = lag(Discharge, 12),
-      LagDischarge24 = lag(Discharge, 24),
+      LagDischarge12 = lag(Discharge, 12),                           # 12 hour lagged discharge
+      LagDischarge24 = lag(Discharge, 24),                           # 24 hour lagged discharge
       
       ## Lagged Salinities
-      LagSalinity1 = lag(Salinity, 1),
-      LagSalinity3 = lag(Salinity, 3),
-      LagSalinity6 = lag(Salinity, 6),
+      LagSalinity1 = lag(Salinity, 1),                               # 1 hour lagged salinity
+      LagSalinity3 = lag(Salinity, 3),                               # 3 hour lagged salinity
+      LagSalinity6 = lag(Salinity, 6),                               # 6 hour lagged salinity
       
       ## Power Law Transformations of Discharge 
       ## Kukulka & Jay (2003) suggested exponents around -0.35 to -0.4
@@ -80,8 +80,8 @@ model_data <- data %>%
       PowLagDischarge21 = LagDischarge1 ^ (-0.4),                    # 1-hr lag, power transformation 2
       PowLagDischarge23 = LagDischarge3 ^ (-0.4),                    # 3-hr lag, power transformation 2
       PowLagDischarge26 = LagDischarge6 ^ (-0.4),                    # 6-hr lag, power transformation 2
-      PowLagDischarge212 = LagDischarge12 ^ (-0.4),
-      PowLagDischarge224 = LagDischarge24 ^ (-0.4),
+      PowLagDischarge212 = LagDischarge12 ^ (-0.4),                  # 12-hr lag, power transformation 2
+      PowLagDischarge224 = LagDischarge24 ^ (-0.4),                  # 24-hr lag, power transformation 2
       
       ## Log Transformations of Discharge
       LogDischarge = log(Discharge),                                 # Log of raw hourly discharge
@@ -115,14 +115,14 @@ model_data <- data %>%
       
       ## Interaction Terms
       ## Tide/Discharge, Discharge/Season, Tide/Season
-      TidePowLagDischarge23 = Tide * PowLagDischarge23,                      # Interaction btwn tide and best lagged discharge
-      TideRollingPowDischarge212 = Tide * RollingPowDischarge212,            # Interaction btwn tide and 12-hr rolling best power transformation
-      SeasonSinePowLagDischarge23 = SeasonSine * PowLagDischarge23,          # Interaction btwn season and best lagged discharge
-      SeasonCosPowLagDischarge23 = SeasonCosine * PowLagDischarge23,         # Interaction btwn season and best lagged discharge
-      SeasonSineRollingPowDischarge212 = SeasonSine * RollingPowDischarge212,# Interaction btwn season and 12-hr rolling best power transformation
-      SeasonCosRollingPowDischarge212 = SeasonCosine * RollingPowDischarge212# Interaction btwn season and 12-hr rolling best power transformation
+      TidePowLagDischarge23 = Tide * PowLagDischarge23,                       # Interaction btwn tide and best lagged discharge
+      TideRollingPowDischarge212 = Tide * RollingPowDischarge212,             # Interaction btwn tide and 12-hr rolling best power transformation
+      SeasonSinePowLagDischarge23 = SeasonSine * PowLagDischarge23,           # Interaction btwn season and best lagged discharge
+      SeasonCosPowLagDischarge23 = SeasonCosine * PowLagDischarge23,          # Interaction btwn season and best lagged discharge
+      SeasonSineRollingPowDischarge212 = SeasonSine * RollingPowDischarge212, # Interaction btwn season and 12-hr rolling best power transformation
+      SeasonCosRollingPowDischarge212 = SeasonCosine * RollingPowDischarge212 # Interaction btwn season and 12-hr rolling best power transformation
    ) %>%
-   na.omit()                                                         # Remove NAs from these calculations
+   na.omit()                                                                  # Remove NAs from these calculations
 
 
 # Normalize Predictors and Add to model_data
@@ -144,6 +144,20 @@ preds_to_normalize <- c('Discharge', 'Tide', 'PowDischarge1',
 normalized_predictors <- normalize_multiple_predictors(model_data, preds_to_normalize)
 model_data <- normalized_predictors$data
 norm_params <- normalized_predictors$parameters
+
+# p1 <- ggplot(model_data, aes(x = DateTime, y = Salinity)) + 
+#    geom_point() + 
+#    scale_x_datetime(limits = c(as_datetime('2016-09-15'), as_datetime('2016-12-05')))
+# p2 <- ggplot(model_data, aes(x = DateTime, y = Discharge)) + 
+#    geom_point(color = 'red') + 
+#    scale_x_datetime(limits = c(as_datetime('2016-09-15'), as_datetime('2016-12-05'))) + 
+#    ylim(0, 3000)
+# p3 <- ggplot(model_data, aes(x = DateTime, y = Inflows)) + 
+#    geom_point(color = 'blue') + 
+#    scale_x_datetime(limits = c(as_datetime('2016-09-15'), as_datetime('2016-12-05'))) + 
+#    ylim(0, 2000)
+# 
+# p1 + p2 + p3
 
 
 ################ Model Development with Increasing Complexity ######################
