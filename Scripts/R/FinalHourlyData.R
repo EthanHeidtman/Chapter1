@@ -102,5 +102,14 @@
       
       # Write the Aggregated Hourly Data to csv format
       write.csv(data, 'Data/Tidied/HourlyDataFinal.csv')
+      
+      # Save FERC requirement plot
+      p1 <- ggplot(data, aes(x = DateTime, y = FERC)) + 
+         geom_line(na.rm = TRUE) + 
+         scale_x_datetime(date_labels = '%B', limits = c(as_datetime('2010-01-01'), as_datetime('2010-12-31'))) + 
+         theme_bw() + 
+         labs(x = 'Month', y = 'Minimum Flow (cubic m/sec)', title = 'FERC Minimum Environmental Flow Requirement')
+      ggsave('FERC.png', p1, path = 'Outputs/', dpi = 600)
+
    
         

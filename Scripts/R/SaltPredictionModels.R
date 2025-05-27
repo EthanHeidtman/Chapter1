@@ -9,7 +9,7 @@
 # releases are not enough to dilute salt below the safe threshold.
 
 
-############################ Load Data and Packages ############################
+############################ LOAD FUNCTIONS, PACKAGES, AND DATA ############################
 
 # Source all external functions
 lapply(list.files(path = 'Scripts/Functions', pattern = "\\.R$", full.names = TRUE), source)
@@ -45,7 +45,7 @@ data <- data %>%
 # daily: 1.85% more
 # monthly: 0.8% less
 
-####################### Prepare all data for modeling ##########################
+####################### MODEL DATA PREPARATION PIPELINE ##########################
 
 # Salinity threshold
 salinity_threshold = 1.0                                             # practical salt units (PSU), equivalent to parts per thousand
@@ -64,7 +64,7 @@ model_data <- data %>%
       LagDischarge3 = lag(Discharge, 3),
       LagDischarge6 = lag(Discharge, 6),
       LagDischarge10 = lag(Discharge, 10),
-      LagDischarge12 = lag(Discharge, 12),    # BEST PERFORMER
+      LagDischarge12 = lag(Discharge, 12),
       LagDischarge24 = lag(Discharge, 24),
       LagDischarge36 = lag(Discharge, 36),
       LagDischarge48 = lag(Discharge, 48),
@@ -95,20 +95,21 @@ model_data <- data %>%
       PowLagInflows72 = LagInflows72 ^ (-0.4),
       
       # Rolling Averages (by # of days)
-      RollingPowDischarge0.5 = zoo::rollmean(PowDischarge, 24 * 0.5, fill = NA, align = "right"),
-      RollingPowDischarge1   = zoo::rollmean(PowDischarge, 24 * 1, fill = NA, align = "right"),
-      RollingPowDischarge2   = zoo::rollmean(PowDischarge, 24 * 2, fill = NA, align = "right"),
-      RollingPowDischarge4   = zoo::rollmean(PowDischarge, 24 * 4, fill = NA, align = "right"),
-      RollingPowDischarge7   = zoo::rollmean(PowDischarge, 24 * 7, fill = NA, align = "right"),
-      RollingPowDischarge10  = zoo::rollmean(PowDischarge, 24 * 10, fill = NA, align = "right"),   # BEST PERFORMER
-      RollingPowDischarge14  = zoo::rollmean(PowDischarge, 24 * 14, fill = NA, align = "right"),
-      RollingPowInflows1     = zoo::rollmean(PowInflows, 24 * 1, fill = NA, align = "right"),
-      RollingPowInflows2     = zoo::rollmean(PowInflows, 24 * 2, fill = NA, align = "right"),
-      RollingPowInflows7     = zoo::rollmean(PowInflows, 24 * 7, fill = NA, align = "right"),
+      RollingPowDischarge0.5 = zoo::rollmean(PowDischarge, 24 * 0.5, fill = NA, align = "right", na.rm = TRUE),
+      RollingPowDischarge1   = zoo::rollmean(PowDischarge, 24 * 1, fill = NA, align = "right", na.rm = TRUE),
+      RollingPowDischarge2   = zoo::rollmean(PowDischarge, 24 * 2, fill = NA, align = "right", na.rm = TRUE),
+      RollingPowDischarge4   = zoo::rollmean(PowDischarge, 24 * 4, fill = NA, align = "right", na.rm = TRUE),
+      RollingPowDischarge7   = zoo::rollmean(PowDischarge, 24 * 7, fill = NA, align = "right", na.rm = TRUE),
+      RollingPowDischarge10  = zoo::rollmean(PowDischarge, 24 * 10, fill = NA, align = "right", na.rm = TRUE),   # BEST PERFORMER
+      RollingPowDischarge14  = zoo::rollmean(PowDischarge, 24 * 14, fill = NA, align = "right", na.rm = TRUE),
+      RollingPowInflows1     = zoo::rollmean(PowInflows, 24 * 1, fill = NA, align = "right", na.rm = TRUE),
+      RollingPowInflows2     = zoo::rollmean(PowInflows, 24 * 2, fill = NA, align = "right", na.rm = TRUE),
+      RollingPowInflows7     = zoo::rollmean(PowInflows, 24 * 7, fill = NA, align = "right", na.rm = TRUE),
+      RollingPowInflows10    = zoo::rollmean(PowInflows, 24 * 10, fill = NA, align = "right", na.rm = TRUE)
    ) %>% 
    
    # =======================================================================================
-   # PART 2: FLOW-REGIME FEATURES (MARIETTA ≈ NATURAL FLOW CONDITIONS)
+   # PART 2: BASIC FLOW-REGIME FEATURES (MARIETTA ≈ NATURAL FLOW CONDITIONS)
    # =======================================================================================
    
    arrange(DateTime) %>%
@@ -116,57 +117,182 @@ model_data <- data %>%
       
       # Define the natural flow regime
       InflowsPercentile = percent_rank(Inflows),
-      NaturalRegime = case_when(
-         Marietta_percentile < 0.2 ~ "Stress",   # True hydrologic stress
-         Marietta_percentile > 0.8 ~ "Flush",    # High natural flows
+      BasicRegime = case_when(
+         InflowsPercentile < 0.2 ~ "Low",   # True hydrologic stress
+         InflowsPercentile > 0.8 ~ "High",    # High natural flows
          TRUE ~ "Normal"),
-      
-      # Stress accumulation (exponential decay during non-stress periods)
-      stress_accumulation = {
-         decay_rate <- 0.95
-         stress_acc <- numeric(n())
-         stress_acc[1] <- ifelse(NaturalRegime[1] == "Stress", 1, 0)
-         
-         for(i in 2:length(stress_acc)) {
-            if(NaturalRegime[i] == "Stress") {
-               stress_acc[i] <- stress_acc[i-1] * decay_rate + 1
-            } else if(NaturalRegime[i] == "Flush") {
-               stress_acc[i] <- 0
-            } else {
-               stress_acc[i] <- stress_acc[i-1] * decay_rate
-            }
-         }
-         stress_acc
-      },
-      
-      # Hours since last flushing event
-      hours_since_flush = cumsum(ifelse(NaturalRegime == "Flush", 0, 1)),
-      
-      # Binary indicators
-      Stressed = Natural_regime == "Stress",
-      Flushed = Natural_regime == "Flush"
       
    ) %>%
    
    # =======================================================================================
-   # PART 3: LATENT FLOW FEATURES (CONOWINGO ≠ SUSTAINED FLOW AT MOUTH ON SHORT TIMESCALES)
+   # PART 3: COMPREHENSIVE STRESS-CLASSIFICATION SYSTEM
    # =======================================================================================
-   # Key Insight: when the natural (Marietta) flows are less than the FERC requirement, 
-   # the dam operators are allowed to release less than FERC.
 
    mutate(
       
-      # Simple Latent Flow
+      # Define stress-thresholds
+      MariettaStressThreshold = quantile(Inflows, 0.2, na.rm = TRUE),
+      ConowingoStressThreshold = quantile(Discharge, 0.2, na.rm = TRUE),
       
-      # Regime-Dependent Latent Flow
+      # Binary Stress Indicators
+      MariettaStressed = Inflows < MariettaStressThreshold,
+      ConowingoStressed = Discharge < ConowingoStressThreshold,
+      BelowFERC = Discharge < FERC,
       
-      # Multi-timescale Latent Flow
+      # Stress Intensity
+      MariettaStressIntensity = pmax(0, (MariettaStressThreshold - Inflows) / MariettaStressThreshold),
+      ConowingoStressIntensity = pmax(0, (ConowingoStressThreshold - Discharge) / ConowingoStressThreshold),
+      FERCStressIntensity = pmax(0, (FERC - Discharge) / FERC)
       
-   ) 
+   ) %>%
+   
+   # Calculate running stress-accumulation metrics
+   mutate(
+      
+      # Consecutive hours of stress (reset when stress ends)
+      ConsecutiveStressHours_Marietta = sequence(rle(MariettaStressed)$lengths) * MariettaStressed,
+      ConsecutiveStressHours_Conowingo = sequence(rle(ConowingoStressed)$lengths) * ConowingoStressed,
+      ConsecutiveBelowFERC = sequence(rle(BelowFERC)$lengths) * BelowFERC,
+      
+      # Rolling sum of stress hours over different windows
+      StressHours_7day_Marietta = zoo::rollsum(as.numeric(MariettaStressed), 24 * 7, fill = NA, align = "right", na.rm = TRUE),
+      StressHours_14day_Marietta = zoo::rollsum(as.numeric(MariettaStressed), 24 * 14, fill = NA, align = "right", na.rm = TRUE),
+      StressHours_30day_Marietta = zoo::rollsum(as.numeric(MariettaStressed), 24 * 30, fill = NA, align = "right", na.rm = TRUE),
+      
+      StressHours_7day_Conowingo = zoo::rollsum(as.numeric(ConowingoStressed), 24 * 7, fill = NA, align = "right" , na.rm = TRUE),
+      StressHours_14day_Conowingo = zoo::rollsum(as.numeric(ConowingoStressed), 24 * 14, fill = NA, align = "right", na.rm = TRUE),
+      StressHours_30day_Conowingo = zoo::rollsum(as.numeric(ConowingoStressed), 24 * 30, fill = NA, align = "right", na.rm = TRUE),
+      
+      # Cumulative stress intensity over time windows
+      CumulativeStress_7day_Marietta = zoo::rollsum(MariettaStressIntensity, 24 * 7, fill = NA, align = "right", na.rm = TRUE),
+      CumulativeStress_14day_Marietta = zoo::rollsum(MariettaStressIntensity, 24 * 14, fill = NA, align = "right", na.rm = TRUE),
+      CumulativeStress_30day_Marietta = zoo::rollsum(MariettaStressIntensity, 24 * 30, fill = NA, align = "right", na.rm = TRUE),
+      
+      # Days since last major flow event (flow > 80th percentile)
+      HighFlowThreshold = quantile(Inflows, 0.8, na.rm = TRUE),
+      IsHighFlow = Inflows > HighFlowThreshold,
+      DaysSinceHighFlow = NA_real_
+      
+   ) %>%
+   
+   # Calculate days since high flow (requires a loop-like operation)
+   group_by(1) %>%  # Dummy grouping to ensure proper ordering
+   mutate(
+      # This creates a counter that resets every time there's a high flow event
+      HighFlowGroupID = cumsum(IsHighFlow),
+      DaysSinceHighFlow = if_else(IsHighFlow, 0, 
+                                  (row_number() - max(row_number()[IsHighFlow & HighFlowGroupID == max(HighFlowGroupID[IsHighFlow])])) / 24)
+   ) %>%
+   ungroup() %>%
+   select(-HighFlowGroupID) %>%  # Remove temporary variable
+   
+   # =======================================================================================
+   # STRESS-BASED FLOW REGIME CLASSIFICATION (COMPREHENSIVE, BASED ON MULTIPLE INDICATORS)
+   # =======================================================================================
+   
+   mutate(
+      
+      StressLevel = case_when(
+         
+         # CRITICAL STRESS: High cumulative stress & long consecutive stress & long since last high flow
+         (CumulativeStress_14day_Marietta > quantile(CumulativeStress_14day_Marietta, 0.8, na.rm = TRUE)) &
+         (ConsecutiveStressHours_Marietta > 24 * 3) &  # 3+ days consecutive
+         (DaysSinceHighFlow > 14) ~ "Critical",
+         
+         # HIGH STRESS: Moderate cumulative stress and some duration
+         (CumulativeStress_7day_Marietta > quantile(CumulativeStress_7day_Marietta, 0.7, na.rm = TRUE)) &
+         (ConsecutiveStressHours_Marietta > 24 * 1) ~ "High", # 1+ day consecutive
+         
+         # MODERATE STRESS: Some stress indicators are present
+         (CumulativeStress_7day_Marietta > quantile(CumulativeStress_7day_Marietta, 0.5, na.rm = TRUE)) |
+         (ConsecutiveStressHours_Marietta > 6) |  # 6+ hours consecutive
+         (StressHours_7day_Marietta > 24 * 2) ~ "Moderate",  # 2+ days in past week
+         
+         # NO STRESS: Flush period, recent high flow
+         (DaysSinceHighFlow <= 2) | 
+         (BasicRegime == "High") ~ "Flush",
+         
+         # NORMAL CONDITIONS: Everything else
+         TRUE ~ 'Normal'
+         
+      ),
+      
+      # Binary indicators for model use
+      IsCriticalStress = StressLevel == "Critical",
+      IsHighStress = StressLevel %in% c("Critical", "High"),
+      IsModerateStress = StressLevel %in% c("Critical", "High", "Moderate"),
+      IsFlush = StressLevel == "Flush",
+      IsStressed = StressLevel %in% c("Critical", "High", "Moderate")  # Any stress
+      
+   ) %>%
+   
+   # =======================================================================================
+   # PART 4: LATENT FLOW FEATURES (CONOWINGO ≠ SUSTAINED FLOW AT MOUTH ON SHORT TIMESCALES)
+   # =======================================================================================
+   # Key Insight: when the natural (Marietta) flows are less than the FERC requirement, 
+   # the dam operators are allowed to release less than FERC.
+   # We need to estimate the true sustained flow at the mouth
 
+   mutate(
+      
+      # First check what the flow discrepancies look like
+      FlowDiscrepancy = abs(Discharge - LagInflows24),
+      HighThreshold = quantile(FlowDiscrepancy, 0.8, na.rm = TRUE),
+      MedianThreshold = quantile(FlowDiscrepancy, 0.5, na.rm = TRUE),
+      
+      # ====== Simple Latent Flow (using the best lagged Marietta Inflows) ====== #
+      SimpleLatent = case_when(
+         # Large discrepancy, weight toward Marietta inflows
+         FlowDiscrepancy > HighThreshold ~ 0.3 * PowDischarge + 0.7 * PowLagInflows24, 
+         
+         # Median Discrepancy, weight more evenly
+         FlowDiscrepancy > MedianThreshold ~ 0.5 * PowDischarge + 0.5 * PowLagInflows24, 
+         
+         # Normal Operations
+         TRUE ~ 0.7 * PowDischarge + 0.3 * PowLagInflows24
+      ),
+      
+      # ====== Stress-Dependent Latent Flow (based on previous section) ======== #
+      StressLatent = case_when(
+         
+         # CRITICAL STRESS: the system is primed for saltwater intrusion, so we emphasize sustained natural flows
+         StressLevel == "Critical" ~ 
+            pmin(0.15 * RollingPowDischarge10 + 0.85 * RollingPowInflows10,  # Heavily natural
+                 0.25 * PowLagDischarge12 + 0.75 * PowLagInflows48),        # Long-lag natural
+         
+         #  HIGH STRESS: moderately emphasize natural flows
+         StressLevel == "High" ~ 
+            0.3 * RollingPowDischarge7 + 0.7 * RollingPowInflows7,
+         
+         # MODERATE STRESS: slight preference for natural flows
+         StressLevel == "Moderate" ~ 
+            0.4 * PowLagDischarge12 + 0.6 * PowLagInflows24,
+         
+         # NO STRESS: flush period, operations are dominant
+         StressLevel == "Flush" ~ 
+            0.85 * PowLagDischarge12 + 0.15 * PowLagInflows24,
+         
+         # NORMAL: standard balanced weighting
+         TRUE ~ 0.6 * PowLagDischarge12 + 0.4 * PowLagInflows24
+         
+      ),
+      
+      BestLatent = case_when(
+         
+         IsHighStress ~ 0.3 * PowLagDischarge12 + 0.7 * RollingPowInflows10,  # Best lag + best rolling
+         IsFlush ~ 0.8 * PowLagDischarge12 + 0.2 * PowLagDischarge12,         # Operational emphasis
+         TRUE ~ 0.6 * PowLagDischarge12 + 0.4 * RollingPowDischarge10         # Best performers
+         
+      )
+   ) 
+  
 
 # Clean up the model data for normalization
 model_data <- model_data %>%
+     # Remove intermediate calculation variables to clean up
+   select(-FlowDiscrepancy, -FlowDiscrepancy, -HighThreshold, 
+          -MedianThreshold, -MariettaStressThreshold, -FlowDiscrepancy, -`1`,
+          -ConowingoStressThreshold, -HighFlowThreshold, -IsHighFlow, -InflowsPercentile) %>%
    na.omit() %>%                                            # Remove NAs that arose from calculations
    mutate(SalinitySeason = case_when(
       Month %in% c(3, 4, 12) ~ 'LowSeason',                 # Median salinity 0.10 - 0.11
@@ -178,37 +304,57 @@ model_data <- model_data %>%
             Tide, 
             starts_with(c('Lag', 
                           'Pow', 
-                          'Rolling')), 
+                          'Rolling')),
+            contains(c('Threshold', 
+                     'Stress', 
+                     'Since', 
+                     'Consecutive', 
+                     'Latent', 
+                     'Is')),
             .after = Salinity) %>%                          # Organize all of the columns
-   relocate(FERC, SalinitySeason, .after = Inflows)
+   relocate(FERC, SalinitySeason, where(is.logical), 
+            where(is.character), contains('Threshold'), .after = Inflows)
    
 # Normalize Predictors and Add to model_data
-preds_to_normalize <- colnames(model_data)[10: ncol(model_data)]
+preds_to_normalize <- colnames(model_data)[20 : ncol(model_data)] # Starting from the discharge column
 
 # Apply the normalization function
 normalized_predictors <- normalize_multiple_predictors(model_data, preds_to_normalize)
 model_data <- normalized_predictors$data
 norm_params <- normalized_predictors$parameters
 
-################ Model Development with Increasing Complexity ######################
+################ MODEL DEVELOPMENT ######################
 
-### BASIC MODELS: COMPARISON OF TRANSFORMATIONS ###
-### Which base transformation performs the best?
+### TESTING DIFFERENT DISCHARGE LAGS ###
+### Which lag transformation performs the best?
+### using the power law transformation (Q ^ -0.4)
 
-## Model 1a: Basic
-model1a <- lm(Salinity ~ Norm_Discharge + Norm_Tide, data = model_data)
+## Model 1a: 1-hr lag
+model1a <- lm(Salinity ~ Norm_PowLagDischarge1 + Norm_Tide, data = model_data)
 
-## Model 1b: Power law, -0.35
-model1b <- lm(Salinity ~ Norm_PowDischarge1 + Norm_Tide, data = model_data)
+## Model 1b: 3-hr lag
+model1b <- lm(Salinity ~ Norm_PowLagDischarge3 + Norm_Tide, data = model_data)
 
-## Model 1c: Power Law, -0.4
-model1c <- lm(Salinity ~ Norm_PowDischarge2 + Norm_Tide, data = model_data)        # BEST PERFORMING
+## Model 1a: 6-hr lag
+model1c <- lm(Salinity ~ Norm_PowLagDischarge6 + Norm_Tide, data = model_data)
 
-## Model 1d: Log Transformation
-model1d <- lm(Salinity ~ Norm_LogDischarge + Norm_Tide, data = model_data)
+## Model 1a: 10-hr lag
+model1d <- lm(Salinity ~ Norm_PowLagDischarge10 + Norm_Tide, data = model_data)
 
-models <- list(model1a, model1b, model1c, model1d)
-model_names <- c('Basic', 'Power0.35', 'Power0.4', 'Log')
+## Model 1a: 12-hr lag
+model1e <- lm(Salinity ~ Norm_PowLagDischarge12 + Norm_Tide, data = model_data)
+
+## Model 1a: 36-hr lag
+model1f <- lm(Salinity ~ Norm_PowLagDischarge36 + Norm_Tide, data = model_data)
+
+## Model 1a: 48-hr lag
+model1g <- lm(Salinity ~ Norm_PowLagDischarge48 + Norm_Tide, data = model_data)
+
+## Model 1a: 72-hr lag
+model1h <- lm(Salinity ~ Norm_PowLagDischarge72 + Norm_Tide, data = model_data)
+
+models <- list(model1a, model1b, model1c, model1d, model1e, model1f, model1g, model1h)
+model_names <- c('1hr', '3hr', '6hr', '10hr', '12hr', '36hr', '48hr', '72hr')
 
 # Evaluate each model
 results <- lapply(models, evaluate_model, data = model_data, threshold = salinity_threshold)
@@ -225,33 +371,32 @@ results <- data.frame(
    High_Salinity_R2 = sapply(results, function(x) x$high_salinity_r2)
 )
 
-### TESTING DIFFERENT LAGS ###
-### Which lag performs best with the best base transformation (MODEL1C, POWER LAW -0.4)
-### The best lag turns out to be the 3-hr lag with the power law: MODEL2e
+### TESTING DIFFERENT DISCHARGE ROLLING AVERAGES ###
+### Which rolling average performs best? Again, using the -0.4 transformation
 
-## Model 2a: 1-hr lag with power law
-model2a <- lm(Salinity ~ Norm_PowLagDischarge21 + Norm_Tide, data = model_data)
+## Model 2a: 0.5-day rolling average 
+model2a <- lm(Salinity ~ Norm_RollingPowDischarge0.5 + Norm_Tide, data = model_data)
 
-## Model 2b: 3-hr lag with power law
-model2b <- lm(Salinity ~ Norm_PowLagDischarge23 + Norm_Tide, data = model_data)
+## Model 2b: 1-day rolling average 
+model2b <- lm(Salinity ~ Norm_RollingPowDischarge1 + Norm_Tide, data = model_data)
 
-## Model 2c: 6-hr lag with power law
-model2c <- lm(Salinity ~ Norm_PowLagDischarge26 + Norm_Tide, data = model_data)
+## Model 2c: 2-day rolling average 
+model2c <- lm(Salinity ~ Norm_RollingPowDischarge2 + Norm_Tide, data = model_data)
 
-## Model 2d: 10-hr lag with power law
-model2d <- lm(Salinity ~ Norm_PowLagDischarge210 + Norm_Tide, data = model_data)
+## Model 2d: 4-day rolling average 
+model2d <- lm(Salinity ~ Norm_RollingPowDischarge4 + Norm_Tide, data = model_data)
 
-## Model 2e: 12-hr lag with power law
-model2e <- lm(Salinity ~ Norm_PowLagDischarge212 + Norm_Tide, data = model_data) # BEST PERFORMING
+## Model 2e: 7-day rolling average 
+model2e <- lm(Salinity ~ Norm_RollingPowDischarge7 + Norm_Tide, data = model_data)
 
-## Model 2f: 24-hr lag with power law
-model2f <- lm(Salinity ~ Norm_PowLagDischarge224 + Norm_Tide, data = model_data)
+## Model 2f: 10-day rolling average 
+model2f <- lm(Salinity ~ Norm_RollingPowDischarge10 + Norm_Tide, data = model_data)
 
-## Model 2g: 36-hr lag with power law
-model2g <- lm(Salinity ~ Norm_PowLagDischarge236 + Norm_Tide, data = model_data)
+## Model 2g: 14-day rolling average 
+model2g <- lm(Salinity ~ Norm_RollingPowDischarge14 + Norm_Tide, data = model_data)
 
 models <- list(model2a, model2b, model2c, model2d, model2e, model2f, model2g)
-model_names <- c('1hour', '3hour', '6hour', '10hour', '12hour', '24hour', '36hour')
+model_names <- c('0.5day', '1day', '2day', '4day', '7day', '10day', '14day')
 
 # Evaluate each model
 results <- lapply(models, evaluate_model, data = model_data, threshold = salinity_threshold)
@@ -316,6 +461,9 @@ results <- data.frame(
    High_Salinity_Bias = sapply(results, function(x) x$high_salinity_bias),
    High_Salinity_R2 = sapply(results, function(x) x$high_salinity_r2)
 )
+
+
+
 
 
 ### COMBINED DISCHARGE MODELS ###
@@ -415,7 +563,7 @@ model12 <- model12$sample(
    iter_sampling = 1000
 )
 
-############################### Model Evaluation ###############################
+############################### MODEL EVALUATION ###############################
 
 models <- list(model1, model2, model3, model4, model5, model6, model7, model8, model9)
 model_names <- c('Basic', 'LogQ', 'LagQ1', 'LagQ3', 'LagQ6', 'RollQ6', 'RollQ12', 'ComboRoll6', 'ComboRoll12')
@@ -476,7 +624,6 @@ if(nrow(high_events) > 0) {
    print(p7)
 }
 ########### Predictive Relationship for Salt with Bayesian Inference ###########
-
 
 
 
