@@ -91,7 +91,7 @@ model_data <- data %>%
       PowInflows = Inflows ^ (-0.4),
       PowLagInflows12 = LagInflows12 ^ (-0.4),
       PowLagInflows24 = LagInflows24 ^ (-0.4),
-      PowLagInflows48 = LagInflows48 ^ (-0.4),
+      PowLagInflows48 = LagInflows48 ^ (-0.4),        # BEST PERFORMER
       PowLagInflows72 = LagInflows72 ^ (-0.4),
       
       # Rolling Averages (by # of days)
@@ -103,7 +103,7 @@ model_data <- data %>%
       RollingPowDischarge10  = zoo::rollmean(PowDischarge, 24 * 10, fill = NA, align = "right", na.rm = TRUE),   # BEST PERFORMER
       RollingPowDischarge14  = zoo::rollmean(PowDischarge, 24 * 14, fill = NA, align = "right", na.rm = TRUE),
       RollingPowInflows1     = zoo::rollmean(PowInflows, 24 * 1, fill = NA, align = "right", na.rm = TRUE),
-      RollingPowInflows2     = zoo::rollmean(PowInflows, 24 * 2, fill = NA, align = "right", na.rm = TRUE),
+      RollingPowInflows2     = zoo::rollmean(PowInflows, 24 * 2, fill = NA, align = "right", na.rm = TRUE),      # BEST PERFORMER
       RollingPowInflows7     = zoo::rollmean(PowInflows, 24 * 7, fill = NA, align = "right", na.rm = TRUE),
       RollingPowInflows10    = zoo::rollmean(PowInflows, 24 * 10, fill = NA, align = "right", na.rm = TRUE)
    ) %>% 
@@ -194,10 +194,10 @@ model_data <- data %>%
       
       StressLevel = case_when(
          
-         # CRITICAL STRESS: High cumulative stress & long consecutive stress & long since last high flow
-         (CumulativeStress_14day_Marietta > quantile(CumulativeStress_14day_Marietta, 0.8, na.rm = TRUE)) &
-         (ConsecutiveStressHours_Marietta > 24 * 3) &  # 3+ days consecutive
-         (DaysSinceHighFlow > 14) ~ "Critical",
+         # # CRITICAL STRESS: High cumulative stress & long consecutive stress & long since last high flow
+         # (CumulativeStress_14day_Marietta > quantile(CumulativeStress_14day_Marietta, 0.75, na.rm = TRUE)) &
+         # (ConsecutiveStressHours_Marietta > 24 * 2) &  # 2+ days consecutive
+         # (DaysSinceHighFlow > 10) ~ "Critical",
          
          # HIGH STRESS: Moderate cumulative stress and some duration
          (CumulativeStress_7day_Marietta > quantile(CumulativeStress_7day_Marietta, 0.7, na.rm = TRUE)) &
@@ -218,7 +218,7 @@ model_data <- data %>%
       ),
       
       # Binary indicators for model use
-      IsCriticalStress = StressLevel == "Critical",
+      # IsCriticalStress = StressLevel == "Critical",
       IsHighStress = StressLevel %in% c("Critical", "High"),
       IsModerateStress = StressLevel %in% c("Critical", "High", "Moderate"),
       IsFlush = StressLevel == "Flush",
@@ -236,52 +236,52 @@ model_data <- data %>%
    mutate(
       
       # First check what the flow discrepancies look like
-      FlowDiscrepancy = abs(Discharge - LagInflows24),
+      FlowDiscrepancy = abs(Discharge - LagInflows48),
       HighThreshold = quantile(FlowDiscrepancy, 0.8, na.rm = TRUE),
       MedianThreshold = quantile(FlowDiscrepancy, 0.5, na.rm = TRUE),
       
       # ====== Simple Latent Flow (using the best lagged Marietta Inflows) ====== #
       SimpleLatent = case_when(
          # Large discrepancy, weight toward Marietta inflows
-         FlowDiscrepancy > HighThreshold ~ 0.3 * PowDischarge + 0.7 * PowLagInflows24, 
+         FlowDiscrepancy > HighThreshold ~ 0.3 * PowDischarge + 0.7 * PowLagInflows48, 
          
          # Median Discrepancy, weight more evenly
-         FlowDiscrepancy > MedianThreshold ~ 0.5 * PowDischarge + 0.5 * PowLagInflows24, 
+         FlowDiscrepancy > MedianThreshold ~ 0.5 * PowDischarge + 0.5 * PowLagInflows48, 
          
          # Normal Operations
-         TRUE ~ 0.7 * PowDischarge + 0.3 * PowLagInflows24
+         TRUE ~ 0.7 * PowDischarge + 0.3 * PowLagInflows48
       ),
       
       # ====== Stress-Dependent Latent Flow (based on previous section) ======== #
       StressLatent = case_when(
          
-         # CRITICAL STRESS: the system is primed for saltwater intrusion, so we emphasize sustained natural flows
-         StressLevel == "Critical" ~ 
-            pmin(0.15 * RollingPowDischarge10 + 0.85 * RollingPowInflows10,  # Heavily natural
-                 0.25 * PowLagDischarge12 + 0.75 * PowLagInflows48),        # Long-lag natural
+         # # CRITICAL STRESS: the system is primed for saltwater intrusion, so we emphasize sustained natural flows
+         # StressLevel == "Critical" ~ 
+         #    pmin(0.15 * RollingPowDischarge10 + 0.85 * RollingPowInflows2,  # Heavily natural
+         #         0.25 * PowLagDischarge12 + 0.75 * PowLagInflows48),        # Long-lag natural
          
          #  HIGH STRESS: moderately emphasize natural flows
          StressLevel == "High" ~ 
-            0.3 * RollingPowDischarge7 + 0.7 * RollingPowInflows7,
+            0.3 * RollingPowDischarge10 + 0.7 * RollingPowInflows2,
          
          # MODERATE STRESS: slight preference for natural flows
          StressLevel == "Moderate" ~ 
-            0.4 * PowLagDischarge12 + 0.6 * PowLagInflows24,
+            0.4 * PowLagDischarge12 + 0.6 * PowLagInflows48,
          
          # NO STRESS: flush period, operations are dominant
          StressLevel == "Flush" ~ 
-            0.85 * PowLagDischarge12 + 0.15 * PowLagInflows24,
+            0.85 * PowLagDischarge12 + 0.15 * PowLagInflows48,
          
          # NORMAL: standard balanced weighting
-         TRUE ~ 0.6 * PowLagDischarge12 + 0.4 * PowLagInflows24
+         TRUE ~ 0.6 * PowLagDischarge12 + 0.4 * PowLagInflows48
          
       ),
       
       BestLatent = case_when(
          
-         IsHighStress ~ 0.3 * PowLagDischarge12 + 0.7 * RollingPowInflows10,  # Best lag + best rolling
-         IsFlush ~ 0.8 * PowLagDischarge12 + 0.2 * PowLagDischarge12,         # Operational emphasis
-         TRUE ~ 0.6 * PowLagDischarge12 + 0.4 * RollingPowDischarge10         # Best performers
+         IsHighStress ~ 0.3 * PowLagDischarge12 + 0.7 * RollingPowInflows2,  # Best lag + best rolling
+         IsFlush ~ 0.8 * PowLagDischarge12 + 0.2 * RollingPowInflows2,       # Operational emphasis
+         TRUE ~ 0.6 * PowLagDischarge12 + 0.4 * RollingPowDischarge10        # Best performers
          
       )
    ) 
@@ -293,7 +293,7 @@ model_data <- model_data %>%
    select(-FlowDiscrepancy, -FlowDiscrepancy, -HighThreshold, 
           -MedianThreshold, -MariettaStressThreshold, -FlowDiscrepancy, -`1`,
           -ConowingoStressThreshold, -HighFlowThreshold, -IsHighFlow, -InflowsPercentile) %>%
-   na.omit() %>%                                            # Remove NAs that arose from calculations
+   #na.omit() %>%                                            # Remove NAs that arose from calculations
    mutate(SalinitySeason = case_when(
       Month %in% c(3, 4, 12) ~ 'LowSeason',                 # Median salinity 0.10 - 0.11
       Month %in% c(5, 6, 7) ~ 'RisingSeason',               # Median salinity 0.11 - 0.14
@@ -316,7 +316,7 @@ model_data <- model_data %>%
             where(is.character), contains('Threshold'), .after = Inflows)
    
 # Normalize Predictors and Add to model_data
-preds_to_normalize <- colnames(model_data)[20 : ncol(model_data)] # Starting from the discharge column
+preds_to_normalize <- colnames(model_data)[19 : ncol(model_data)] # Starting from the discharge column
 
 # Apply the normalization function
 normalized_predictors <- normalize_multiple_predictors(model_data, preds_to_normalize)
@@ -413,79 +413,27 @@ results <- data.frame(
    High_Salinity_R2 = sapply(results, function(x) x$high_salinity_r2)
 )
 
-### TESTING ROLLING AVERAGES OF DISCHARGE ###
-### Which rolling average is the best?
-### MODEL3B turns out to be the best
-
-## Model 3a: 12-hr rolling average with power law
-model3a <- lm(Salinity ~ Norm_RollingPowDischarge20.5 + Norm_Tide, data = model_data)
-
-## Model 3b: 1 day rolling average with power law
-model3b <- lm(Salinity ~ Norm_RollingPowDischarge21 + Norm_Tide, data = model_data)
-
-## Model 3c: 1.5 day rolling average with power law
-model3c <- lm(Salinity ~ Norm_RollingPowDischarge21.5 + Norm_Tide, data = model_data)
-
-## Model 3d: 2 day rolling average with power law
-model3d <- lm(Salinity ~ Norm_RollingPowDischarge22 + Norm_Tide, data = model_data)
-
-## Model 3e: 3 day rolling average with power law
-model3e <- lm(Salinity ~ Norm_RollingPowDischarge23 + Norm_Tide, data = model_data)
-
-## Model 3f: 4 day rolling average with power law
-model3f <- lm(Salinity ~ Norm_RollingPowDischarge24 + Norm_Tide, data = model_data)
-
-## Model 3g: 7 day rolling average with power law
-model3g <- lm(Salinity ~ Norm_RollingPowDischarge27 + Norm_Tide, data = model_data)
-
-## Model 3h: 10 day rolling average with power law
-model3h <- lm(Salinity ~ Norm_RollingPowDischarge210 + Norm_Tide, data = model_data) # BEST PERFORMING
-
-## Model 3i: 14 day rolling average with power law
-model3i <- lm(Salinity ~ Norm_RollingPowDischarge214 + Norm_Tide, data = model_data)
-
-models <- list(model3a, model3b, model3c, model3d, model3e, model3f, model3g, model3h, model3i)
-model_names <- c('0.5day', '1day', '1.5day', '2day', '3day', '4day', '7day', '10day', '14day')
-
-# Evaluate each model
-results <- lapply(models, evaluate_model, data = model_data, threshold = salinity_threshold)
-
-# Summarise results in dataframe
-results <- data.frame(
-   Model = model_names,
-   Overall_RMSE = sapply(results, function(x) x$overall_rmse),
-   Weighted_RMSE = sapply(results, function(x) x$weighted_rmse),
-   Overall_R2 = sapply(results, function(x) x$overall_r2),
-   High_Salinity_RMSE = sapply(results, function(x) x$high_salinity_rmse),
-   High_Salinity_MAE = sapply(results, function(x) x$high_salinity_mae),
-   High_Salinity_Bias = sapply(results, function(x) x$high_salinity_bias),
-   High_Salinity_R2 = sapply(results, function(x) x$high_salinity_r2)
-)
-
-
-
-
 
 ### COMBINED DISCHARGE MODELS ###
 ### What are the best combinations of discharge predictors?
 
-## Model 4a: Best Raw Discharge Transformation + Best Lag
-model4a <- lm(Salinity ~ Norm_PowDischarge2 + Norm_PowLagDischarge212 + Norm_Tide,
+## Model 3a: Best Raw Discharge Transformation + Best Lag
+model3a <- lm(Salinity ~ Norm_PowDischarge + Norm_PowLagDischarge12 + Norm_Tide,
               data = model_data)
 
-## Model 4b: Best raw discharge transformation + best rolling average
-model4b <- lm(Salinity ~ Norm_PowDischarge2 + Norm_RollingPowDischarge210 + Norm_Tide,
-              data = model_data)
+## Model 3b: Best raw discharge transformation + best rolling average
+model3b <- lm(Salinity ~ Norm_PowDischarge + Norm_RollingPowDischarge10 + 
+                 Norm_Tide, data = model_data)
 
-## Model 4c: Best lag + best rolling average
-model4c <- lm(Salinity ~ Norm_PowLagDischarge212 + Norm_RollingPowDischarge210 + Norm_Tide,
-              data = model_data)                                                            # BEST PERFORMING
+## Model 3c: Best lag + best rolling average BEST PERFORMER
+model3c <- lm(Salinity ~ Norm_PowLagDischarge12 + Norm_RollingPowDischarge10 + Norm_Tide,
+              data = model_data)                                                            
 
-## Model 4d: Best raw discharge + best lag + best rolling average
-model4d <- lm(Salinity ~ Norm_PowDischarge2 + Norm_PowLagDischarge212 + 
-                 Norm_RollingPowDischarge210 + Norm_Tide, data = model_data)
+## Model 3d: Best raw discharge + best lag + best rolling average
+model3d <- lm(Salinity ~ Norm_PowDischarge + Norm_PowLagDischarge12 + 
+                 Norm_RollingPowDischarge10 + Norm_Tide, data = model_data)
 
-models <- list(model4a, model4b, model4c, model4d)
+models <- list(model3a, model3b, model3c, model3d)
 model_names <- c('Raw+Lag', 'Raw+Rolling', 'Lag+Rolling', 'Raw+Lag+Rolling')
 
 # Evaluate each model
@@ -504,30 +452,173 @@ results <- data.frame(
 )
 
 
-### SEASONALITY AND INTERACTIONS ###
-### Adding seasonal effects and other interactions to the best from 5: Model5a
-### Best of this section:
+### TESTING VALUE OF LAGGED MARIETTA INFLOWS ###
+### What lagged inflow time series is the best?
+### Building from the best combined discharge model (model3c)
 
-## Model 6a: Add seasonality
-model6a <- lm(Salinity ~ Norm_PowDischarge2 + Norm_PowLagDischarge23 + 
-                 Norm_RollingPowDischarge212 + Norm_Tide + 
-                 SalinitySeason, data = model_data)
+## Model 4a: 12-hr lag of inflows
+model4a <- lm(Salinity ~ Norm_PowLagDischarge12 + Norm_RollingPowDischarge10 + 
+                 Norm_Tide + Norm_LagInflows12, data = model_data)            
 
-## Model 5b: Add Tide- 3hr Lagged Discharge Interaction
-model5b <- lm(Salinity ~ Norm_PowDischarge2 + Norm_PowLagDischarge23 + 
-                 Norm_RollingPowDischarge212 + 
-                 Norm_Tide + Norm_Tide:PowLagDischarge23 +
-                 SalinitySeason, data = model_data)
+## Model 4b: 24-hr lag of inflows
+model4b <- lm(Salinity ~ Norm_PowLagDischarge12 + Norm_RollingPowDischarge10 + 
+                 Norm_Tide + Norm_LagInflows24, data = model_data)    
 
-## Model 5c: Add Tide-12-hr rolling discharge interaction
-model5c <- lm(Salinity ~ Norm_PowDischarge2 + Norm_PowLagDischarge23 + 
-                 Norm_RollingPowDischarge212 + 
-                 Norm_Tide + Norm_Tide:RollingPowDischarge212 +
-                 SeasonSalinity, data = model_data)
+## Model 4c: 48-hr lag of inflows BEST PERFORMER
+model4c <- lm(Salinity ~ Norm_PowLagDischarge12 + Norm_RollingPowDischarge10 + 
+                 Norm_Tide + Norm_LagInflows48, data = model_data)    
 
-### FULL MODEL ###
-### Combining all of the best components
+## Model 4d: 72-hr lag of inflows
+model4d <- lm(Salinity ~ Norm_PowLagDischarge12 + Norm_RollingPowDischarge10 + 
+                 Norm_Tide + Norm_LagInflows72, data = model_data)    
 
+models <- list(model4a, model4b, model4c, model4d)
+model_names <- c('12hr', '25hr', '48hr', '72hr')
+
+# Evaluate each model
+results <- lapply(models, evaluate_model, data = model_data, threshold = salinity_threshold)
+
+# Summarise results in dataframe
+results <- data.frame(
+   Model = model_names,
+   Overall_RMSE = sapply(results, function(x) x$overall_rmse),
+   Weighted_RMSE = sapply(results, function(x) x$weighted_rmse),
+   Overall_R2 = sapply(results, function(x) x$overall_r2),
+   High_Salinity_RMSE = sapply(results, function(x) x$high_salinity_rmse),
+   High_Salinity_MAE = sapply(results, function(x) x$high_salinity_mae),
+   High_Salinity_Bias = sapply(results, function(x) x$high_salinity_bias),
+   High_Salinity_R2 = sapply(results, function(x) x$high_salinity_r2)
+)
+
+### TESTING VALUE OF ROLLING AVERAGE INFLOWS ###
+### What is the best performing rolling average inflows?
+### Building from the best combined discharge modell (model3c)
+
+## Model 5a: 1-day rolling average of inflows
+model5a <- lm(Salinity ~ Norm_PowLagDischarge12 + Norm_RollingPowDischarge10 + 
+                 Norm_Tide + Norm_RollingPowInflows1, data = model_data)            
+
+## Model 5b: 2-day rolling average of inflows BEST PERFORMER
+model5b <- lm(Salinity ~ Norm_PowLagDischarge12 + Norm_RollingPowDischarge10 + 
+                 Norm_Tide + Norm_RollingPowInflows2, data = model_data)    
+
+## Model 5c: 7-day rolling average of inflows
+model5c <- lm(Salinity ~ Norm_PowLagDischarge12 + Norm_RollingPowDischarge10 + 
+                 Norm_Tide + Norm_RollingPowInflows7, data = model_data)    
+
+## Model 5d: 10-day rolling average of inflows
+model5d <- lm(Salinity ~ Norm_PowLagDischarge12 + Norm_RollingPowDischarge10 + 
+                 Norm_Tide + Norm_RollingPowInflows10, data = model_data)    
+
+models <- list(model5a, model5b, model5c, model5d)
+model_names <- c('1day', '2day', '7day', '10day')
+
+# Evaluate each model
+results <- lapply(models, evaluate_model, data = model_data, threshold = salinity_threshold)
+
+# Summarise results in dataframe
+results <- data.frame(
+   Model = model_names,
+   Overall_RMSE = sapply(results, function(x) x$overall_rmse),
+   Weighted_RMSE = sapply(results, function(x) x$weighted_rmse),
+   Overall_R2 = sapply(results, function(x) x$overall_r2),
+   High_Salinity_RMSE = sapply(results, function(x) x$high_salinity_rmse),
+   High_Salinity_MAE = sapply(results, function(x) x$high_salinity_mae),
+   High_Salinity_Bias = sapply(results, function(x) x$high_salinity_bias),
+   High_Salinity_R2 = sapply(results, function(x) x$high_salinity_r2)
+)
+
+
+### TESTING BASIC STRESS (AND SEASON) CLASSIFICATION ###
+### What combinations of stress improve performance? and then what does adding seasons do?
+### Adding to our best model so far, model5b
+
+## Model 6a: Add moderate stress
+model6a <- lm(Salinity ~ Norm_PowLagDischarge12 + Norm_RollingPowDischarge10 + 
+                 Norm_Tide + Norm_RollingPowInflows2 + IsModerateStress, data = model_data) 
+
+## Model6b: Add high stress BEST PERFORMER FOR STRESSES
+model6b <- lm(Salinity ~ Norm_PowLagDischarge12 + Norm_RollingPowDischarge10 + 
+                  Norm_Tide + Norm_RollingPowInflows2 + IsHighStress, data = model_data)    
+
+## Model6c: Add both stresses
+model6c <- lm(Salinity ~ Norm_PowLagDischarge12 + Norm_RollingPowDischarge10 + 
+                 Norm_Tide + Norm_RollingPowInflows2 + 
+                 IsModerateStress + IsHighStress, data = model_data)  
+
+## Model 6d: Adding seasons to the best model (6b) BEST OVERALL PERFORMER FROM MODELS 6
+model6d <- lm(Salinity ~ Norm_PowLagDischarge12 + Norm_RollingPowDischarge10 + 
+                 Norm_Tide + Norm_RollingPowInflows2 + IsHighStress + SalinitySeason, data = model_data)    
+
+models <- list(model6a, model6b, model6c, model6d)
+model_names <- c('Moderate', 'High', 'Moderate+High', 'Best+Season')
+
+# Evaluate each model
+results <- lapply(models, evaluate_model, data = model_data, threshold = salinity_threshold)
+
+# Summarise results in dataframe
+results <- data.frame(
+   Model = model_names,
+   Overall_RMSE = sapply(results, function(x) x$overall_rmse),
+   Weighted_RMSE = sapply(results, function(x) x$weighted_rmse),
+   Overall_R2 = sapply(results, function(x) x$overall_r2),
+   High_Salinity_RMSE = sapply(results, function(x) x$high_salinity_rmse),
+   High_Salinity_MAE = sapply(results, function(x) x$high_salinity_mae),
+   High_Salinity_Bias = sapply(results, function(x) x$high_salinity_bias),
+   High_Salinity_R2 = sapply(results, function(x) x$high_salinity_r2)
+)
+
+### ADDING STRESS-FLOW INTERACTIONS ### 
+### How does stress interact with flow in the best way?
+### adding to the best from previous, model6d
+
+## Model 7a: Moderate stress interactions
+model7a <- lm(Salinity ~ Norm_PowLagDischarge12 * IsModerateStress + 
+                 Norm_RollingPowDischarge10 * IsModerateStress + 
+                 Norm_Tide + Norm_RollingPowInflows2 + IsHighStress + SalinitySeason, 
+              data = model_data)  
+
+## Model 7b: High stress interactions
+model7b <- lm(Salinity ~ Norm_PowLagDischarge12 * IsHighStress + 
+                 Norm_RollingPowDischarge10 * IsHighStress + 
+                 Norm_Tide + Norm_RollingPowInflows2 + IsHighStress + SalinitySeason, 
+              data = model_data)  
+
+## Model 7c: Season-moderate stress interaction
+model7c <- lm(Salinity ~ Norm_PowLagDischarge12 * IsModerateStress + 
+                 Norm_RollingPowDischarge10 * IsModerateStress + 
+                 Norm_Tide + Norm_RollingPowInflows2 + IsHighStress + 
+                 SalinitySeason * IsModerateStress, 
+              data = model_data)  
+
+## Model 7d: Season-high stress interaction BEST PERFORMER
+model7d <- lm(Salinity ~ Norm_PowLagDischarge12 * IsModerateStress + 
+                 Norm_RollingPowDischarge10 * IsModerateStress + 
+                 Norm_Tide + Norm_RollingPowInflows2 + IsHighStress + 
+                 SalinitySeason * IsHighStress, 
+              data = model_data)  
+
+models <- list(model7a, model7b, model7c, model7d)
+model_names <- c('Moderate', 'High', 'Moderate*Season', 'Season*High')
+
+# Evaluate each model
+results <- lapply(models, evaluate_model, data = model_data, threshold = salinity_threshold)
+
+# Summarise results in dataframe
+results <- data.frame(
+   Model = model_names,
+   Overall_RMSE = sapply(results, function(x) x$overall_rmse),
+   Weighted_RMSE = sapply(results, function(x) x$weighted_rmse),
+   Overall_R2 = sapply(results, function(x) x$overall_r2),
+   High_Salinity_RMSE = sapply(results, function(x) x$high_salinity_rmse),
+   High_Salinity_MAE = sapply(results, function(x) x$high_salinity_mae),
+   High_Salinity_Bias = sapply(results, function(x) x$high_salinity_bias),
+   High_Salinity_R2 = sapply(results, function(x) x$high_salinity_r2)
+)
+
+
+### LATENT FLOW INTEGRATION ###
+### How do the latent flow classifications improve the best model from 7 (model7d)?
 
 
 ## Model 10: One Layer Bayesian Hierarchical Model

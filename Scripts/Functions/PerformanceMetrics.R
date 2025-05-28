@@ -32,7 +32,7 @@ evaluate_model <- function(model, data, threshold) {
    observed <- data$Salinity
    
    # Overall metrics
-   overall_rmse <- sqrt(mean((observed - predicted)^2))
+   overall_rmse <- sqrt(mean((observed - predicted)^2, na.rm = TRUE))
    weighted_rmse_val <- weighted_rmse(observed, predicted)
    
    # Overall R-squared
