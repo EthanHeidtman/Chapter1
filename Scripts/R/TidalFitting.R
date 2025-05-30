@@ -17,7 +17,6 @@
       library(ggplot2)
       library(dplyr)
       library(cowplot)
-      library(readxl)
       library(viridis)
       library(zoo)
       library(lubridate)
