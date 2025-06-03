@@ -30,7 +30,6 @@ library(svglite)
 library(bayesplot)
 library(posterior)
 library(mgcv)
-library(mcp)
 
 # Read in final hourly data
 data <- read.csv('Data/Tidied/HourlyDataFinal.csv', 
