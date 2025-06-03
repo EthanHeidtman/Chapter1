@@ -1,6 +1,4 @@
 ### SYSTEMATIC MODEL BUILDING FRAMEWORK ###
-# This framework automates the model building process while maintaining 
-# your visual inspection workflow
 
 # =======================================================================================
 # 1. DEFINE MODEL BUILDING CONFIGURATION
@@ -98,7 +96,7 @@ calculate_performance_score <- function(model_results, weights = performance_cri
          weights["parsimony"] * parsimony_score
    )
    
-   return(composite_score)
+   return(as.numeric(composite_score))
 }
 
 # Function to test predictor group systematically
@@ -143,9 +141,24 @@ test_predictor_group <- function(base_formula, predictor_group, data, group_name
       })
    }
    
+   # Check if any models were successfully fitted
+   if (length(results_list) == 0) {
+      cat(sprintf("No valid models fitted for %s group\n", group_name))
+      return(list(
+         group_name = group_name,
+         models = list(),
+         results = list(),
+         ranked_predictors = character(0),
+         best_predictor = NA_character_,  
+         best_score = -Inf,
+         summary_table = data.frame()
+      ))
+   }
+   
    # Rank results by performance score
    scores <- sapply(results_list, function(x) x$score)
    ranked_indices <- order(scores, decreasing = TRUE)
+   cat(sprintf("Debug: predictor names = %s\n", paste(names(scores), collapse = ", ")))
    
    # Return results
    return(list(
@@ -170,16 +183,31 @@ test_predictor_combinations <- function(base_formula, predictor_list, data, max_
    
    cat("\n=== TESTING PREDICTOR COMBINATIONS ===\n")
    
+   # Filter out any NA or invalid predictors
+   valid_predictors <- predictor_list[!is.na(predictor_list) & predictor_list != ""]
+   
+   if (length(valid_predictors) < 2) {
+      cat("Not enough valid predictors for combinations. Need at least 2.\n")
+      return(list(
+         models = list(),
+         results = list(),
+         ranked_combinations = character(0),
+         best_combination = NA,
+         best_score = -Inf,
+         summary_table = data.frame()
+      ))
+   }
+   
    # Generate combinations (start with pairs, then triplets, etc.)
    models <- list()
    results_list <- list()
    
    # Test pairwise combinations
-   for (i in 1:(length(predictor_list)-1)) {
-      for (j in (i+1):length(predictor_list)) {
+   for (i in 1:(length(valid_predictors)-1)) {
+      for (j in (i+1):length(valid_predictors)) {
          
-         combo_name <- paste(predictor_list[i], predictor_list[j], sep = "_+_")
-         formula_str <- paste(base_formula, "+", predictor_list[i], "+", predictor_list[j])
+         combo_name <- paste(valid_predictors[i], valid_predictors[j], sep = "_+_")
+         formula_str <- paste(base_formula, "+", valid_predictors[i], "+", valid_predictors[j])
          
          tryCatch({
             model <- lm(as.formula(formula_str), data = data)
@@ -235,6 +263,19 @@ test_predictor_combinations <- function(base_formula, predictor_list, data, max_
       }
    }
    
+   # Check if any combinations were successful
+   if (length(results_list) == 0) {
+      cat("No valid combinations found\n")
+      return(list(
+         models = list(),
+         results = list(),
+         ranked_combinations = character(0),
+         best_combination = NA,
+         best_score = -Inf,
+         summary_table = data.frame()
+      ))
+   }
+   
    # Return ranked results
    scores <- sapply(results_list, function(x) x$score)
    ranked_indices <- order(scores, decreasing = TRUE)
@@ -286,6 +327,18 @@ test_interactions <- function(base_model_formula, interaction_list, data) {
       }, error = function(e) {
          cat(sprintf("Error with interaction %s: %s\n", interaction_name, e$message))
       })
+   }
+   
+   # Check if any interactions were successful
+   if (length(results_list) == 0) {
+      cat("No valid interactions found\n")
+      return(list(
+         models = list(),
+         results = list(),
+         ranked_interactions = character(0),
+         best_interaction = NA,
+         best_score = -Inf
+      ))
    }
    
    # Return results
@@ -357,8 +410,20 @@ systematic_model_building <- function(data, salinity_threshold) {
       data
    )
    
+   # Remove any NA values
+   best_flow_predictors <- best_flow_predictors[!is.na(best_flow_predictors)]
+   
    # Stage 6: Add stress predictors to best combination
-   best_combination_formula <- stage5_combinations$results[[stage5_combinations$best_combination]]$formula
+   if (!is.na(stage5_combinations$best_combination)) {
+      best_combination_formula <- stage5_combinations$results[[stage5_combinations$best_combination]]$formula
+   } else {
+      # Fall back to base formula with best individual predictor
+      if (length(best_flow_predictors) > 0) {
+         best_combination_formula <- paste(base_formula, "+", best_flow_predictors[1])
+      } else {
+         best_combination_formula <- base_formula
+      }
+   }
    
    stage6_stress <- test_predictor_group(
       best_combination_formula,
@@ -368,7 +433,11 @@ systematic_model_building <- function(data, salinity_threshold) {
    )
    
    # Stage 7: Add temporal predictors
-   best_with_stress_formula <- stage6_stress$results[[stage6_stress$best_predictor]]$formula
+   if (!is.na(stage6_stress$best_predictor)) {
+      best_with_stress_formula <- stage6_stress$results[[stage6_stress$best_predictor]]$formula
+   } else {
+      best_with_stress_formula <- best_combination_formula
+   }
    
    stage7_temporal <- test_predictor_group(
       best_with_stress_formula,
@@ -378,13 +447,36 @@ systematic_model_building <- function(data, salinity_threshold) {
    )
    
    # Stage 8: Test interactions
-   best_main_effects_formula <- stage7_temporal$results[[stage7_temporal$best_predictor]]$formula
+   if (!is.na(stage7_temporal$best_predictor)) {
+      best_main_effects_formula <- stage7_temporal$results[[stage7_temporal$best_predictor]]$formula
+   } else {
+      best_main_effects_formula <- best_with_stress_formula
+   }
    
    stage8_interactions <- test_interactions(
       best_main_effects_formula,
       predictor_config$interactions,
       data
    )
+   
+   # Determine final best model
+   final_best_model <- NULL
+   final_best_formula <- best_main_effects_formula
+   final_best_score <- -Inf
+   
+   if (!is.na(stage8_interactions$best_interaction)) {
+      final_best_model <- stage8_interactions$models[[stage8_interactions$best_interaction]]
+      final_best_formula <- stage8_interactions$results[[stage8_interactions$best_interaction]]$formula
+      final_best_score <- stage8_interactions$best_score
+   } else if (!is.na(stage7_temporal$best_predictor)) {
+      final_best_model <- stage7_temporal$models[[stage7_temporal$best_predictor]]
+      final_best_formula <- stage7_temporal$results[[stage7_temporal$best_predictor]]$formula
+      final_best_score <- stage7_temporal$best_score
+   } else if (!is.na(stage6_stress$best_predictor)) {
+      final_best_model <- stage6_stress$models[[stage6_stress$best_predictor]]
+      final_best_formula <- stage6_stress$results[[stage6_stress$best_predictor]]$formula
+      final_best_score <- stage6_stress$best_score
+   }
    
    # Compile final results
    final_results <- list(
@@ -446,6 +538,6 @@ plot_stage_results <- function(stage_results, stage_name) {
 results <- systematic_model_building(model_data, salinity_threshold)
 
 # Generate plots for each stage
-# stage1_plots <- plot_stage_results(results$stage1_discharge_lag, "Discharge Lag")
-# print(stage1_plots$score_plot)
-# print(stage1_plots$rmse_plot)
+stage1_plots <- plot_stage_results(results$stage5_combinations, "Discharge Lag")
+print(stage1_plots$score_plot)
+print(stage1_plots$rmse_plot)
