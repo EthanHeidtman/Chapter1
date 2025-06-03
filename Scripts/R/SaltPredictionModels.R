@@ -338,7 +338,7 @@ model1c <- lm(Salinity ~ Norm_PowLagDischarge6 + Norm_Tide, data = model_data)
 ## Model 1d: 10-hr lag
 model1d <- lm(Salinity ~ Norm_PowLagDischarge10 + Norm_Tide, data = model_data)
 
-## Model 1e: 12-hr lag
+## Model 1e: 12-hr lag BEST PERFORMER
 model1e <- lm(Salinity ~ Norm_PowLagDischarge12 + Norm_Tide, data = model_data)
 
 ## Model 1f: 36-hr lag
@@ -353,7 +353,7 @@ model1h <- lm(Salinity ~ Norm_PowLagDischarge72 + Norm_Tide, data = model_data)
 models <- list(model1a, model1b, model1c, model1d, model1e, model1f, model1g, model1h)
 model_types <- c('linear', 'linear', 'linear', 'linear', 'linear', 'linear', 'linear', 'linear')
 model_names <- c('1hr', '3hr', '6hr', '10hr', '12hr', '36hr', '48hr', '72hr')
-Models1EVAL <- compare_models(models, model_types, data = model_data, threshold = salinity_threshold, model_names)
+Models1EVAL <- compare_models(models, model_types, data = model_data, threshold = salinity_threshold, model_names, Group = 1)
 
 ### TESTING DIFFERENT DISCHARGE ROLLING AVERAGES ###
 ### Which rolling average performs best? Again, using the -0.4 transformation
@@ -373,7 +373,7 @@ model2d <- lm(Salinity ~ Norm_RollingPowDischarge4 + Norm_Tide, data = model_dat
 ## Model 2e: 7-day rolling average 
 model2e <- lm(Salinity ~ Norm_RollingPowDischarge7 + Norm_Tide, data = model_data)
 
-## Model 2f: 10-day rolling average 
+## Model 2f: 10-day rolling average BEST PERFORMER
 model2f <- lm(Salinity ~ Norm_RollingPowDischarge10 + Norm_Tide, data = model_data)
 
 ## Model 2g: 14-day rolling average 
@@ -382,7 +382,7 @@ model2g <- lm(Salinity ~ Norm_RollingPowDischarge14 + Norm_Tide, data = model_da
 models <- list(model2a, model2b, model2c, model2d, model2e, model2f, model2g)
 models_types <- c('linear', 'linear', 'linear', 'linear', 'linear', 'linear', 'linear')
 model_names <- c('0.5day', '1day', '2day', '4day', '7day', '10day', '14day')
-Models2EVAL <- compare_models(models, model_types, data = model_data, threshold = salinity_threshold, model_names)
+Models2EVAL <- compare_models(models, model_types, data = model_data, threshold = salinity_threshold, model_names, Group = 2)
 
 
 ### COMBINED DISCHARGE MODELS ###
@@ -407,7 +407,7 @@ model3d <- lm(Salinity ~ Norm_PowDischarge + Norm_PowLagDischarge12 +
 models <- list(model3a, model3b, model3c, model3d)
 models_types <- c('linear', 'linear', 'linear', 'linear')
 model_names <- c('Raw+Lag', 'Raw+Rolling', 'Lag+Rolling', 'Raw+Lag+Rolling')
-Models3EVAL <- compare_models(models, model_types, data = model_data, threshold = salinity_threshold, model_names)
+Models3EVAL <- compare_models(models, model_types, data = model_data, threshold = salinity_threshold, model_names, Group = 3)
 
 
 ### TESTING VALUE OF LAGGED MARIETTA INFLOWS ###
@@ -415,25 +415,25 @@ Models3EVAL <- compare_models(models, model_types, data = model_data, threshold 
 ### Building from the best combined discharge model (model3c)
 
 ## Model 4a: 12-hr lag of inflows
-model4a <- lm(Salinity ~ Norm_PowLagDischarge12 + Norm_RollingPowDischarge10 + 
-                 Norm_Tide + Norm_LagInflows12, data = model_data)            
+model4a <- lm(Salinity ~ Norm_PowLagDischarge12 + Norm_RollingPowDischarge10 +
+                 Norm_Tide + Norm_LagInflows12, data = model_data)
 
 ## Model 4b: 24-hr lag of inflows
-model4b <- lm(Salinity ~ Norm_PowLagDischarge12 + Norm_RollingPowDischarge10 + 
-                 Norm_Tide + Norm_LagInflows24, data = model_data)    
+model4b <- lm(Salinity ~ Norm_PowLagDischarge12 + Norm_RollingPowDischarge10 +
+                 Norm_Tide + Norm_LagInflows24, data = model_data)
 
 ## Model 4c: 48-hr lag of inflows BEST PERFORMER
-model4c <- lm(Salinity ~ Norm_PowLagDischarge12 + Norm_RollingPowDischarge10 + 
-                 Norm_Tide + Norm_LagInflows48, data = model_data)    
+model4c <- lm(Salinity ~ Norm_PowLagDischarge12 + Norm_RollingPowDischarge10 +
+                 Norm_Tide + Norm_LagInflows48, data = model_data)
 
 ## Model 4d: 72-hr lag of inflows
-model4d <- lm(Salinity ~ Norm_PowLagDischarge12 + Norm_RollingPowDischarge10 + 
-                 Norm_Tide + Norm_LagInflows72, data = model_data)    
+model4d <- lm(Salinity ~ Norm_PowLagDischarge12 + Norm_RollingPowDischarge10 +
+                 Norm_Tide + Norm_LagInflows72, data = model_data)
 
 models <- list(model4a, model4b, model4c, model4d)
 models_types <- c('linear', 'linear', 'linear', 'linear')
 model_names <- c('12hr', '25hr', '48hr', '72hr')
-Models4EVAL <- compare_models(models, models_types, data = model_data, salinity_threshold, model_names)
+Models4EVAL <- compare_models(models, models_types, data = model_data, salinity_threshold, model_names, Group = 4)
 
 
 ### TESTING VALUE OF ROLLING AVERAGE INFLOWS ###
@@ -441,25 +441,25 @@ Models4EVAL <- compare_models(models, models_types, data = model_data, salinity_
 ### Building from the best combined discharge modell (model3c)
 
 ## Model 5a: 1-day rolling average of inflows
-model5a <- lm(Salinity ~ Norm_PowLagDischarge12 + Norm_RollingPowDischarge10 + 
-                 Norm_Tide + Norm_RollingPowInflows1, data = model_data)            
+model5a <- lm(Salinity ~ Norm_PowLagDischarge12 + Norm_RollingPowDischarge10 +
+                 Norm_Tide + Norm_RollingPowInflows1, data = model_data)
 
 ## Model 5b: 2-day rolling average of inflows BEST PERFORMER
-model5b <- lm(Salinity ~ Norm_PowLagDischarge12 + Norm_RollingPowDischarge10 + 
-                 Norm_Tide + Norm_RollingPowInflows2, data = model_data)    
+model5b <- lm(Salinity ~ Norm_PowLagDischarge12 + Norm_RollingPowDischarge10 +
+                 Norm_Tide + Norm_RollingPowInflows2, data = model_data)
 
 ## Model 5c: 7-day rolling average of inflows
-model5c <- lm(Salinity ~ Norm_PowLagDischarge12 + Norm_RollingPowDischarge10 + 
-                 Norm_Tide + Norm_RollingPowInflows7, data = model_data)    
+model5c <- lm(Salinity ~ Norm_PowLagDischarge12 + Norm_RollingPowDischarge10 +
+                 Norm_Tide + Norm_RollingPowInflows7, data = model_data)
 
 ## Model 5d: 10-day rolling average of inflows
-model5d <- lm(Salinity ~ Norm_PowLagDischarge12 + Norm_RollingPowDischarge10 + 
-                 Norm_Tide + Norm_RollingPowInflows10, data = model_data)    
+model5d <- lm(Salinity ~ Norm_PowLagDischarge12 + Norm_RollingPowDischarge10 +
+                 Norm_Tide + Norm_RollingPowInflows10, data = model_data)
 
 models <- list(model5a, model5b, model5c, model5d)
 models_types <- c('linear', 'linear', 'linear', 'linear')
 model_names <- c('1day', '2day', '7day', '10day')
-Models5EVAL <- compare_models(models, models_types, data = model_data, salinity_threshold, model_names)
+Models5EVAL <- compare_models(models, models_types, data = model_data, salinity_threshold, model_names, Group = 5)
 
 ### TESTING BASIC STRESS (AND SEASON) CLASSIFICATION ###
 ### What combinations of stress improve performance? and then what does adding seasons do?
@@ -485,7 +485,43 @@ model6d <- lm(Salinity ~ Norm_PowLagDischarge12 + Norm_RollingPowDischarge10 +
 models <- list(model6a, model6b, model6c, model6d)
 models_types <- c('linear', 'linear', 'linear', 'linear')
 model_names <- c('Moderate', 'High', 'Moderate+High', 'Best+Season')
-Models6EVAL <- compare_models(models, models_types, data = model_data, salinity_threshold, model_names)
+Models6EVAL <- compare_models(models, models_types, data = model_data, salinity_threshold, model_names, Group = 6)
+
+### TESTING INTERACTIONS ###
+### 
+
+## Model 7a: Discharge and Tide
+model7a <- lm(Salinity ~ Norm_PowLagDischarge12 * Norm_Tide + Norm_RollingPowDischarge10 * Norm_Tide + 
+                  Norm_RollingPowInflows2 + IsHighStress + SalinitySeason, data = model_data)    
+
+## Model 7b: Inflows and Tide
+model7b <- lm(Salinity ~ Norm_PowLagDischarge12 + Norm_RollingPowDischarge10 + 
+                  Norm_RollingPowInflows2 * Norm_Tide + IsHighStress + SalinitySeason, data = model_data)   
+
+## Model 7c: Discharge and High Stress BEST PERFORMER
+model7c <- lm(Salinity ~ Norm_PowLagDischarge12 * IsHighStress + Norm_RollingPowDischarge10 * IsHighStress + 
+                 Norm_Tide + Norm_RollingPowInflows2 + SalinitySeason, data = model_data) 
+
+## Model 7d: Inflows and High Stress
+model7d <- lm(Salinity ~ Norm_PowLagDischarge12 + Norm_RollingPowDischarge10 + 
+                 Norm_Tide + Norm_RollingPowInflows2 * IsHighStress + SalinitySeason, data = model_data)   
+
+## Model 7e: Discharge and Salinity Season
+model7e <- lm(Salinity ~ Norm_PowLagDischarge12 * SalinitySeason + Norm_RollingPowDischarge10 * SalinitySeason + 
+                 Norm_Tide + Norm_RollingPowInflows2 + IsHighStress, data = model_data)    
+
+## Model 7f: Inflows and Salinity Season
+model7f <- lm(Salinity ~ Norm_PowLagDischarge12 + Norm_RollingPowDischarge10 + 
+                 Norm_Tide + Norm_RollingPowInflows2 * SalinitySeason + IsHighStress, data = model_data)   
+
+## Model7g: Tide and Salinity Season
+model7g <- lm(Salinity ~ Norm_PowLagDischarge12 + Norm_RollingPowDischarge10 + 
+                 Norm_Tide * SalinitySeason + Norm_RollingPowInflows2 + IsHighStress, data = model_data)   
+
+models <- list(model7a, model7b, model7c, model7d, model7e, model7f, model7g)
+model_types <- c('linear', 'linear', 'linear', 'linear', 'linear', 'linear', 'linear')
+model_names <- c('DischargeTide', 'InflowsTide', 'DischargeStress', 'InflowsStress', 'DischargeSeason', 'InflowsSeason', 'TideSeason')
+Models7EVAL <- compare_models(models, model_types, data = model_data, threshold = salinity_threshold, model_names, Group = 7)
 
 
 ### What additional stress metrics improve the fit?
@@ -559,7 +595,6 @@ models <- list(model8a, model8b, model8c)
 models_types <- c('linear', 'linear', 'linear')
 model_names <- c('SimpleLatent', 'StressLatent', 'BestLatent')
 Models8EVAL <- compare_models(models, models_types, data = model_data, salinity_threshold, model_names)
-
 
 ############################ GAM AND THRESHOLD-BASED MODELS ######################
 

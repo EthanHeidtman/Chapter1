@@ -5,7 +5,7 @@
 .RData
 .Ruserdata
 .Rproj.user
-*.Rproj
+# *.Rproj
 *.Rmd~
 *.html
 *.pdf
