@@ -40,7 +40,16 @@ data <- data %>%
    mutate(DateTime = as_datetime(DateTime)) %>%              # Make dates class datetime
    rename(Tide = Fitted_HdG) %>%
    filter(DateTime < as_datetime('2024-11-01 00:00:00'))     # Keep only dates before 
-   
+
+# ggplot(data, aes(x = DateTime)) + 
+#    geom_line(aes(y = zoo::rollmean(Discharge, 24, fill = NA, align = 'right')), color = 'blue', na.rm = TRUE) + 
+#    geom_line(aes(y = Inflows), color = 'red', na.rm = TRUE) + 
+#    scale_x_datetime(limits = c(as_datetime('2015-04-01'), as_datetime('2015-12-31')))
+# 
+# ggplot(data, aes(x = DateTime, y = Salinity)) + 
+#    geom_point(na.rm = TRUE) + 
+#    scale_x_datetime(limits = c(as_datetime('2007-04-01'), as_datetime('2024-12-31')))
+ 
 ####################### MODEL DATA PREPARATION PIPELINE ##########################
 
 # Salinity threshold
@@ -49,6 +58,19 @@ salinity_threshold = 1.0                                     # practical salt un
 # Create the model data
 model_data <- data %>%
    filter(!is.na(Salinity)) %>%                              # Keep only times with available salinity data
+   
+   # =======================================================================================
+   # PART 0: BASIC TIDE TRANSFORMATIONS TO TEST
+   # =======================================================================================
+   
+   mutate(
+      
+      TideRate = c(NA, diff(Tide) / as.numeric(diff(DateTime), units = "hours")),
+      LagTide1 = lag(Tide, 1),
+      LagTide2 = lag(Tide, 2),
+      LagTide4 = lag(Tide, 4)
+      
+   ) %>%
    
    # =======================================================================================
    # PART 1: BASIC DISCHARGE FEATURES (BASED ON THE BEST PERFORMERS)
@@ -190,11 +212,6 @@ model_data <- data %>%
       
       StressLevel = case_when(
          
-         # # CRITICAL STRESS: High cumulative stress & long consecutive stress & long since last high flow
-         # (CumulativeStress_14day_Marietta > quantile(CumulativeStress_14day_Marietta, 0.75, na.rm = TRUE)) &
-         # (ConsecutiveStressHours_Marietta > 24 * 2) &  # 2+ days consecutive
-         # (DaysSinceHighFlow > 10) ~ "Critical",
-         
          # HIGH STRESS: Moderate cumulative stress and some duration
          (CumulativeStress_7day_Marietta > quantile(CumulativeStress_7day_Marietta, 0.7, na.rm = TRUE)) &
          (ConsecutiveStressHours_Marietta > 24 * 1) ~ "High", # 1+ day consecutive
@@ -214,7 +231,6 @@ model_data <- data %>%
       ),
       
       # Binary indicators for model use
-      # IsCriticalStress = StressLevel == "Critical",
       IsHighStress = StressLevel %in% c("Critical", "High"),
       IsModerateStress = StressLevel %in% c("Critical", "High", "Moderate"),
       IsFlush = StressLevel == "Flush",
@@ -297,7 +313,7 @@ model_data <- model_data %>%
    )) %>%
    mutate(SalinitySeason = as.factor(SalinitySeason)) %>%   # Make season factor variable
    relocate(Discharge, 
-            Tide, 
+            contains('Tide'), 
             starts_with(c('Lag', 
                           'Pow', 
                           'Rolling')),
@@ -324,8 +340,8 @@ norm_params <- normalized_predictors$parameters
 # Define predictor categories and their candidates
 predictor_config <- list(
    
-   # Base predictors (always included)
-   base = c("Norm_Tide"),
+   # Tide predictors (will always include the best one in subsequent models)
+   tide = c("Norm_Tide", "Norm_TideRate", 'Norm_LagTide1', 'Norm_LagTide2', 'Norm_LagTide4'),
    
    # Discharge predictors (test systematically)
    discharge_lag = c("Norm_PowLagDischarge1", "Norm_PowLagDischarge3", "Norm_PowLagDischarge6", 
@@ -349,7 +365,10 @@ predictor_config <- list(
    # Stress indicators
    stress_binary = c("IsModerateStress", "IsHighStress", "IsFlush", "IsStressed"),
    stress_continuous = c("Norm_StressHours_7day_Marietta", "Norm_StressHours_14day_Marietta", 
-                         "Norm_StressHours_30day_Marietta", "Norm_CumulativeStress_7day_Marietta"),
+                         "Norm_StressHours_30day_Marietta", "Norm_StressHours_7day_Conowingo",
+                         "Norm_StressHours_14day_Conowingo", "Norm_StressHours_30day_Conowingo",
+                         "Norm_CumulativeStress_7day_Marietta", "Norm_CumulativeStress_14day_Marietta",
+                         "Norm_CumulativeStress_30day_Marietta", "DaysSinceHighFlow"),
    
    # Seasonal/temporal
    temporal = c("SalinitySeason", "DayOfYear"),
@@ -367,7 +386,8 @@ predictor_config <- list(
 # Define performance criteria and weights
 performance_criteria <- list(
    weights = c(
-      high_sal_rmse = 0.4,      # Primary concern: high salinity accuracy
+      high_sal_rmse = 0.3,      # Primary concern: high salinity accuracy
+      high_sal_mape = 0.1,      # Mean absolute percentage error
       high_sal_r2 = 0.2,        # High salinity explanation
       overall_r2 = 0.2,         # Overall model fit
       overall_rmse = 0.1,       # Overall accuracy

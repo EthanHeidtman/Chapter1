@@ -17,7 +17,9 @@ test_predictor_group <- function(base_formula, predictor_group, data, group_name
       }
       
       # Build formula
-      formula_str <- paste(base_formula, "+", predictor)
+      if (base_formula == 'Salinity ~') {
+         formula_str <- paste(base_formula, predictor)
+      } else formula_str <- paste(base_formula, "+", predictor)
       
       # Fit model
       tryCatch({
@@ -32,8 +34,8 @@ test_predictor_group <- function(base_formula, predictor_group, data, group_name
          
          results_list[[predictor]] <- eval_result
          
-         cat(sprintf("%s: Score = %.3f, High Sal RMSE = %.3f, Overall R2 = %.3f\n", 
-                     predictor, eval_result$score, eval_result$high_salinity_rmse, eval_result$overall_r2))
+         cat(sprintf("%s: High Sal RMSE = %.3f, Overall R2 = %.3f, High Salinity MAPE = %.3f, Score = %.3f\n", 
+                     predictor, eval_result$high_salinity_rmse, eval_result$overall_r2, eval_result$high_salinity_mape,  eval_result$score))
          
       }, error = function(e) {
          cat(sprintf("Error fitting model with %s: %s\n", predictor, e$message))
@@ -72,6 +74,7 @@ test_predictor_group <- function(base_formula, predictor_group, data, group_name
          Score = scores[ranked_indices],
          High_Sal_RMSE = sapply(results_list[ranked_indices], function(x) x$high_salinity_rmse),
          Overall_R2 = sapply(results_list[ranked_indices], function(x) x$overall_r2),
+         High_Sal_MAPE = sapply(results_list[ranked_indices], function(x) x$high_salinity_mape),
          stringsAsFactors = FALSE
       )
    ))

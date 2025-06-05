@@ -24,7 +24,8 @@ test_interactions <- function(base_model_formula, interaction_list, data) {
          
          results_list[[interaction_name]] <- eval_result
          
-         cat(sprintf("%s: Score = %.3f\n", interaction_name, eval_result$score))
+         cat(sprintf("%s: High Sal RMSE = %.3f, Overall R2 = %.3f, High Salinity MAPE = %.3f, Score = %.3f\n", 
+                     predictors, eval_result$high_salinity_rmse, eval_result$overall_r2, eval_result$high_salinity_mape,  eval_result$score))
          
       }, error = function(e) {
          cat(sprintf("Error with interaction %s: %s\n", interaction_name, e$message))

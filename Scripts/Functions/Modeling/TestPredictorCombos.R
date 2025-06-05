@@ -1,5 +1,5 @@
 # Function to test combinations of best predictors
-test_predictor_combinations <- function(base_formula, predictor_list, data, max_combinations = 10) {
+test_predictor_combinations <- function(base_formula, predictor_list, data, max_combinations = 30) {
    
    cat("\n=== TESTING PREDICTOR COMBINATIONS ===\n")
    
@@ -23,11 +23,12 @@ test_predictor_combinations <- function(base_formula, predictor_list, data, max_
    results_list <- list()
    
    # Test pairwise combinations
-   for (i in 1:(length(valid_predictors)-1)) {
-      for (j in (i+1):length(valid_predictors)) {
+   for (i in 1 : (length(valid_predictors) - 1)) {
+      for (j in (i + 1) : length(valid_predictors)) {
          
-         combo_name <- paste(valid_predictors[i], valid_predictors[j], sep = "_+_")
+         combo_name <- paste(valid_predictors[i], valid_predictors[j], sep = " + ")
          formula_str <- paste(base_formula, "+", valid_predictors[i], "+", valid_predictors[j])
+         #print(formula_str)
          
          tryCatch({
             model <- lm(as.formula(formula_str), data = data)
@@ -40,7 +41,8 @@ test_predictor_combinations <- function(base_formula, predictor_list, data, max_
             
             results_list[[combo_name]] <- eval_result
             
-            cat(sprintf("%s: Score = %.3f\n", combo_name, eval_result$score))
+            cat(sprintf("%s: High Sal RMSE = %.3f, Overall R2 = %.3f, High Salinity MAPE = %.3f, Score = %.3f\n", 
+                        combo_name, eval_result$high_salinity_rmse, eval_result$overall_r2, eval_result$high_salinity_mape,  eval_result$score))
             
          }, error = function(e) {
             cat(sprintf("Error with combination %s: %s\n", combo_name, e$message))
@@ -59,9 +61,10 @@ test_predictor_combinations <- function(base_formula, predictor_list, data, max_
             # Check if this predictor is already in the pair
             if (grepl(additional_pred, pair_name, fixed = TRUE)) next
             
-            triplet_name <- paste(pair_name, additional_pred, sep = "_+_")
+            triplet_name <- paste(pair_name, additional_pred, sep = " + ")
             current_formula <- results_list[[pair_name]]$formula
             formula_str <- paste(current_formula, "+", additional_pred)
+            #print(formula_str)
             
             tryCatch({
                model <- lm(as.formula(formula_str), data = data)
@@ -74,7 +77,8 @@ test_predictor_combinations <- function(base_formula, predictor_list, data, max_
                
                results_list[[triplet_name]] <- eval_result
                
-               cat(sprintf("%s: Score = %.3f\n", triplet_name, eval_result$score))
+               cat(sprintf("%s: High Sal RMSE = %.3f, Overall R2 = %.3f, High Salinity MAPE = %.3f, Score = %.3f\n", 
+                           triplet_name, eval_result$high_salinity_rmse, eval_result$overall_r2, eval_result$high_salinity_mape,  eval_result$score))
                
             }, error = function(e) {
                cat(sprintf("Error with triplet %s: %s\n", triplet_name, e$message))
@@ -111,6 +115,7 @@ test_predictor_combinations <- function(base_formula, predictor_list, data, max_
          Score = scores[ranked_indices],
          High_Sal_RMSE = sapply(results_list[ranked_indices], function(x) x$high_salinity_rmse),
          Overall_R2 = sapply(results_list[ranked_indices], function(x) x$overall_r2),
+         High_Sal_MAPE = sapply(results_list[ranked_indices], function(x) x$high_salinity_mape),
          stringsAsFactors = FALSE
       )
    ))
