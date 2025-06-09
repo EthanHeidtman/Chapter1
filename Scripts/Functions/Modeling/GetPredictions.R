@@ -1,6 +1,6 @@
 
 # Function to gather the model predictions with confidence intervals
-get_predictions <- function(model, data, model_type = "linear") {
+get_predictions <- function(model, data, model_type = "linear", threshold = salinity_threshold) {
    
    if (model_type == "linear") {
       # Get predictions with standard errors for linear models

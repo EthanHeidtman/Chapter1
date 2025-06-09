@@ -60,21 +60,13 @@ model_builder <- function(data, salinity_threshold) {
       }
    }
    
+   cat(sprintf("Best flow formula: %s\n", best_flow_formula))
+   
    # Stage 6: Add binary stress predictors to best combination
-   stage6_stress <- test_predictor_group(
-      best_flow_formula,
-      predictor_config$stress_binary,
-      data,
-      "stress_binary"
-   )
+   stage6_stress <- test_predictor_group(best_flow_formula, predictor_config$stress_binary, data, "stress_binary")
    
    # Stage 7: Add continuous stress predictors to the best combination
-   stage7_stress <- test_predictor_group(
-      best_flow_formula,
-      predictor_config$stress_continuous,
-      data,
-      "stress_continuous"
-   )
+   stage7_stress <- test_predictor_group(best_flow_formula, predictor_config$stress_continuous, data, "stress_continuous")
    
    # Stage 8: Test combinations of best stress predictors with best flow combination
    best_stress_predictors <- c(
@@ -100,19 +92,42 @@ model_builder <- function(data, salinity_threshold) {
    # Stage 9: Add temporal predictors
    stage9_temporal <- test_predictor_group(best_with_stress_formula, predictor_config$temporal, data, "temporal")
    
-   # Determine best formula after temporal predictors
-   if (!is.na(stage9_temporal$best_predictor)) {
-      best_main_effects_formula <- stage9_temporal$results[[stage9_temporal$best_predictor]]$formula
-   } else {
-      best_main_effects_formula <- best_with_stress_formula
-   }
+   # # Determine best formula after temporal predictors
+   # if (!is.na(stage9_temporal$best_predictor)) {
+   #    best_main_effects_formula <- stage9_temporal$results[[stage9_temporal$best_predictor]]$formula
+   # } else {
+   #    best_main_effects_formula <- best_with_stress_formula
+   # }
+   
+   # Collect all best predictors for systematic interaction testing
+   all_best_predictors <- c(
+      stage0_tides$best_predictor,
+      stage1_discharge_lag$best_predictor,
+      stage2_discharge_rolling$best_predictor,
+      stage3_inflow_lag$best_predictor,
+      stage4_inflow_rolling$best_predictor,
+      stage5_latent_flow$best_predictor,
+      stage6_stress$best_predictor,
+      stage7_stress$best_predictor,
+      stage8_stress_combinations$best_predictor,
+      stage9_temporal$best_predictor
+   )
+   
+   # Remove NAs and get unique predictors
+   all_best_predictors <- unique(all_best_predictors[!is.na(all_best_predictors)])
+   
+   # All of the best predictors
+   main_effects_formula <- paste("Salinity ~", paste(all_best_predictors, collapse = " + "))
+   
+   cat(sprintf("Main effects formula for interaction testing: %s\n", main_effects_formula))
    
    # Stage 10: Test interactions
-   stage10_interactions <- test_interactions(best_main_effects_formula, predictor_config$interactions, data)
+   #stage10_interactions <- test_interactions(main_effects_formula, predictor_config$interactions, data)
+   stage10_interactions <- test_interactions(main_effects_formula, all_best_predictors, data)
    
    # Determine final best model with proper fallback logic
    final_best_model <- NULL
-   final_best_formula <- best_main_effects_formula
+   final_best_formula <- main_effects_formula
    final_best_score <- -Inf
    # Create a list of all candidates with their scores
    candidates <- list()

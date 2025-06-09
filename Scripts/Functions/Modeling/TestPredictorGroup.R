@@ -34,8 +34,8 @@ test_predictor_group <- function(base_formula, predictor_group, data, group_name
          
          results_list[[predictor]] <- eval_result
          
-         cat(sprintf("%s: High Sal RMSE = %.3f, Overall R2 = %.3f, High Salinity MAPE = %.3f, Score = %.3f\n", 
-                     predictor, eval_result$high_salinity_rmse, eval_result$overall_r2, eval_result$high_salinity_mape,  eval_result$score))
+         cat(sprintf("%s: High Sal RMSE = %.3f, Overall R2 = %.3f, Low R2 = %.3f, High Salinity MAPE = %.3f, Score = %.3f\n", 
+                     predictor, eval_result$high_salinity_rmse, eval_result$overall_r2, eval_result$low_r2, eval_result$high_salinity_mape,  eval_result$score))
          
       }, error = function(e) {
          cat(sprintf("Error fitting model with %s: %s\n", predictor, e$message))
@@ -59,7 +59,7 @@ test_predictor_group <- function(base_formula, predictor_group, data, group_name
    # Rank results by performance score
    scores <- sapply(results_list, function(x) x$score)
    ranked_indices <- order(scores, decreasing = TRUE)
-   cat(sprintf("Debug: predictor names = %s\n", paste(names(scores), collapse = ", ")))
+   #cat(sprintf("Debug: predictor names = %s\n", paste(names(scores), collapse = ", ")))
    
    # Return results
    return(list(

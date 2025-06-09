@@ -41,14 +41,20 @@ data <- data %>%
    rename(Tide = Fitted_HdG) %>%
    filter(DateTime < as_datetime('2024-11-01 00:00:00'))     # Keep only dates before 
 
-# ggplot(data, aes(x = DateTime)) + 
-#    geom_line(aes(y = zoo::rollmean(Discharge, 24, fill = NA, align = 'right')), color = 'blue', na.rm = TRUE) + 
-#    geom_line(aes(y = Inflows), color = 'red', na.rm = TRUE) + 
-#    scale_x_datetime(limits = c(as_datetime('2015-04-01'), as_datetime('2015-12-31')))
+# ggplot(data, aes(x = DateTime)) +
+#    #geom_line(aes(y = zoo::rollmean(Discharge, 24, fill = NA, align = 'right')), color = 'blue', na.rm = TRUE) +
+#    geom_line(aes(y = Inflows), color = 'red', na.rm = TRUE) +
+#    scale_x_datetime(limits = c(as_datetime('2001-01-01'), as_datetime('2003-12-31'))) + 
+#    theme_minimal()
 # 
-# ggplot(data, aes(x = DateTime, y = Salinity)) + 
-#    geom_point(na.rm = TRUE) + 
-#    scale_x_datetime(limits = c(as_datetime('2007-04-01'), as_datetime('2024-12-31')))
+# ggplot(data, aes(x = DateTime)) +
+#    geom_point(data = filter(data, Salinity >= 1.0), 
+#               aes(y = Salinity), color = "red", size = 1) +
+#    geom_point(data = filter(data, Salinity < 1.0), aes(y = Salinity), na.rm = TRUE, size = 0.5) +
+#    scale_x_datetime(limits = c(as_datetime('2007-04-01'), as_datetime('2024-12-31'))) + 
+#    theme_minimal()
+# 
+# bla <- data %>% filter(Year == 2016)
  
 ####################### MODEL DATA PREPARATION PIPELINE ##########################
 
@@ -373,14 +379,14 @@ predictor_config <- list(
    # Seasonal/temporal
    temporal = c("SalinitySeason", "DayOfYear"),
    
-   # Pre-defined interaction candidates (based on physical understanding)
-   interactions = list(
-      "discharge_tide" = c("Norm_PowLagDischarge12", "Norm_Tide"),
-      "inflow_tide" = c("Norm_RollingPowInflows2", "Norm_Tide"),
-      "discharge_stress" = c("Norm_PowLagDischarge12", "IsHighStress"),
-      "discharge_season" = c("Norm_PowLagDischarge12", "SalinitySeason"),
-      "tide_season" = c("Norm_Tide", "SalinitySeason")
-   )
+   # # Pre-defined interaction candidates (based on physical understanding)
+   # interactions = list(
+   #    "discharge_tide" = c("Norm_PowLagDischarge12", "Norm_Tide"),
+   #    "inflow_tide" = c("Norm_RollingPowInflows2", "Norm_Tide"),
+   #    "discharge_stress" = c("Norm_PowLagDischarge12", "IsHighStress"),
+   #    "discharge_season" = c("Norm_PowLagDischarge12", "SalinitySeason"),
+   #    "tide_season" = c("Norm_Tide", "SalinitySeason")
+   # )
 )
 
 # Define performance criteria and weights
@@ -678,7 +684,7 @@ model12 <- model12$sample(
 
 
 
-test <- get_predictions(model6a, model_data)
+test <- get_predictions(results[["final_best_model"]], model_data)
 high_events <- test %>% 
    filter(is_high) %>% 
    arrange(date_time)
@@ -705,6 +711,16 @@ if(nrow(high_events) > 0) {
    print(p7)
 }
 
+
+ggplot(test, aes(x = date_time)) +
+   geom_line(aes(y = observed, color = 'Observed')) + 
+   geom_line(aes(y = predicted, color = 'Predicted')) + 
+   scale_color_manual(name = NULL, values = c('Observed' = 'black', 'Predicted' = 'blue')) + 
+   scale_x_datetime(limits = c(as_datetime('2016-02-01'), as_datetime('2016-12-31')), date_labels = '%b-%Y') + 
+   theme_minimal() + 
+   labs(x = 'Date', y = 'Salinity (ppt)', title = paste('Best Model:', results[["final_best_formula"]])) + 
+   ylim(0, 2) + 
+   theme(legend.title = element_text(size = 10))
 
 
 

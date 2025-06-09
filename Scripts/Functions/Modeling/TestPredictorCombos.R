@@ -18,6 +18,32 @@ test_predictor_combinations <- function(base_formula, predictor_list, data, max_
       ))
    }
    
+   # Extract existing predictors from base_formula to avoid duplicates
+   existing_predictors <- character(0)
+   if (base_formula != "Salinity ~") {
+      # Extract predictors from base formula
+      formula_parts <- strsplit(base_formula, "~")[[1]][2]
+      formula_parts <- trimws(formula_parts)
+      if (formula_parts != "") {
+         existing_predictors <- trimws(strsplit(formula_parts, "\\+")[[1]])
+      }
+   }
+   
+   # Remove predictors that are already in the base formula
+   valid_predictors <- setdiff(valid_predictors, existing_predictors)
+   
+   if (length(valid_predictors) < 1) {
+      cat("All predictors already in base formula. No combinations to test.\n")
+      return(list(
+         models = list(),
+         results = list(),
+         ranked_combinations = character(0),
+         best_combination = NA,
+         best_score = -Inf,
+         summary_table = data.frame()
+      ))
+   }
+   
    # Generate combinations (start with pairs, then triplets, etc.)
    models <- list()
    results_list <- list()
@@ -28,6 +54,7 @@ test_predictor_combinations <- function(base_formula, predictor_list, data, max_
          
          combo_name <- paste(valid_predictors[i], valid_predictors[j], sep = " + ")
          formula_str <- paste(base_formula, "+", valid_predictors[i], "+", valid_predictors[j])
+         #formula_str <- paste(empty_formula, valid_predictors[i], '+', valid_predictors[j])
          #print(formula_str)
          
          tryCatch({
@@ -41,8 +68,8 @@ test_predictor_combinations <- function(base_formula, predictor_list, data, max_
             
             results_list[[combo_name]] <- eval_result
             
-            cat(sprintf("%s: High Sal RMSE = %.3f, Overall R2 = %.3f, High Salinity MAPE = %.3f, Score = %.3f\n", 
-                        combo_name, eval_result$high_salinity_rmse, eval_result$overall_r2, eval_result$high_salinity_mape,  eval_result$score))
+            cat(sprintf("%s: High Sal RMSE = %.3f, Overall R2 = %.3f, Low R2 = %.3f, High Salinity MAPE = %.3f, Score = %.3f\n", 
+                        combo_name, eval_result$high_salinity_rmse, eval_result$overall_r2, eval_result$low_r2, eval_result$high_salinity_mape,  eval_result$score))
             
          }, error = function(e) {
             cat(sprintf("Error with combination %s: %s\n", combo_name, e$message))
@@ -77,8 +104,8 @@ test_predictor_combinations <- function(base_formula, predictor_list, data, max_
                
                results_list[[triplet_name]] <- eval_result
                
-               cat(sprintf("%s: High Sal RMSE = %.3f, Overall R2 = %.3f, High Salinity MAPE = %.3f, Score = %.3f\n", 
-                           triplet_name, eval_result$high_salinity_rmse, eval_result$overall_r2, eval_result$high_salinity_mape,  eval_result$score))
+               cat(sprintf("%s: High Sal RMSE = %.3f, Overall R2 = %.3f, Low R2 = %.3f, High Salinity MAPE = %.3f, Score = %.3f\n", 
+                           triplet_name, eval_result$high_salinity_rmse, eval_result$overall_r2, eval_result$low_r2, eval_result$high_salinity_mape,  eval_result$score))
                
             }, error = function(e) {
                cat(sprintf("Error with triplet %s: %s\n", triplet_name, e$message))

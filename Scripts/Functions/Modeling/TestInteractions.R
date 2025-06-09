@@ -1,58 +1,115 @@
-# Function to test interactions systematically
-test_interactions <- function(base_model_formula, interaction_list, data) {
+# function to systematically test interactions between best predictors
+test_interactions <- function(main_effects_formula, all_best_predictors, data) {
    
-   cat("\n=== TESTING INTERACTION TERMS ===\n")
+   cat(sprintf("=== TESTING SYSTEMATIC INTERACTIONS ===\n"))
+   cat(sprintf("Base formula: %s\n", main_effects_formula))
+   cat(sprintf("Best predictors to test: %s\n", paste(all_best_predictors, collapse = ", ")))
    
+   results <- list()
    models <- list()
-   results_list <- list()
    
-   for (interaction_name in names(interaction_list)) {
-      predictors <- interaction_list[[interaction_name]]
+   # Remove any NA predictors
+   all_best_predictors <- all_best_predictors[!is.na(all_best_predictors)]
+   
+   if (length(all_best_predictors) < 2) {
+      cat("Not enough predictors for interaction testing\n")
+      return(list(results = results, models = models, best_interaction = NA, best_score = -Inf))
+   }
+   
+   # Test all pairwise interactions
+   cat("Testing pairwise interactions...\n")
+   pairwise_combos <- combn(all_best_predictors, 2, simplify = FALSE)
+   
+   for (i in seq_along(pairwise_combos)) {
+      pred1 <- pairwise_combos[[i]][1]
+      pred2 <- pairwise_combos[[i]][2]
+      interaction_term <- paste(pred1, pred2, sep = " : ")
+      interaction_name <- paste(pred1, pred2, sep = "_x_")
       
-      # Create interaction term
-      interaction_term <- paste(predictors, collapse = " * ")
-      formula_str <- paste(base_model_formula, "+", interaction_term)
+      test_formula <- paste(main_effects_formula, "+", interaction_term)
       
       tryCatch({
-         model <- lm(as.formula(formula_str), data = data)
-         models[[interaction_name]] <- model
+         model <- lm(as.formula(test_formula), data = data)
          
          eval_result <- evaluate_model(model, data, salinity_threshold, "linear")
          eval_result$model <- model
-         eval_result$formula <- formula_str
+         eval_result$formula <- test_formula
          eval_result$score <- performance_score(eval_result)
          
-         results_list[[interaction_name]] <- eval_result
+         results[[interaction_name]] <- list(
+            formula = test_formula,
+            interaction_term = interaction_term,
+            metrics = eval_result
+         )
+         models[[interaction_name]] <- model
          
-         cat(sprintf("%s: High Sal RMSE = %.3f, Overall R2 = %.3f, High Salinity MAPE = %.3f, Score = %.3f\n", 
-                     predictors, eval_result$high_salinity_rmse, eval_result$overall_r2, eval_result$high_salinity_mape,  eval_result$score))
+         cat(sprintf("%s: High Sal RMSE = %.3f, Overall R2 = %.3f, Low R2 = %.3f, High Salinity MAPE = %.3f, Score = %.3f\n", 
+                     interaction_name, eval_result$high_salinity_rmse, eval_result$overall_r2, eval_result$low_r2, eval_result$high_salinity_mape,  eval_result$score))
          
       }, error = function(e) {
          cat(sprintf("Error with interaction %s: %s\n", interaction_name, e$message))
       })
    }
    
-   # Check if any interactions were successful
-   if (length(results_list) == 0) {
-      cat("No valid interactions found\n")
-      return(list(
-         models = list(),
-         results = list(),
-         ranked_interactions = character(0),
-         best_interaction = NA,
-         best_score = -Inf
-      ))
+   # Test three-way interactions if we have enough predictors and max_interactions >= 3
+   if (length(all_best_predictors) >= 3) {
+      # && max_interactions >= 3
+      cat("Testing three-way interactions...\n")
+      threeway_combos <- combn(all_best_predictors, 3, simplify = FALSE)
+      
+      # Limit to most promising three-way combinations to avoid explosion
+      max_threeway <- min(length(threeway_combos), 10)
+      
+      for (i in seq_len(max_threeway)) {
+         pred1 <- threeway_combos[[i]][1]
+         pred2 <- threeway_combos[[i]][2]
+         pred3 <- threeway_combos[[i]][3]
+         interaction_term <- paste(pred1, pred2, pred3, sep = " : ")
+         interaction_name <- paste(pred1, pred2, pred3, sep = "_x_")
+         
+         test_formula <- paste(main_effects_formula, "+", interaction_term)
+         
+         tryCatch({
+            model <- lm(as.formula(test_formula), data = data)
+            
+            eval_result <- evaluate_model(model, data, salinity_threshold, "linear")
+            eval_result$model <- model
+            eval_result$formula <- test_formula
+            eval_result$score <- performance_score(eval_result)
+            
+            results[[interaction_name]] <- list(
+               formula = test_formula,
+               interaction_term = interaction_term,
+               metrics = eval_result
+            )
+            models[[interaction_name]] <- model
+            
+            cat(sprintf("%s: High Sal RMSE = %.3f, Overall R2 = %.3f, Low R2 = %.3f, High Salinity MAPE = %.3f, Score = %.3f\n", 
+                        interaction_name, eval_result$high_salinity_rmse, eval_result$overall_r2, eval_result$low_r2, eval_result$high_salinity_mape,  eval_result$score))
+            
+         }, error = function(e) {
+            cat(sprintf("Error with three-way interaction %s: %s\n", interaction_name, e$message))
+         })
+      }
    }
    
-   # Return results
-   scores <- sapply(results_list, function(x) x$score)
-   ranked_indices <- order(scores, decreasing = TRUE)
+   # Find best interaction
+   best_interaction <- NA
+   best_score <- -Inf
+   
+   if (length(results) > 0) {
+      scores <- sapply(results, function(x) x$metrics$score)
+      best_idx <- which.max(scores)
+      best_interaction <- names(results)[best_idx]
+      best_score <- scores[best_idx]
+      
+      cat(sprintf("Best interaction: %s (Score: %.3f)\n", best_interaction, best_score))
+   }
    
    return(list(
+      results = results,
       models = models,
-      results = results_list,
-      ranked_interactions = names(scores)[ranked_indices],
-      best_interaction = names(scores)[ranked_indices[1]],
-      best_score = scores[ranked_indices[1]]
+      best_interaction = best_interaction,
+      best_score = best_score
    ))
 }

@@ -55,10 +55,23 @@ evaluate_model <- function(model, data, threshold, model_type = "linear") {
       high_r2 <- NA
    }
    
+   # R-squared for low salinity events
+   low_idx <- obs_clean < threshold
+   if (sum(low_idx) > 1) {
+      obs_low <- obs_clean[low_idx]
+      pred_low <- pred_clean[low_idx]
+      tss_low <- sum((obs_low - mean(obs_low))^2)
+      rss_low <- sum((obs_low - pred_low)^2)
+      low_r2 <- 1 - rss_low/tss_low
+   } else {
+      low_r2 <- NA
+   }
+   
    return(list(
       overall_rmse = overall_rmse,
       weighted_rmse = weighted_rmse_val,
       overall_r2 = overall_r2,
+      low_r2 = low_r2,
       high_salinity_rmse = high_metrics$rmse,
       high_salinity_mae = high_metrics$mae,
       high_salinity_bias = high_metrics$bias,

@@ -29,6 +29,8 @@ stage1_plots <- plot_stage_results(results$stage5_combinations, "Discharge Lag")
 print(stage1_plots$score_plot)
 print(stage1_plots$rmse_plot)
 
+test <- analyze_final_model(final_model = results$final_best_model, data = model_data, threshold = salinity_threshold)
+
 
 # Function to get detailed diagnostics for the final model
 analyze_final_model <- function(final_model, data, threshold) {
