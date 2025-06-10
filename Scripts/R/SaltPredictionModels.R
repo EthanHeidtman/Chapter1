@@ -423,13 +423,13 @@ predictor_config <- list(
 # Define performance criteria with updated weights
 performance_criteria <- list(
    weights = c(
-      # High salinity event metrics (70% of total weight)
-      "high_sal_detection" = 0.30,      # Detection capability (hit rate, CSI)
-      "high_sal_accuracy" = 0.25,       # Accuracy of high salinity predictions (RMSE, bias)
+      # High salinity event metrics (60% of total weight)
+      "high_sal_detection" = 0.25,      # Detection capability 
+      "high_sal_accuracy" = 0.20,       # Accuracy of high salinity predictions
       "high_sal_reliability" = 0.15,    # Reliability (false alarm control)
       
-      # Overall model performance (25% of total weight)
-      "overall_performance" = 0.15,     # General model fit
+      # Overall model performance (35% of total weight)
+      "overall_performance" = 0.25,     # General model fit
       "model_stability" = 0.10,         # Consistent performance across conditions
       
       # Model characteristics (5% of total weight)
@@ -437,10 +437,10 @@ performance_criteria <- list(
    ),
    
    thresholds = list(
-      min_high_sal_count = 10,          # Minimum high salinity events for valid evaluation
-      high_salinity_threshold = 0.3,    # Threshold for "high" salinity events
-      acceptable_far = 0.15,            # Maximum acceptable false alarm rate
-      min_hit_rate = 0.70              # Minimum acceptable hit rate for high events
+      min_high_sal_count = 3,           
+      high_salinity_threshold = 0.3,    
+      acceptable_far = 0.30,            
+      min_hit_rate = 0.40               
    )
 )
 

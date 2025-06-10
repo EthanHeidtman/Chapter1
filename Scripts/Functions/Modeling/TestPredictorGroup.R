@@ -28,14 +28,26 @@ test_predictor_group <- function(current_formula, predictor_group, data, group_n
          
          # Evaluate model
          eval_result <- evaluate_model(model, data, salinity_threshold, "linear")
+         if (!eval_result$model_validity) {
+            cat(sprintf("Skipping %s due to invalid model results\n", predictor))
+            next
+         }
          eval_result$model <- model
          eval_result$formula <- formula_str
          eval_result$score <- performance_score(eval_result)
          
          results_list[[predictor]] <- eval_result
          
-         cat(sprintf("%s: High Sal RMSE = %.3f, Overall R2 = %.3f, Low R2 = %.3f, High Salinity MAPE = %.3f, Score = %.3f\n", 
-                     predictor, eval_result$high_salinity_rmse, eval_result$overall_r2, eval_result$low_r2, eval_result$high_salinity_mape,  eval_result$score))
+         cat(sprintf(
+            "%s: High Sal RMSE = %.3f | High MAPE = %.1f%% | Overall R² = %.3f | NSE = %.3f | Score = %.3f\n",
+            predictor,
+            eval_result$high_salinity_rmse,
+            eval_result$high_salinity_mape,
+            eval_result$overall_r2,
+            eval_result$skill_metrics$nash_sutcliffe,
+            eval_result$score
+         ))
+         
          
       }, error = function(e) {
          cat(sprintf("Error fitting model with %s: %s\n", predictor, e$message))
@@ -59,7 +71,6 @@ test_predictor_group <- function(current_formula, predictor_group, data, group_n
    # Rank results by performance score
    scores <- sapply(results_list, function(x) x$score)
    ranked_indices <- order(scores, decreasing = TRUE)
-   #cat(sprintf("Debug: predictor names = %s\n", paste(names(scores), collapse = ", ")))
    
    # Return results
    return(list(
@@ -70,12 +81,12 @@ test_predictor_group <- function(current_formula, predictor_group, data, group_n
       best_predictor = names(scores)[ranked_indices[1]],
       best_score = scores[ranked_indices[1]],
       summary_table = data.frame(
-         Predictor = names(scores)[ranked_indices],
+         Predictor = ranked_indices,
          Score = scores[ranked_indices],
          High_Sal_RMSE = sapply(results_list[ranked_indices], function(x) x$high_salinity_rmse),
-         Overall_R2 = sapply(results_list[ranked_indices], function(x) x$overall_r2),
-         Low_R2 = sapply(results_list[ranked_indices], function(x) x$low_r2),
          High_Sal_MAPE = sapply(results_list[ranked_indices], function(x) x$high_salinity_mape),
+         Overall_R2 = sapply(results_list[ranked_indices], function(x) x$overall_r2),
+         NSE = sapply(results_list[ranked_indices], function(x) x$skill_metrics$nash_sutcliffe),
          stringsAsFactors = FALSE
       )
    ))

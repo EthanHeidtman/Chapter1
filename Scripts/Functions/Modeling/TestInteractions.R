@@ -43,8 +43,15 @@ test_interactions <- function(current_formula, best_predictors, data) {
          )
          models[[interaction_name]] <- model
          
-         cat(sprintf("%s: High Sal RMSE = %.3f, Overall R2 = %.3f, Low R2 = %.3f, High Salinity MAPE = %.3f, Score = %.3f\n", 
-                     interaction_name, eval_result$high_salinity_rmse, eval_result$overall_r2, eval_result$low_r2, eval_result$high_salinity_mape,  eval_result$score))
+         cat(sprintf(
+            "%s: High Sal RMSE = %.3f | High MAPE = %.1f%% | Overall R² = %.3f | NSE = %.3f | Score = %.3f\n",
+            interaction_name,
+            eval_result$high_salinity_rmse,
+            eval_result$high_salinity_mape,
+            eval_result$overall_r2,
+            eval_result$skill_metrics$nash_sutcliffe,
+            eval_result$score
+         ))
          
       }, error = function(e) {
          cat(sprintf("Error with interaction %s: %s\n", interaction_name, e$message))
@@ -56,9 +63,6 @@ test_interactions <- function(current_formula, best_predictors, data) {
       # && max_interactions >= 3
       cat("Testing three-way interactions...\n")
       threeway_combos <- combn(best_predictors, 3, simplify = FALSE)
-      
-      # Limit to most promising three-way combinations to avoid explosion
-      #max_threeway <- min(length(threeway_combos), 10)
       max_threeway <- length(threeway_combos)
       
       for (i in seq_len(max_threeway)) {
@@ -85,8 +89,15 @@ test_interactions <- function(current_formula, best_predictors, data) {
             )
             models[[interaction_name]] <- model
             
-            cat(sprintf("%s: High Sal RMSE = %.3f, Overall R2 = %.3f, Low R2 = %.3f, High Salinity MAPE = %.3f, Score = %.3f\n", 
-                        interaction_name, eval_result$high_salinity_rmse, eval_result$overall_r2, eval_result$low_r2, eval_result$high_salinity_mape,  eval_result$score))
+            cat(sprintf(
+               "%s: High Sal RMSE = %.3f | High MAPE = %.1f%% | Overall R² = %.3f | NSE = %.3f | Score = %.3f\n",
+               interaction_name,
+               eval_result$high_salinity_rmse,
+               eval_result$high_salinity_mape,
+               eval_result$overall_r2,
+               eval_result$skill_metrics$nash_sutcliffe,
+               eval_result$score
+            ))
             
          }, error = function(e) {
             cat(sprintf("Error with three-way interaction %s: %s\n", interaction_name, e$message))

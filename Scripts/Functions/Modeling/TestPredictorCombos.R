@@ -75,8 +75,15 @@ test_predictor_combinations <- function(base_formula, predictor_list, data, max_
             
             results_list[[combo_name]] <- eval_result
             
-            cat(sprintf("%s: High Sal RMSE = %.3f, Overall R2 = %.3f, Low R2 = %.3f, High Salinity MAPE = %.3f, Score = %.3f\n", 
-                        combo_name, eval_result$high_salinity_rmse, eval_result$overall_r2, eval_result$low_r2, eval_result$high_salinity_mape,  eval_result$score))
+            cat(sprintf(
+               "%s: High Sal RMSE = %.3f | High MAPE = %.1f%% | Overall R² = %.3f | NSE = %.3f | Score = %.3f\n",
+               combo_name,
+               eval_result$high_salinity_rmse,
+               eval_result$high_salinity_mape,
+               eval_result$overall_r2,
+               eval_result$skill_metrics$nash_sutcliffe,
+               eval_result$score
+            ))
             
          }, error = function(e) {
             cat(sprintf("Error with combination %s: %s\n", combo_name, e$message))
@@ -118,8 +125,15 @@ test_predictor_combinations <- function(base_formula, predictor_list, data, max_
                
                results_list[[triplet_name]] <- eval_result
                
-               cat(sprintf("%s: High Sal RMSE = %.3f, Overall R2 = %.3f, Low R2 = %.3f, High Salinity MAPE = %.3f, Score = %.3f\n", 
-                           triplet_name, eval_result$high_salinity_rmse, eval_result$overall_r2, eval_result$low_r2, eval_result$high_salinity_mape,  eval_result$score))
+               cat(sprintf(
+                  "%s: High Sal RMSE = %.3f | High MAPE = %.1f%% | Overall R² = %.3f | NSE = %.3f | Score = %.3f\n",
+                  triplet_name,
+                  eval_result$high_salinity_rmse,
+                  eval_result$high_salinity_mape,
+                  eval_result$overall_r2,
+                  eval_result$skill_metrics$nash_sutcliffe,
+                  eval_result$score
+               ))
                
             }, error = function(e) {
                cat(sprintf("Error with triplet %s: %s\n", triplet_name, e$message))
@@ -145,19 +159,20 @@ test_predictor_combinations <- function(base_formula, predictor_list, data, max_
    scores <- sapply(results_list, function(x) x$score)
    ranked_indices <- order(scores, decreasing = TRUE)
    
+   # Return results
    return(list(
       models = models,
       results = results_list,
-      ranked_combinations = names(scores)[ranked_indices],
+      ranked_predictors = names(scores)[ranked_indices],
       best_combination = names(scores)[ranked_indices[1]],
       best_score = scores[ranked_indices[1]],
       summary_table = data.frame(
          Combination = names(scores)[ranked_indices],
          Score = scores[ranked_indices],
          High_Sal_RMSE = sapply(results_list[ranked_indices], function(x) x$high_salinity_rmse),
-         Overall_R2 = sapply(results_list[ranked_indices], function(x) x$overall_r2),
-         Low_R2 = sapply(results_list[ranked_indices], function(x) x$low_r2),
          High_Sal_MAPE = sapply(results_list[ranked_indices], function(x) x$high_salinity_mape),
+         Overall_R2 = sapply(results_list[ranked_indices], function(x) x$overall_r2),
+         NSE = sapply(results_list[ranked_indices], function(x) x$skill_metrics$nash_sutcliffe),
          stringsAsFactors = FALSE
       )
    ))

@@ -1,8 +1,22 @@
 # Function to calculate detection and reliability metrics
 calculate_detection_metrics <- function(observed, predicted, threshold) {
+   # Handle edge case of no valid data
+   valid_idx <- !is.na(observed) & !is.na(predicted)
+   if (sum(valid_idx) == 0) {
+      return(list(
+         hit_rate = 0, false_alarm_rate = 0.5, critical_success_index = 0,
+         probability_of_detection = 0, bias_score = NA, threat_score = 0,
+         true_skill_statistic = 0, true_positive = 0, false_positive = 0,
+         true_negative = 0, false_negative = 0
+      ))
+   }
+   
+   obs_clean <- observed[valid_idx]
+   pred_clean <- predicted[valid_idx]
+   
    # Binary classification for detection analysis
-   obs_binary <- observed > threshold
-   pred_binary <- predicted > threshold
+   obs_binary <- obs_clean > threshold
+   pred_binary <- pred_clean > threshold
    
    # Confusion matrix components
    true_positive <- sum(obs_binary & pred_binary, na.rm = TRUE)
@@ -10,29 +24,25 @@ calculate_detection_metrics <- function(observed, predicted, threshold) {
    true_negative <- sum(!obs_binary & !pred_binary, na.rm = TRUE)
    false_negative <- sum(obs_binary & !pred_binary, na.rm = TRUE)
    
-   # Calculate detection metrics
-   hit_rate <- ifelse(sum(obs_binary, na.rm = TRUE) > 0, 
-                      true_positive / sum(obs_binary, na.rm = TRUE), 0)
+   # Calculate detection metrics with safe divisions
+   hit_rate <- ifelse(sum(obs_binary) > 0, 
+                      true_positive / sum(obs_binary), 0)
    
-   false_alarm_rate <- ifelse(sum(!obs_binary, na.rm = TRUE) > 0,
-                              false_positive / sum(!obs_binary, na.rm = TRUE), 0)
+   false_alarm_rate <- ifelse(sum(!obs_binary) > 0,
+                              false_positive / sum(!obs_binary), 0)
    
-   # Critical Success Index (CSI) - accounts for both hits and false alarms
+   # Critical Success Index (CSI)
    csi <- ifelse((true_positive + false_positive + false_negative) > 0,
                  true_positive / (true_positive + false_positive + false_negative), 0)
    
-   # Probability of Detection (POD) - same as hit rate but more formal name
-   pod <- hit_rate
+   pod <- hit_rate  # Probability of Detection same as hit rate
    
-   # Bias score - ratio of predicted to observed events
-   bias_score <- ifelse(sum(obs_binary, na.rm = TRUE) > 0,
-                        sum(pred_binary, na.rm = TRUE) / sum(obs_binary, na.rm = TRUE), NA)
+   # Bias score
+   bias_score <- ifelse(sum(obs_binary) > 0,
+                        sum(pred_binary) / sum(obs_binary), NA)
    
-   # Threat Score (same as CSI)
-   threat_score <- csi
-   
-   # True Skill Statistic (TSS) - POD - FAR
-   tss <- pod - false_alarm_rate
+   threat_score <- csi  # Same as CSI
+   tss <- pod - false_alarm_rate  # True Skill Statistic
    
    return(list(
       hit_rate = hit_rate,

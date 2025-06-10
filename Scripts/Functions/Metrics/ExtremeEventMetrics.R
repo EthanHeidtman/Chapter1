@@ -7,19 +7,18 @@ extreme_event_metrics <- function(observed, predicted, threshold) {
    
    if (length(obs_clean) == 0) {
       return(list(rmse = NA, mae = NA, bias = NA, count = 0,
-                  mape = NA, peak_flow_criteria = NA, 
-                  hit_rate = NA, false_alarm_rate = NA, critical_success_index = NA,
-                  volume_error = NA))
+                  mape = NA, hit_rate = 0, false_alarm_rate = 0.5, 
+                  critical_success_index = 0, volume_error = 0))
    }
    
    # Subset to high salinity events for accuracy metrics
    high_idx <- obs_clean > threshold
+   high_count <- sum(high_idx)
    
-   if (sum(high_idx) == 0) {
+   if (high_count == 0) {
       return(list(rmse = NA, mae = NA, bias = NA, count = 0,
-                  mape = NA, peak_flow_criteria = NA,
-                  hit_rate = NA, false_alarm_rate = NA, critical_success_index = NA,
-                  volume_error = NA))
+                  mape = NA, hit_rate = 0, false_alarm_rate = 0.5,
+                  critical_success_index = 0, volume_error = 0))
    }
    
    obs_high <- obs_clean[high_idx]
@@ -30,16 +29,31 @@ extreme_event_metrics <- function(observed, predicted, threshold) {
    mae <- mean(abs(obs_high - pred_high))
    bias <- mean(pred_high - obs_high)
    
-   # Detection metrics using all data but threshold-based
-   mape_val <- mape(obs_high, pred_high)  # Only high salinity values
-   pfc_val <- peak_flow_criteria(obs_clean, pred_clean)  # All data for peak detection
-   tep_metrics <- threshold_exceedance_metrics(obs_clean, pred_clean, threshold)  # All data for detection
-   vol_error <- volume_error(obs_clean, pred_clean, threshold)
+   # MAPE with protection against zero division
+   mape_val <- if(all(obs_high > 0)) {
+      mean(abs((obs_high - pred_high) / obs_high)) * 100
+   } else {
+      NA
+   }
    
-   return(list(rmse = rmse, mae = mae, bias = bias, count = length(obs_high),
-               mape = mape_val, peak_flow_criteria = pfc_val,
-               hit_rate = tep_metrics$hit_rate, 
-               false_alarm_rate = tep_metrics$false_alarm_rate,
-               critical_success_index = tep_metrics$critical_success_index,
-               volume_error = vol_error))
+   # Get detection metrics using existing function
+   detection_metrics <- calculate_detection_metrics(obs_clean, pred_clean, threshold)
+   
+   # Volume error for high salinity events
+   if (high_count > 0) {
+      obs_volume <- sum(obs_high)
+      pred_volume <- sum(pred_high)
+      vol_error <- abs(pred_volume - obs_volume) / obs_volume
+   } else {
+      vol_error <- 0
+   }
+   
+   return(list(
+      rmse = rmse, mae = mae, bias = bias, count = high_count,
+      mape = mape_val,
+      hit_rate = detection_metrics$hit_rate,
+      false_alarm_rate = detection_metrics$false_alarm_rate,
+      critical_success_index = detection_metrics$critical_success_index,
+      volume_error = vol_error
+   ))
 }

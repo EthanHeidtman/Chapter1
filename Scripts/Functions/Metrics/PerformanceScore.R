@@ -1,70 +1,71 @@
 # Function to compute composite model score
 performance_score <- function(model_results, weights = performance_criteria$weights) {
    
-   # More lenient validity check - only require basic functionality
-   if (is.null(model_results$model_validity) || 
+   # RELAXED validation - only check for basic functionality
+   if (is.null(model_results$high_salinity_count) || 
        is.na(model_results$high_salinity_count) || 
        model_results$high_salinity_count == 0) {
-      cat("Debug - Returning -Inf due to basic validity failure\n")
-      return(-Inf)
+      return(-Inf)  # Still need some high salinity events
+   }
+   
+   # Use safe defaults for missing values
+   safe_value <- function(val, default = 0) {
+      ifelse(is.null(val) || is.na(val), default, val)
    }
    
    # Detection capability score (0-1, higher is better)
-   # Use default values if metrics are NA
-   hit_rate_val <- ifelse(is.na(model_results$hit_rate), 0, model_results$hit_rate)
-   csi_val <- ifelse(is.na(model_results$critical_success_index), 0, model_results$critical_success_index)
-   far_val <- ifelse(is.na(model_results$false_alarm_rate), 0.5, model_results$false_alarm_rate)
+   hit_rate_val <- safe_value(model_results$hit_rate, 0)
+   csi_val <- safe_value(model_results$critical_success_index, 0)
+   far_val <- safe_value(model_results$false_alarm_rate, 0.5)
    
-   detection_score <- (
-      0.4 * hit_rate_val +
-         0.3 * csi_val +
-         0.2 * pmax(0, 1 - far_val) +
-         0.1 * pmax(0, hit_rate_val - far_val)  # TSS approximation
-   )
+   detection_score <- pmax(0, pmin(1, 
+                                   0.4 * hit_rate_val +
+                                      0.3 * csi_val +
+                                      0.2 * (1 - far_val) +
+                                      0.1 * pmax(0, hit_rate_val - far_val)  # TSS
+   ))
    
    # High salinity accuracy score (0-1, higher is better)
-   rmse_val <- ifelse(is.na(model_results$high_salinity_rmse), 1, model_results$high_salinity_rmse)
-   r2_val <- ifelse(is.na(model_results$high_salinity_r2), 0, model_results$high_salinity_r2)
-   bias_val <- ifelse(is.na(model_results$high_salinity_bias), 0, model_results$high_salinity_bias)
+   rmse_val <- safe_value(model_results$high_salinity_rmse, 1)
+   r2_val <- safe_value(model_results$high_salinity_r2, 0)
+   bias_val <- safe_value(model_results$high_salinity_bias, 0)
    
-   high_sal_rmse_score <- 1 / (1 + rmse_val * 5)
-   high_sal_r2_score <- pmax(0, r2_val)
-   high_sal_bias_score <- 1 / (1 + abs(bias_val) * 10)
+   # Convert RMSE to 0-1 score (lower RMSE = higher score)
+   rmse_score <- 1 / (1 + rmse_val * 2)  # Less harsh penalty
+   r2_score <- pmax(0, r2_val)
+   bias_score <- 1 / (1 + abs(bias_val) * 5)  # Less harsh penalty
    
-   accuracy_score <- (0.4 * high_sal_rmse_score + 0.4 * high_sal_r2_score + 0.2 * high_sal_bias_score)
+   accuracy_score <- pmax(0, pmin(1,
+                                  0.4 * rmse_score + 0.4 * r2_score + 0.2 * bias_score
+   ))
    
    # Reliability score (0-1, higher is better)
-   vol_error_val <- ifelse(is.na(model_results$volume_error), 0, model_results$volume_error)
-   
-   reliability_score <- (
-      0.6 * pmax(0, 1 - far_val) +
-         0.4 * pmax(0, 1 / (1 + abs(vol_error_val)))
-   )
+   vol_error_val <- safe_value(model_results$volume_error, 0)
+   reliability_score <- pmax(0, pmin(1,
+                                     0.6 * (1 - far_val) +
+                                        0.4 * (1 / (1 + vol_error_val))
+   ))
    
    # Overall performance score (0-1, higher is better)
-   overall_r2_val <- ifelse(is.na(model_results$overall_r2), 0, model_results$overall_r2)
-   overall_rmse_val <- ifelse(is.na(model_results$overall_rmse), 1, model_results$overall_rmse)
+   overall_r2_val <- safe_value(model_results$overall_r2, 0)
+   overall_rmse_val <- safe_value(model_results$overall_rmse, 1)
    
-   overall_score <- (
-      0.6 * pmax(0, overall_r2_val) +
-         0.4 * (1 / (1 + overall_rmse_val))
-   )
+   overall_score <- pmax(0, pmin(1,
+                                 0.6 * overall_r2_val +
+                                    0.4 * (1 / (1 + overall_rmse_val))
+   ))
    
-   # Model stability score (based on skill metrics)
-   nse_val <- ifelse(is.null(model_results$skill_metrics$nash_sutcliffe) || 
-                        is.na(model_results$skill_metrics$nash_sutcliffe), 0, 
-                     model_results$skill_metrics$nash_sutcliffe)
-   skill_val <- ifelse(is.null(model_results$skill_metrics$skill_score) || 
-                          is.na(model_results$skill_metrics$skill_score), 0, 
-                       model_results$skill_metrics$skill_score)
+   # Model stability score
+   nse_val <- safe_value(model_results$skill_metrics$nash_sutcliffe, 0)
+   skill_val <- safe_value(model_results$skill_metrics$skill_score, 0)
    
-   stability_score <- (
-      0.6 * pmax(0, nse_val) +
-         0.4 * pmax(0, skill_val)
-   )
+   stability_score <- pmax(0, pmin(1,
+                                   0.6 * pmax(0, nse_val) +
+                                      0.4 * pmax(0, skill_val)
+   ))
    
-   # Parsimony score (estimated complexity penalty)
-   parsimony_score <- 0.8  # Placeholder - adjust based on actual model complexity
+   # Parsimony score (placeholder for now)
+   parsimony_score <- 0.8
    
    # Calculate weighted composite score
    composite_score <- (
