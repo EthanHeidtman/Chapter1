@@ -1,6 +1,6 @@
-
 # Function to perform model evaluation
-evaluate_model <- function(model, data, threshold, model_type = "linear") {
+evaluate_model <- function(model, data, threshold = performance_criteria$thresholds$high_salinity_threshold, 
+                           model_type = "linear") {
    
    # Get predictions based on model type
    predicted <- get_model_predictions(model, data, model_type)
@@ -27,20 +27,22 @@ evaluate_model <- function(model, data, threshold, model_type = "linear") {
          false_alarm_rate = NA,
          critical_success_index = NA,
          volume_error = NA,
-         total_observations = 0
+         skill_metrics = list(nash_sutcliffe = NA, skill_score = NA),
+         total_observations = 0,
+         model_validity = FALSE
       ))
    }
    
-   # Overall metrics
+   # Overall performance metrics
    overall_rmse <- sqrt(mean((obs_clean - pred_clean)^2))
    weighted_rmse_val <- weighted_rmse(obs_clean, pred_clean)
    
    # Overall R-squared
    tss <- sum((obs_clean - mean(obs_clean))^2)
    rss <- sum((obs_clean - pred_clean)^2)
-   overall_r2 <- 1 - rss/tss
+   overall_r2 <- ifelse(tss == 0, 0, 1 - rss/tss)
    
-   # High salinity metrics
+   # Use extreme_event_metrics function for high salinity analysis
    high_metrics <- extreme_event_metrics(obs_clean, pred_clean, threshold)
    
    # R-squared for high salinity events
@@ -50,28 +52,44 @@ evaluate_model <- function(model, data, threshold, model_type = "linear") {
       pred_high <- pred_clean[high_idx]
       tss_high <- sum((obs_high - mean(obs_high))^2)
       rss_high <- sum((obs_high - pred_high)^2)
-      high_r2 <- 1 - rss_high/tss_high
+      high_r2 <- ifelse(tss_high == 0, 0, 1 - rss_high/tss_high)
    } else {
       high_r2 <- NA
    }
    
-   # R-squared for low salinity events
+   # R-squared for low salinity events  
    low_idx <- obs_clean < threshold
    if (sum(low_idx) > 1) {
       obs_low <- obs_clean[low_idx]
       pred_low <- pred_clean[low_idx]
       tss_low <- sum((obs_low - mean(obs_low))^2)
       rss_low <- sum((obs_low - pred_low)^2)
-      low_r2 <- 1 - rss_low/tss_low
+      low_r2 <- ifelse(tss_low == 0, 0, 1 - rss_low/tss_low)
    } else {
       low_r2 <- NA
    }
    
+   # Skill metrics
+   skill_metrics <- calculate_skill_metrics(obs_clean, pred_clean)
+   
+   # Model validity check - fixed logical issue
+   model_validity <- (
+      !is.na(high_metrics$count) &&
+         high_metrics$count >= performance_criteria$thresholds$min_high_sal_count &&
+         !is.na(high_metrics$hit_rate) &&
+         high_metrics$hit_rate >= performance_criteria$thresholds$min_hit_rate &&
+         !is.na(high_metrics$false_alarm_rate) &&
+         high_metrics$false_alarm_rate <= performance_criteria$thresholds$acceptable_far
+   )
+   
    return(list(
+      # Overall metrics
       overall_rmse = overall_rmse,
       weighted_rmse = weighted_rmse_val,
       overall_r2 = overall_r2,
       low_r2 = low_r2,
+      
+      # High salinity metrics
       high_salinity_rmse = high_metrics$rmse,
       high_salinity_mae = high_metrics$mae,
       high_salinity_bias = high_metrics$bias,
@@ -83,6 +101,13 @@ evaluate_model <- function(model, data, threshold, model_type = "linear") {
       false_alarm_rate = high_metrics$false_alarm_rate,
       critical_success_index = high_metrics$critical_success_index,
       volume_error = high_metrics$volume_error,
-      total_observations = length(obs_clean)
+      
+      # Additional enhanced metrics
+      skill_metrics = skill_metrics,
+      
+      # Meta information
+      total_observations = length(obs_clean),
+      high_salinity_fraction = high_metrics$count / length(obs_clean),
+      model_validity = model_validity
    ))
 }

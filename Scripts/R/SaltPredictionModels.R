@@ -66,20 +66,62 @@ model_data <- data %>%
    filter(!is.na(Salinity)) %>%                              # Keep only times with available salinity data
    
    # =======================================================================================
-   # PART 0: BASIC TIDE TRANSFORMATIONS TO TEST
+   # PART 0: BASIC TIDE FEATURES
    # =======================================================================================
    
    mutate(
       
-      TideRate = c(NA, diff(Tide) / as.numeric(diff(DateTime), units = "hours")),
+      # Lagged Tide Features
       LagTide1 = lag(Tide, 1),
       LagTide2 = lag(Tide, 2),
-      LagTide4 = lag(Tide, 4)
+      LagTide4 = lag(Tide, 4),
+      
+      # Tide Rate Features
+      TideRate = c(NA, diff(Tide) / as.numeric(diff(DateTime), units = "hours")),
+      TideRate = zoo::rollmean(TideRate, k = 3, fill = NA, align = "center"),   # Smooth the tidal rate
+      
+      # Flood vs Ebb Tide
+      # Positive velocity = flood tide (incoming, brings salt)
+      # Negative velocity = ebb tide (outgoing, flushes salt)
+      TidePhase = case_when(
+         TideRate > 0.01 ~ 'Flood',
+         TideRate < - 0.01 ~ 'Ebb',
+         TRUE ~ 'Slack'
+      ),
+      
+      # Tidal Duration Metrics (consecutive hours of flood tide)
+      FloodIndicator = ifelse(TidePhase == 'Flood', 1, 0),
+      ConsecFloodHours = ave(FloodIndicator, cumsum(FloodIndicator == 0), FUN = cumsum),
+      ConsecFloodHours = ifelse(FloodIndicator == 0, 0, ConsecFloodHours),
+      
+      # Tidal Range Metrics
+      TideRange6 = rollapply(Tide, width = 6, 
+                             FUN = function(x) max(x, na.rm = TRUE) - min(x, na.rm = TRUE),
+                             fill = NA, align = "right"),
+      TideRange12 = rollapply(Tide, width = 12,
+                              FUN = function(x) max(x, na.rm = TRUE) - min(x, na.rm = TRUE),
+                              fill = NA, align = "right"),
+      TideRange24 = rollapply(Tide, width = 24,
+                              FUN = function(x) max(x, na.rm = TRUE) - min(x, na.rm = TRUE),
+                              fill = NA, align = "right"),
+      
+      # Tide-Flow Interactions
+      discharge24 = zoo::rollmean(Discharge, k = 24, fill = NA, align = "right"),
+      low_flow_threshold = quantile(discharge24, 0.25, na.rm = TRUE),
+      is_low_flow = discharge24 < low_flow_threshold,
+      LowFlowTideRange = ifelse(is_low_flow, TideRange12, 0),
+      
+      # Weighted Tidal Range Metric
+      flow_weight = 1 / (discharge24 / median(discharge24, na.rm = TRUE)),
+      WeightedTideRange12 = TideRange12 * pmin(flow_weight, 5), # cap at 5x weight
+      
       
    ) %>%
    
+   select(-flow_weight, -is_low_flow, -low_flow_threshold, -discharge24, -FloodIndicator) %>% # Remove unnecessary variables
+   
    # =======================================================================================
-   # PART 1: BASIC DISCHARGE FEATURES (BASED ON THE BEST PERFORMERS)
+   # PART 1: BASIC DISCHARGE FEATURES
    # =======================================================================================
    mutate(
       
@@ -142,7 +184,7 @@ model_data <- data %>%
       # Define the natural flow regime
       InflowsPercentile = percent_rank(Inflows),
       BasicRegime = case_when(
-         InflowsPercentile < 0.2 ~ "Low",   # True hydrologic stress
+         InflowsPercentile < 0.2 ~ "Low",     # True hydrologic stress
          InflowsPercentile > 0.8 ~ "High",    # High natural flows
          TRUE ~ "Normal"),
       
@@ -273,11 +315,6 @@ model_data <- data %>%
       # ====== Stress-Dependent Latent Flow (based on previous section) ======== #
       StressLatent = case_when(
          
-         # # CRITICAL STRESS: the system is primed for saltwater intrusion, so we emphasize sustained natural flows
-         # StressLevel == "Critical" ~ 
-         #    pmin(0.15 * RollingPowDischarge10 + 0.85 * RollingPowInflows2,  # Heavily natural
-         #         0.25 * PowLagDischarge12 + 0.75 * PowLagInflows48),        # Long-lag natural
-         
          #  HIGH STRESS: moderately emphasize natural flows
          StressLevel == "High" ~ 
             0.3 * RollingPowDischarge10 + 0.7 * RollingPowInflows2,
@@ -326,7 +363,7 @@ model_data <- model_data %>%
             contains(c('Threshold', 
                      'Stress', 
                      'Since', 
-                     'Consecutive', 
+                     'Consec', 
                      'Latent', 
                      'Is')),
             .after = Salinity) %>%                          # Organize all of the columns
@@ -334,7 +371,7 @@ model_data <- model_data %>%
             where(is.character), contains('Threshold'), .after = Inflows)
    
 # Normalize Predictors and Add to model_data
-preds_to_normalize <- colnames(model_data)[19 : ncol(model_data)] # Starting from the discharge column
+preds_to_normalize <- colnames(model_data)[20 : ncol(model_data)] # Starting from the discharge column
 
 # Apply the normalization function
 normalized_predictors <- normalize_multiple_predictors(model_data, preds_to_normalize)
@@ -347,7 +384,9 @@ norm_params <- normalized_predictors$parameters
 predictor_config <- list(
    
    # Tide predictors (will always include the best one in subsequent models)
-   tide = c("Norm_Tide", "Norm_TideRate", 'Norm_LagTide1', 'Norm_LagTide2', 'Norm_LagTide4'),
+   tide = c("Norm_Tide", "Norm_TideRate", 'Norm_LagTide1', 'Norm_LagTide2', 'Norm_LagTide4', 
+            'Norm_TideRange6', 'Norm_TideRange12', 'Norm_TideRange24', 'Norm_LowFlowTideRange',
+            'Norm_WeightedTideRange12'),
    
    # Discharge predictors (test systematically)
    discharge_lag = c("Norm_PowLagDischarge1", "Norm_PowLagDischarge3", "Norm_PowLagDischarge6", 
@@ -377,36 +416,35 @@ predictor_config <- list(
                          "Norm_CumulativeStress_30day_Marietta", "DaysSinceHighFlow"),
    
    # Seasonal/temporal
-   temporal = c("SalinitySeason", "DayOfYear"),
+   temporal = c("SalinitySeason", "DayOfYear")
    
-   # # Pre-defined interaction candidates (based on physical understanding)
-   # interactions = list(
-   #    "discharge_tide" = c("Norm_PowLagDischarge12", "Norm_Tide"),
-   #    "inflow_tide" = c("Norm_RollingPowInflows2", "Norm_Tide"),
-   #    "discharge_stress" = c("Norm_PowLagDischarge12", "IsHighStress"),
-   #    "discharge_season" = c("Norm_PowLagDischarge12", "SalinitySeason"),
-   #    "tide_season" = c("Norm_Tide", "SalinitySeason")
-   # )
 )
 
-# Define performance criteria and weights
+# Define performance criteria with updated weights
 performance_criteria <- list(
    weights = c(
-      high_sal_rmse = 0.3,      # Primary concern: high salinity accuracy
-      high_sal_mape = 0.1,      # Mean absolute percentage error
-      high_sal_r2 = 0.2,        # High salinity explanation
-      overall_r2 = 0.2,         # Overall model fit
-      overall_rmse = 0.1,       # Overall accuracy
-      parsimony = 0.1           # Prefer simpler models
+      # High salinity event metrics (70% of total weight)
+      "high_sal_detection" = 0.30,      # Detection capability (hit rate, CSI)
+      "high_sal_accuracy" = 0.25,       # Accuracy of high salinity predictions (RMSE, bias)
+      "high_sal_reliability" = 0.15,    # Reliability (false alarm control)
+      
+      # Overall model performance (25% of total weight)
+      "overall_performance" = 0.15,     # General model fit
+      "model_stability" = 0.10,         # Consistent performance across conditions
+      
+      # Model characteristics (5% of total weight)
+      "parsimony" = 0.05                # Model complexity penalty
    ),
    
-   # Minimum performance thresholds
    thresholds = list(
-      min_high_sal_count = 20,    # Need sufficient high salinity events
-      min_overall_r2 = 0.3,       # Minimum explanatory power
-      max_predictors = 15         # Avoid overfitting
+      min_high_sal_count = 10,          # Minimum high salinity events for valid evaluation
+      high_salinity_threshold = 0.3,    # Threshold for "high" salinity events
+      acceptable_far = 0.15,            # Maximum acceptable false alarm rate
+      min_hit_rate = 0.70              # Minimum acceptable hit rate for high events
    )
 )
+
+results <- model_builder(model_data, salinity_threshold)
 ############################ GAM AND THRESHOLD-BASED MODELS ######################
 
 # =======================================================================================
@@ -684,7 +722,7 @@ model12 <- model12$sample(
 
 
 
-test <- get_predictions(results[["final_best_model"]], model_data)
+test <- get_predictions(results[["model"]], model_data)
 high_events <- test %>% 
    filter(is_high) %>% 
    arrange(date_time)
@@ -713,22 +751,38 @@ if(nrow(high_events) > 0) {
 
 
 ggplot(test, aes(x = date_time)) +
-   geom_line(aes(y = observed, color = 'Observed')) + 
-   geom_line(aes(y = predicted, color = 'Predicted')) + 
-   scale_color_manual(name = NULL, values = c('Observed' = 'black', 'Predicted' = 'blue')) + 
-   scale_x_datetime(limits = c(as_datetime('2016-02-01'), as_datetime('2016-12-31')), date_labels = '%b-%Y') + 
-   theme_minimal() + 
-   labs(x = 'Date', y = 'Salinity (ppt)', title = paste('Best Model:', results[["final_best_formula"]])) + 
+   geom_line(aes(y = observed, color = 'Observed'), na.rm = TRUE, linewidth = 0.5) + 
+   geom_line(aes(y = predicted, color = 'Predicted'), na.rm = TRUE, linewidth = 1.1) + 
+   geom_point(data = filter(test, observed >= 1), aes(y = observed, color = 'Above Threshold'), na.rm = TRUE, size = 2) +
+   scale_color_manual(name = NULL, values = c('Observed' = 'black', 'Predicted' = 'blue', 'Above Threshold' = 'red')) + 
+   scale_x_datetime(limits = c(as_datetime('2024-02-28'), as_datetime('2024-12-31')), date_labels = '%b-%Y') + 
+   theme_bw() + 
+   #labs(x = 'Date', y = 'Salinity (ppt)', title = paste('2016 Best Model:\n', results[["final_best_formula"]])) + 
+   #labs(x = 'Date', y = 'Salinity (ppt)', title = '2015 Best Model: Salinity ~ 4hrTideLag + 2WeekRollingDischarge + 10DayRollingInflow') +
    ylim(0, 2) + 
-   theme(legend.title = element_text(size = 10))
+   theme(plot.title = element_text(size = 16),
+         legend.text = element_text(size = 14), 
+         axis.text = element_text(size = 13),
+         axis.title = element_text(size = 14)) 
+ggsave('2015.png', p1, path = '~/Downloads', dpi = 700, height = 8, width = 14)
+ggsave('2016.png', p1, path = '~/Downloads', dpi = 700, height = 8, width = 14)
 
 
+quick_correlation <- function(data, pred1 = "Norm_RollingPowDischarge14", pred2 = "Norm_StressHours_30day_Marietta") {
+   cor_val <- cor(data[[pred1]], data[[pred2]], use = "complete.obs")
+   cat(sprintf("Correlation between %s and %s: %.3f\n", pred1, pred2, cor_val))
+   return(cor_val)
+}
 
+quick_correlation(model_data)
 
+correlation_results <- analyze_predictor_correlation(model_data)
+print(correlation_results$plots$scatter_salinity)
 
-
-
-
-
+plots <- create_cleaner_scatter(model_data)
+print(plots$hexbin)           # Shows data density
+print(plots$extreme_events)   # Highlights high salinity events
+print(plots$october_2016)     # Focuses on Oct 2016
+print(plots$contour_surface)  # Shows salinity surface
 
 

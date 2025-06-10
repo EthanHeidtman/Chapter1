@@ -5,102 +5,99 @@ model_builder <- function(data, salinity_threshold) {
    cat("STARTING SYSTEMATIC MODEL BUILDING PROCESS\n")
    cat("==========================================\n")
    
-   empty_formula <- 'Salinity ~'
+   # Initialize
+   current_formula <- 'Salinity ~'
+   current_predictors <- character(0)
    
    # Stage 0: Test tide predictors
-   stage0_tides <- test_predictor_group(base_formula = empty_formula, predictor_config$tide, data, 'tide')
+   stage0_tides <- test_predictor_group(current_formula, predictor_config$tide, data, 'tide')
    
    if (!is.na(stage0_tides$best_predictor)) {
-      base_formula <- paste(empty_formula, stage0_tides$best_predictor)
-   } else {
-      base_formula <- empty_formula
+      current_predictors <- c(current_predictors, stage0_tides$best_predictor)
+      current_formula <- paste("Salinity ~", paste(current_predictors, collapse = " + "))
+      cat(sprintf("Added: %s\n", stage0_tides$best_predictor))
    }
-   
-   cat(sprintf("Base formula for subsequent stages: %s\n", base_formula))
+   cat(sprintf("Current formula: %s\n", current_formula))
    
    # Stage 1: Test discharge lag predictors
-   stage1_discharge_lag <- test_predictor_group(base_formula, predictor_config$discharge_lag, data, "discharge_lag")
+   stage1_discharge_lag <- test_predictor_group(current_formula, predictor_config$discharge_lag, data, "discharge_lag")
+   
+   if (!is.na(stage1_discharge_lag$best_predictor)) {
+      current_predictors <- c(current_predictors, stage1_discharge_lag$best_predictor)
+      current_formula <- paste("Salinity ~", paste(current_predictors, collapse = " + "))
+      cat(sprintf("Added: %s\n", stage1_discharge_lag$best_predictor))
+   }
+   cat(sprintf("Current formula: %s\n", current_formula))
    
    # Stage 2: Test discharge rolling predictors
-   stage2_discharge_rolling <- test_predictor_group(base_formula, predictor_config$discharge_rolling, data, "discharge_rolling")
+   stage2_discharge_rolling <- test_predictor_group(current_formula, predictor_config$discharge_rolling, data, "discharge_rolling")
+   
+   if (!is.na(stage2_discharge_rolling$best_predictor)) {
+      current_predictors <- c(current_predictors, stage2_discharge_rolling$best_predictor)
+      current_formula <- paste("Salinity ~", paste(current_predictors, collapse = " + "))
+      cat(sprintf("Added: %s\n", stage2_discharge_rolling$best_predictor))
+   }
+   cat(sprintf("Current formula: %s\n", current_formula))
    
    # Stage 3: Test lagged inflow predictors
-   stage3_inflow_lag <- test_predictor_group(base_formula, predictor_config$inflow_lag, data, "inflow_lag")
+   stage3_inflow_lag <- test_predictor_group(current_formula, predictor_config$inflow_lag, data, "inflow_lag")
+   
+   if (!is.na(stage3_inflow_lag$best_predictor)) {
+      current_predictors <- c(current_predictors, stage3_inflow_lag$best_predictor)
+      current_formula <- paste("Salinity ~", paste(current_predictors, collapse = " + "))
+      cat(sprintf("Added: %s\n", stage3_inflow_lag$best_predictor))
+   }
+   cat(sprintf("Current formula: %s\n", current_formula))
    
    # Stage 4: Test rolling inflow predictors
-   stage4_inflow_rolling <- test_predictor_group(base_formula, predictor_config$inflow_rolling, data, "inflow_rolling")
+   stage4_inflow_rolling <- test_predictor_group(current_formula, predictor_config$inflow_rolling, data, "inflow_rolling")
+   
+   if (!is.na(stage4_inflow_rolling$best_predictor)) {
+      current_predictors <- c(current_predictors, stage4_inflow_rolling$best_predictor)
+      current_formula <- paste("Salinity ~", paste(current_predictors, collapse = " + "))
+      cat(sprintf("Added: %s\n", stage4_inflow_rolling$best_predictor))
+   }
+   cat(sprintf("Current formula: %s\n", current_formula))
    
    # Stage 5: Test latent flow predictors
-   stage5_latent_flow <- test_predictor_group(base_formula, predictor_config$latent_flow, data, 'latent_flow')
+   stage5_latent_flow <- test_predictor_group(current_formula, predictor_config$latent_flow, data, 'latent_flow')
    
-   # Stage 5: Test combinations of best flow predictors
-   best_flow_predictors <- c(
-      stage0_tides$best_predictor,
-      stage1_discharge_lag$best_predictor,
-      stage2_discharge_rolling$best_predictor,
-      stage3_inflow_lag$best_predictor,
-      stage4_inflow_rolling$best_predictor,
-      stage5_latent_flow$best_predictor
-   )
-   
-   # Remove any NA values
-   best_flow_predictors <- best_flow_predictors[!is.na(best_flow_predictors)]
-   
-   stage5_combinations <- test_predictor_combinations(base_formula, best_flow_predictors, data)
-   
-   # Determine best formula after flow combinations
-   if (!is.na(stage5_combinations$best_combination)) {
-      best_flow_formula <- stage5_combinations$results[[stage5_combinations$best_combination]]$formula
-   } else {
-      # Fall back to base formula with best individual predictor
-      if (length(best_flow_predictors) > 0) {
-         best_flow_formula <- paste(base_formula, "+", best_flow_predictors[1])
-      } else {
-         best_flow_formula <- base_formula
-      }
+   if (!is.na(stage5_latent_flow$best_predictor)) {
+      current_predictors <- c(current_predictors, stage5_latent_flow$best_predictor)
+      current_formula <- paste("Salinity ~", paste(current_predictors, collapse = " + "))
+      cat(sprintf("Added: %s\n", stage5_latent_flow$best_predictor))
    }
-   
-   cat(sprintf("Best flow formula: %s\n", best_flow_formula))
+   cat(sprintf("Current formula: %s\n", current_formula))
    
    # Stage 6: Add binary stress predictors to best combination
-   stage6_stress <- test_predictor_group(best_flow_formula, predictor_config$stress_binary, data, "stress_binary")
+   stage6_stress <- test_predictor_group(current_formula, predictor_config$stress_binary, data, "stress_binary")
    
-   # Stage 7: Add continuous stress predictors to the best combination
-   stage7_stress <- test_predictor_group(best_flow_formula, predictor_config$stress_continuous, data, "stress_continuous")
-   
-   # Stage 8: Test combinations of best stress predictors with best flow combination
-   best_stress_predictors <- c(
-      stage6_stress$best_predictor,
-      stage7_stress$best_predictor
-   )
-   
-   best_stress_predictors <- best_stress_predictors[!is.na(best_stress_predictors)]
-   stage8_stress_combinations <- test_predictor_combinations(best_flow_formula, best_stress_predictors, data)
-  
-   # Determine best formula after stress combinations
-   if (!is.na(stage8_stress_combinations$best_combination)) {
-      best_with_stress_formula <- stage8_stress_combinations$results[[stage8_stress_combinations$best_combination]]$formula
-   } else {
-      # Fall back to adding best individual stress predictor
-      if (length(best_stress_predictors) > 0) {
-         best_with_stress_formula <- paste(best_flow_formula, "+", best_stress_predictors[1])
-      } else {
-         best_with_stress_formula <- best_flow_formula
-      }
+   if (!is.na(stage6_stress$best_predictor)) {
+      current_predictors <- c(current_predictors, stage6_stress$best_predictor)
+      current_formula <- paste("Salinity ~", paste(current_predictors, collapse = " + "))
+      cat(sprintf("Added: %s\n", stage6_stress$best_predictor))
    }
    
-   # Stage 9: Add temporal predictors
-   stage9_temporal <- test_predictor_group(best_with_stress_formula, predictor_config$temporal, data, "temporal")
+   # Stage 7: Add continuous stress predictors to the best combination
+   stage7_stress <- test_predictor_group(current_formula, predictor_config$stress_continuous, data, "stress_continuous")
    
-   # # Determine best formula after temporal predictors
-   # if (!is.na(stage9_temporal$best_predictor)) {
-   #    best_main_effects_formula <- stage9_temporal$results[[stage9_temporal$best_predictor]]$formula
-   # } else {
-   #    best_main_effects_formula <- best_with_stress_formula
-   # }
+   if (!is.na(stage7_stress$best_predictor)) {
+      current_predictors <- c(current_predictors, stage7_stress$best_predictor)
+      current_formula <- paste("Salinity ~", paste(current_predictors, collapse = " + "))
+      cat(sprintf("Added: %s\n", stage7_stress$best_predictor))
+   }
+
+   # Stage 8: Add temporal predictors
+   stage8_temporal <- test_predictor_group(current_formula, predictor_config$temporal, data, "temporal")
    
-   # Collect all best predictors for systematic interaction testing
-   all_best_predictors <- c(
+   if (!is.na(stage8_temporal$best_predictor)) {
+      current_predictors <- c(current_predictors, stage8_temporal$best_predictor)
+      current_formula <- paste("Salinity ~", paste(current_predictors, collapse = " + "))
+      cat(sprintf("Added: %s\n", stage8_temporal$best_predictor))
+   }
+   
+   # Stage 9: Test interactions between all of the best predictors
+   best_predictors <- c(
       stage0_tides$best_predictor,
       stage1_discharge_lag$best_predictor,
       stage2_discharge_rolling$best_predictor,
@@ -109,96 +106,127 @@ model_builder <- function(data, salinity_threshold) {
       stage5_latent_flow$best_predictor,
       stage6_stress$best_predictor,
       stage7_stress$best_predictor,
-      stage8_stress_combinations$best_predictor,
-      stage9_temporal$best_predictor
+      stage8_temporal$best_predictor
    )
    
    # Remove NAs and get unique predictors
-   all_best_predictors <- unique(all_best_predictors[!is.na(all_best_predictors)])
+   best_predictors <- unique(best_predictors[!is.na(best_predictors)])
    
-   # All of the best predictors
-   main_effects_formula <- paste("Salinity ~", paste(all_best_predictors, collapse = " + "))
+   stage9_interactions <- test_interactions(current_formula, best_predictors, data)
    
-   cat(sprintf("Main effects formula for interaction testing: %s\n", main_effects_formula))
-   
-   # Stage 10: Test interactions
-   #stage10_interactions <- test_interactions(main_effects_formula, predictor_config$interactions, data)
-   stage10_interactions <- test_interactions(main_effects_formula, all_best_predictors, data)
-   
-   # Determine final best model with proper fallback logic
-   final_best_model <- NULL
-   final_best_formula <- main_effects_formula
-   final_best_score <- -Inf
-   # Create a list of all candidates with their scores
-   candidates <- list()
-   
-   if (!is.na(stage10_interactions$best_interaction)) {
-      candidates[["interactions"]] <- list(
-         model = stage10_interactions$models[[stage10_interactions$best_interaction]],
-         formula = stage10_interactions$results[[stage10_interactions$best_interaction]]$formula,
-         score = stage10_interactions$best_score
-      )
+   if (!is.na(stage9_interactions$best_interaction)) {
+      current_predictors <- c(current_predictors, stage9_interactions$best_interaction)
+      current_formula <- paste("Salinity ~", paste(current_predictors, collapse = " + "))
+      cat(sprintf("Added: %s\n", stage9_interactions$best_interaction))
    }
    
-   if (!is.na(stage9_temporal$best_predictor)) {
-      candidates[["temporal"]] <- list(
-         model = stage9_temporal$models[[stage9_temporal$best_predictor]],
-         formula = stage9_temporal$results[[stage9_temporal$best_predictor]]$formula,
-         score = stage9_temporal$best_score
-      )
+   # Store sequential results
+   sequential_formula <- current_formula
+   sequential_predictors <- current_predictors
+   cat(sprintf("\nBest flow formula after sequential addition: %s\n", sequential_formula))
+   
+   # Stage 10: Test combinations of best flow predictors
+   if (!is.na(stage9_interactions$best_interaction)) {
+      best_predictors <- c(best_predictors, stage9_interactions$best_interaction)
    }
    
-   if (!is.na(stage8_stress_combinations$best_combination)) {
-      candidates[["stress_combo"]] <- list(
-         model = stage8_stress_combinations$models[[stage8_stress_combinations$best_combination]],
-         formula = stage8_stress_combinations$results[[stage8_stress_combinations$best_combination]]$formula,
-         score = stage8_stress_combinations$best_score
-      )
-   }
+   # Remove any NA values
+   best_predictors <- unique(best_predictors[!is.na(best_predictors)])
    
-   if (!is.na(stage5_combinations$best_combination)) {
-      candidates[["flow_combo"]] <- list(
-         model = stage5_combinations$models[[stage5_combinations$best_combination]],
-         formula = stage5_combinations$results[[stage5_combinations$best_combination]]$formula,
-         score = stage5_combinations$best_score
-      )
-   }
+   # Initialize final variables with sequential results
+   final_formula <- sequential_formula
+   final_predictors <- sequential_predictors
+   final_score <- NA
    
-   # Find the best candidate
-   if (length(candidates) > 0) {
-      best_candidate <- names(candidates)[which.max(sapply(candidates, function(x) x$score))]
-      final_best_model <- candidates[[best_candidate]]$model
-      final_best_formula <- candidates[[best_candidate]]$formula
-      final_best_score <- candidates[[best_candidate]]$score
+   # Test if the full sequential model is better than combined models
+   if (length(best_predictors) > 1) {
+      stage10_combinations <- test_predictor_combinations(base_formula = "Salinity ~", best_predictors, data)
       
-      cat(sprintf("Selected final model from stage: %s\n", best_candidate))
+      if (!is.na(stage10_combinations$best_combination)) {
+         combo_formula <- stage10_combinations$results[[stage10_combinations$best_combination]]$formula
+         combo_score <- stage10_combinations$best_score
+         
+         # Test current sequential formula score
+         # Check for weird interaction names
+         clean_sequential_formula <- gsub('_x_', ' * ', sequential_formula)
+         
+         sequential_model <- lm(as.formula(clean_sequential_formula), data = data)
+         sequential_result <- evaluate_model(sequential_model, data, salinity_threshold, "linear")
+         sequential_result$model <- sequential_model
+         sequential_result$formula <- clean_sequential_formula
+         sequential_result$score <- performance_score(sequential_result)
+         sequential_score <- sequential_result$score
+         
+         cat(sprintf("Sequential score: %.3f, Combination score: %.3f\n", sequential_score, combo_score))
+         
+         # Choose the better model
+         if (combo_score > sequential_score) {
+            final_formula <- combo_formula
+            final_predictors <- trimws(strsplit(stage10_combinations[['best_combination']], "\\+")[[1]])
+            final_score <- combo_score
+            cat(sprintf("Combination model is better! Final formula: %s\n", final_formula))
+         } else {
+            final_formula <- clean_sequential_formula
+            final_predictors <- sequential_predictors
+            final_score <- sequential_score
+            cat("Sequential model is better, keeping it.\n")
+         }
+      } else {
+         # No valid combinations found, use sequential model
+         final_formula <- gsub('_x_', ' * ', sequential_formula)
+         final_predictors <- sequential_predictors
+         cat("No better combinations found, using sequential model.\n")
+      }
    } else {
-      cat("Warning: No combinations performed well, using fallback model\n")
+      # Not enough predictors for combination testing
+      final_formula <- gsub('_x_', ' * ', sequential_formula)
+      final_predictors <- sequential_predictors
+      cat("Not enough predictors for combination testing, using sequential model.\n")
+   }
+   
+   # Build and evaluate final model
+   cat(sprintf("\nFinal formula: %s\n", final_formula))
+   final_model <- lm(as.formula(final_formula), data = data)
+   final_evaluation <- evaluate_model(final_model, data, salinity_threshold, 'linear')
+   
+   # Calculate final score if not already done
+   if (is.na(final_score)) {
+      final_score <- performance_score(final_evaluation)
    }
    
    # Compile final results
    final_results <- list(
-      stage0_tides = stage0_tides,
-      stage1_discharge_lag = stage1_discharge_lag,
-      stage2_discharge_rolling = stage2_discharge_rolling,
-      stage3_inflow_lag = stage3_inflow_lag,
-      stage4_inflow_rolling = stage4_inflow_rolling,
-      stage5_combinations = stage5_combinations,
-      stage6_stress_binary = stage6_stress,
-      stage7_stress_continuous = stage7_stress,
-      stage8_stress_combinations = stage8_stress_combinations,
-      stage9_temporal = stage9_temporal,
-      stage10_interactions = stage10_interactions,
-      
-      # Final best model
-      final_best_model = final_best_model,
-      final_best_formula = final_best_formula,
-      final_best_score = final_best_score
+      model = final_model,
+      formula = final_formula,
+      predictors = final_predictors,
+      evaluation = final_evaluation,
+      score = final_score,
+      stage_results = list(
+         tide = stage0_tides,
+         discharge_lag = stage1_discharge_lag,
+         discharge_rolling = stage2_discharge_rolling,
+         inflow_lag = stage3_inflow_lag,
+         inflow_rolling = stage4_inflow_rolling,
+         latent_flow = stage5_latent_flow,
+         stress_binary = stage6_stress,
+         stress_continuous = stage7_stress,
+         temporal = stage8_temporal,
+         interactions = stage9_interactions,
+         combinations = if(exists("stage10_combinations")) stage10_combinations else NULL
+      ),
+      summary = list(
+         total_predictors = length(final_predictors),
+         final_score = final_score,
+         model_type = "linear",
+         build_method = if(exists("stage10_combinations") && !is.na(stage10_combinations$best_combination) && final_score == stage10_combinations$best_score) "combination" else "sequential"
+      )
    )
    
-   cat("\n=== FINAL RESULTS ===\n")
-   cat(sprintf("Best final model formula: %s\n", final_results$final_best_formula))
-   cat(sprintf("Best final score: %.3f\n", final_results$final_best_score))
+   cat("\n==========================================\n")
+   cat("MODEL BUILDING PROCESS COMPLETED\n")
+   cat(sprintf("Final score: %.3f\n", final_score))
+   cat(sprintf("Total predictors: %d\n", length(final_predictors)))
+   cat("==========================================\n")
    
    return(final_results)
 }

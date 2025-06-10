@@ -51,9 +51,16 @@ test_predictor_combinations <- function(base_formula, predictor_list, data, max_
    # Test pairwise combinations
    for (i in 1 : (length(valid_predictors) - 1)) {
       for (j in (i + 1) : length(valid_predictors)) {
-         
-         combo_name <- paste(valid_predictors[i], valid_predictors[j], sep = " + ")
-         formula_str <- paste(base_formula, "+", valid_predictors[i], "+", valid_predictors[j])
+         # Check for oddly named interaction terms
+         if (grepl('_x_', valid_predictors[j])) {
+            combo_name <- paste(valid_predictors[i], valid_predictors[j], sep = " + ")
+            preds <- strsplit(valid_predictors[j], "_x_")[[1]]
+            interaction_str <- paste(preds, collapse = ' * ')
+            formula_str <- paste(base_formula, valid_predictors[i], '+', interaction_str)
+         } else {
+            combo_name <- paste(valid_predictors[i], valid_predictors[j], sep = " + ")
+            formula_str <- paste(base_formula, valid_predictors[i], "+", valid_predictors[j])
+         }
          #formula_str <- paste(empty_formula, valid_predictors[i], '+', valid_predictors[j])
          #print(formula_str)
          
@@ -84,15 +91,22 @@ test_predictor_combinations <- function(base_formula, predictor_list, data, max_
       
       for (pair_name in top_pairs) {
          for (additional_pred in predictor_list) {
+            current_formula <- results_list[[pair_name]]$formula
             
             # Check if this predictor is already in the pair
             if (grepl(additional_pred, pair_name, fixed = TRUE)) next
             
             triplet_name <- paste(pair_name, additional_pred, sep = " + ")
-            current_formula <- results_list[[pair_name]]$formula
-            formula_str <- paste(current_formula, "+", additional_pred)
-            #print(formula_str)
             
+            # Check for oddly named interaction terms
+            if (grepl('_x_', additional_pred)) {
+               additional_pred <- strsplit(additional_pred, '_x_')[[1]]
+               interaction_str <- paste(preds, collapse = ' * ')
+               formula_str <- paste(current_formula, '+', interaction_str)
+            } else {
+               formula_str <- paste(current_formula, "+", additional_pred)
+            }
+         
             tryCatch({
                model <- lm(as.formula(formula_str), data = data)
                models[[triplet_name]] <- model
@@ -142,6 +156,7 @@ test_predictor_combinations <- function(base_formula, predictor_list, data, max_
          Score = scores[ranked_indices],
          High_Sal_RMSE = sapply(results_list[ranked_indices], function(x) x$high_salinity_rmse),
          Overall_R2 = sapply(results_list[ranked_indices], function(x) x$overall_r2),
+         Low_R2 = sapply(results_list[ranked_indices], function(x) x$low_r2),
          High_Sal_MAPE = sapply(results_list[ranked_indices], function(x) x$high_salinity_mape),
          stringsAsFactors = FALSE
       )

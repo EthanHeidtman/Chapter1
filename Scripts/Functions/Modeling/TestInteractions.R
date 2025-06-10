@@ -1,24 +1,24 @@
 # function to systematically test interactions between best predictors
-test_interactions <- function(main_effects_formula, all_best_predictors, data) {
+test_interactions <- function(current_formula, best_predictors, data) {
    
    cat(sprintf("=== TESTING SYSTEMATIC INTERACTIONS ===\n"))
-   cat(sprintf("Base formula: %s\n", main_effects_formula))
-   cat(sprintf("Best predictors to test: %s\n", paste(all_best_predictors, collapse = ", ")))
+   cat(sprintf("Base formula: %s\n", current_formula))
+   cat(sprintf("Best predictors to test: %s\n", paste(best_predictors, collapse = ", ")))
    
    results <- list()
    models <- list()
    
    # Remove any NA predictors
-   all_best_predictors <- all_best_predictors[!is.na(all_best_predictors)]
+   best_predictors <- best_predictors[!is.na(best_predictors)]
    
-   if (length(all_best_predictors) < 2) {
+   if (length(best_predictors) < 2) {
       cat("Not enough predictors for interaction testing\n")
       return(list(results = results, models = models, best_interaction = NA, best_score = -Inf))
    }
    
    # Test all pairwise interactions
    cat("Testing pairwise interactions...\n")
-   pairwise_combos <- combn(all_best_predictors, 2, simplify = FALSE)
+   pairwise_combos <- combn(best_predictors, 2, simplify = FALSE)
    
    for (i in seq_along(pairwise_combos)) {
       pred1 <- pairwise_combos[[i]][1]
@@ -26,7 +26,7 @@ test_interactions <- function(main_effects_formula, all_best_predictors, data) {
       interaction_term <- paste(pred1, pred2, sep = " : ")
       interaction_name <- paste(pred1, pred2, sep = "_x_")
       
-      test_formula <- paste(main_effects_formula, "+", interaction_term)
+      test_formula <- paste(current_formula, "+", interaction_term)
       
       tryCatch({
          model <- lm(as.formula(test_formula), data = data)
@@ -52,13 +52,14 @@ test_interactions <- function(main_effects_formula, all_best_predictors, data) {
    }
    
    # Test three-way interactions if we have enough predictors and max_interactions >= 3
-   if (length(all_best_predictors) >= 3) {
+   if (length(best_predictors) >= 3) {
       # && max_interactions >= 3
       cat("Testing three-way interactions...\n")
-      threeway_combos <- combn(all_best_predictors, 3, simplify = FALSE)
+      threeway_combos <- combn(best_predictors, 3, simplify = FALSE)
       
       # Limit to most promising three-way combinations to avoid explosion
-      max_threeway <- min(length(threeway_combos), 10)
+      #max_threeway <- min(length(threeway_combos), 10)
+      max_threeway <- length(threeway_combos)
       
       for (i in seq_len(max_threeway)) {
          pred1 <- threeway_combos[[i]][1]
@@ -67,7 +68,7 @@ test_interactions <- function(main_effects_formula, all_best_predictors, data) {
          interaction_term <- paste(pred1, pred2, pred3, sep = " : ")
          interaction_name <- paste(pred1, pred2, pred3, sep = "_x_")
          
-         test_formula <- paste(main_effects_formula, "+", interaction_term)
+         test_formula <- paste(current_formula, "+", interaction_term)
          
          tryCatch({
             model <- lm(as.formula(test_formula), data = data)

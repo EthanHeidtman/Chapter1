@@ -1,5 +1,5 @@
 # Function to test predictor group systematically
-test_predictor_group <- function(base_formula, predictor_group, data, group_name) {
+test_predictor_group <- function(current_formula, predictor_group, data, group_name) {
    
    cat(sprintf("\n=== TESTING %s PREDICTORS ===\n", toupper(group_name)))
    
@@ -17,9 +17,9 @@ test_predictor_group <- function(base_formula, predictor_group, data, group_name
       }
       
       # Build formula
-      if (base_formula == 'Salinity ~') {
-         formula_str <- paste(base_formula, predictor)
-      } else formula_str <- paste(base_formula, "+", predictor)
+      if (current_formula == 'Salinity ~') {
+         formula_str <- paste(current_formula, predictor)
+      } else formula_str <- paste(current_formula, "+", predictor)
       
       # Fit model
       tryCatch({
@@ -74,6 +74,7 @@ test_predictor_group <- function(base_formula, predictor_group, data, group_name
          Score = scores[ranked_indices],
          High_Sal_RMSE = sapply(results_list[ranked_indices], function(x) x$high_salinity_rmse),
          Overall_R2 = sapply(results_list[ranked_indices], function(x) x$overall_r2),
+         Low_R2 = sapply(results_list[ranked_indices], function(x) x$low_r2),
          High_Sal_MAPE = sapply(results_list[ranked_indices], function(x) x$high_salinity_mape),
          stringsAsFactors = FALSE
       )
