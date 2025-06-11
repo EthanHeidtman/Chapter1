@@ -22,9 +22,9 @@ get_predictions <- function(model, data, model_type = "linear", threshold = sali
    
    # Create prediction dataframe
    pred_df <- data.frame(
-      date_time = data$DateTime,
-      observed = data$Salinity,
-      predicted = predicted,
+      DateTime = data$DateTime,
+      Observed = data$Salinity,
+      Predicted = predicted,
       lower_ci = if(all(is.na(se))) rep(NA, length(predicted)) else predicted - 1.96 * se,
       upper_ci = if(all(is.na(se))) rep(NA, length(predicted)) else predicted + 1.96 * se,
       is_high = data$Salinity > threshold,

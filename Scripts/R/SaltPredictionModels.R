@@ -317,26 +317,26 @@ model_data <- data %>%
          
          #  HIGH STRESS: moderately emphasize natural flows
          StressLevel == "High" ~ 
-            0.3 * RollingPowDischarge10 + 0.7 * RollingPowInflows2,
+            0.3 * RollingPowDischarge14 + 0.7 * RollingPowInflows2,
          
          # MODERATE STRESS: slight preference for natural flows
          StressLevel == "Moderate" ~ 
-            0.4 * PowLagDischarge12 + 0.6 * PowLagInflows48,
+            0.4 * PowLagDischarge72 + 0.6 * PowLagInflows48,
          
          # NO STRESS: flush period, operations are dominant
          StressLevel == "Flush" ~ 
-            0.85 * PowLagDischarge12 + 0.15 * PowLagInflows48,
+            0.85 * PowLagDischarge72 + 0.15 * PowLagInflows48,
          
          # NORMAL: standard balanced weighting
-         TRUE ~ 0.6 * PowLagDischarge12 + 0.4 * PowLagInflows48
+         TRUE ~ 0.6 * PowLagDischarge72 + 0.4 * PowLagInflows48
          
       ),
       
       BestLatent = case_when(
          
-         IsHighStress ~ 0.3 * PowLagDischarge12 + 0.7 * RollingPowInflows2,  # Best lag + best rolling
-         IsFlush ~ 0.8 * PowLagDischarge12 + 0.2 * RollingPowInflows2,       # Operational emphasis
-         TRUE ~ 0.6 * PowLagDischarge12 + 0.4 * RollingPowDischarge10        # Best performers
+         IsHighStress ~ 0.3 * PowLagDischarge72 + 0.7 * RollingPowInflows2,  # Best lag + best rolling
+         IsFlush ~ 0.8 * PowLagDischarge72 + 0.2 * RollingPowInflows2,       # Operational emphasis
+         TRUE ~ 0.6 * PowLagDischarge72 + 0.4 * RollingPowDischarge14        # Best performers
          
       )
    ) 
@@ -445,6 +445,14 @@ performance_criteria <- list(
 )
 
 results <- model_builder(model_data, salinity_threshold)
+
+plots <- generate_model_diagnostics(model = results[['model']], model_name = 'Best Linear Model', data = model_data)
+plots$plots$performance
+plots$plots$high_salinity
+plots$plots$correlations
+plots$plots$temporal
+plots$plots$residuals
+plots$statistics
 ############################ GAM AND THRESHOLD-BASED MODELS ######################
 
 # =======================================================================================
@@ -750,16 +758,16 @@ if(nrow(high_events) > 0) {
 }
 
 
-ggplot(test, aes(x = date_time)) +
+p1 <- ggplot(test, aes(x = date_time)) +
    geom_line(aes(y = observed, color = 'Observed'), na.rm = TRUE, linewidth = 0.5) + 
    geom_line(aes(y = predicted, color = 'Predicted'), na.rm = TRUE, linewidth = 1.1) + 
    geom_point(data = filter(test, observed >= 1), aes(y = observed, color = 'Above Threshold'), na.rm = TRUE, size = 2) +
    scale_color_manual(name = NULL, values = c('Observed' = 'black', 'Predicted' = 'blue', 'Above Threshold' = 'red')) + 
-   scale_x_datetime(limits = c(as_datetime('2024-02-28'), as_datetime('2024-12-31')), date_labels = '%b-%Y') + 
+   scale_x_datetime(limits = c(as_datetime('2015-02-28'), as_datetime('2015-12-31')), date_labels = '%b-%Y') + 
    theme_bw() + 
-   #labs(x = 'Date', y = 'Salinity (ppt)', title = paste('2016 Best Model:\n', results[["final_best_formula"]])) + 
-   #labs(x = 'Date', y = 'Salinity (ppt)', title = '2015 Best Model: Salinity ~ 4hrTideLag + 2WeekRollingDischarge + 10DayRollingInflow') +
-   ylim(0, 2) + 
+   labs(x = 'Date', y = 'Salinity (ppt)', title = paste('2015 Best Model:\n', results[["formula"]])) + 
+   #labs(x = 'Date', y = 'Salinity (ppt)', title = '2016 Best Model: Salinity ~ 4hrTideLag + 2WeekRollingDischarge + 10DayRollingInflow') +
+   ylim(0, 0.4) + 
    theme(plot.title = element_text(size = 16),
          legend.text = element_text(size = 14), 
          axis.text = element_text(size = 13),
