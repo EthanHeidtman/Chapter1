@@ -17,7 +17,7 @@ save_diagnostic_plots <- function(plots, stats, model_name, output_dir) {
             if (!is.null(plots[[category]][[plot_name]])) {
                filename <- file.path(model_dir, paste0(category, "_", plot_name, ".png"))
                ggsave(filename, plots[[category]][[plot_name]], 
-                      width = 12, height = 8, dpi = 300)
+                      width = 12, height = 8, dpi = 700)
             }
          }
       }

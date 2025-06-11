@@ -4,6 +4,8 @@
 
 generate_temporal_plots <- function(pred_df, model_name) {
    
+   library(ggplot2)
+   
    # Add temporal features
    pred_df$Year <- year(pred_df$DateTime)
    pred_df$Month <- month(pred_df$DateTime)

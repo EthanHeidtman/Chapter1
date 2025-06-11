@@ -41,21 +41,6 @@ data <- data %>%
    rename(Tide = Fitted_HdG) %>%
    filter(DateTime < as_datetime('2024-11-01 00:00:00'))     # Keep only dates before 
 
-# ggplot(data, aes(x = DateTime)) +
-#    #geom_line(aes(y = zoo::rollmean(Discharge, 24, fill = NA, align = 'right')), color = 'blue', na.rm = TRUE) +
-#    geom_line(aes(y = Inflows), color = 'red', na.rm = TRUE) +
-#    scale_x_datetime(limits = c(as_datetime('2001-01-01'), as_datetime('2003-12-31'))) + 
-#    theme_minimal()
-# 
-# ggplot(data, aes(x = DateTime)) +
-#    geom_point(data = filter(data, Salinity >= 1.0), 
-#               aes(y = Salinity), color = "red", size = 1) +
-#    geom_point(data = filter(data, Salinity < 1.0), aes(y = Salinity), na.rm = TRUE, size = 0.5) +
-#    scale_x_datetime(limits = c(as_datetime('2007-04-01'), as_datetime('2024-12-31'))) + 
-#    theme_minimal()
-# 
-# bla <- data %>% filter(Year == 2016)
- 
 ####################### MODEL DATA PREPARATION PIPELINE ##########################
 
 # Salinity threshold
@@ -70,7 +55,6 @@ model_data <- data %>%
    # =======================================================================================
    
    mutate(
-      
       # Lagged Tide Features
       LagTide1 = lag(Tide, 1),
       LagTide2 = lag(Tide, 2),
@@ -114,8 +98,6 @@ model_data <- data %>%
       # Weighted Tidal Range Metric
       flow_weight = 1 / (discharge24 / median(discharge24, na.rm = TRUE)),
       WeightedTideRange12 = TideRange12 * pmin(flow_weight, 5), # cap at 5x weight
-      
-      
    ) %>%
    
    select(-flow_weight, -is_low_flow, -low_flow_threshold, -discharge24, -FloodIndicator) %>% # Remove unnecessary variables
@@ -124,7 +106,6 @@ model_data <- data %>%
    # PART 1: BASIC DISCHARGE FEATURES
    # =======================================================================================
    mutate(
-      
       # Lagged Conowingo Discharges
       LagDischarge1 = lag(Discharge, 1),
       LagDischarge3 = lag(Discharge, 3),
@@ -149,7 +130,7 @@ model_data <- data %>%
       PowLagDischarge3 = LagDischarge3 ^ (-0.4),
       PowLagDischarge6 = LagDischarge6 ^ (-0.4),
       PowLagDischarge10 = LagDischarge10 ^ (-0.4),
-      PowLagDischarge12 = LagDischarge12 ^ (-0.4),    # BEST PERFORMER
+      PowLagDischarge12 = LagDischarge12 ^ (-0.4),    
       PowLagDischarge24 = LagDischarge24 ^ (-0.4),
       PowLagDischarge36 = LagDischarge36 ^ (-0.4),
       PowLagDischarge48 = LagDischarge48 ^ (-0.4),
@@ -157,7 +138,7 @@ model_data <- data %>%
       PowInflows = Inflows ^ (-0.4),
       PowLagInflows12 = LagInflows12 ^ (-0.4),
       PowLagInflows24 = LagInflows24 ^ (-0.4),
-      PowLagInflows48 = LagInflows48 ^ (-0.4),        # BEST PERFORMER
+      PowLagInflows48 = LagInflows48 ^ (-0.4),        
       PowLagInflows72 = LagInflows72 ^ (-0.4),
       
       # Rolling Averages (by # of days)
@@ -166,10 +147,10 @@ model_data <- data %>%
       RollingPowDischarge2   = zoo::rollmean(PowDischarge, 24 * 2, fill = NA, align = "right", na.rm = TRUE),
       RollingPowDischarge4   = zoo::rollmean(PowDischarge, 24 * 4, fill = NA, align = "right", na.rm = TRUE),
       RollingPowDischarge7   = zoo::rollmean(PowDischarge, 24 * 7, fill = NA, align = "right", na.rm = TRUE),
-      RollingPowDischarge10  = zoo::rollmean(PowDischarge, 24 * 10, fill = NA, align = "right", na.rm = TRUE),   # BEST PERFORMER
+      RollingPowDischarge10  = zoo::rollmean(PowDischarge, 24 * 10, fill = NA, align = "right", na.rm = TRUE),  
       RollingPowDischarge14  = zoo::rollmean(PowDischarge, 24 * 14, fill = NA, align = "right", na.rm = TRUE),
       RollingPowInflows1     = zoo::rollmean(PowInflows, 24 * 1, fill = NA, align = "right", na.rm = TRUE),
-      RollingPowInflows2     = zoo::rollmean(PowInflows, 24 * 2, fill = NA, align = "right", na.rm = TRUE),      # BEST PERFORMER
+      RollingPowInflows2     = zoo::rollmean(PowInflows, 24 * 2, fill = NA, align = "right", na.rm = TRUE),     
       RollingPowInflows7     = zoo::rollmean(PowInflows, 24 * 7, fill = NA, align = "right", na.rm = TRUE),
       RollingPowInflows10    = zoo::rollmean(PowInflows, 24 * 10, fill = NA, align = "right", na.rm = TRUE)
    ) %>% 
@@ -180,14 +161,12 @@ model_data <- data %>%
    
    arrange(DateTime) %>%
    mutate(
-      
       # Define the natural flow regime
       InflowsPercentile = percent_rank(Inflows),
       BasicRegime = case_when(
          InflowsPercentile < 0.2 ~ "Low",     # True hydrologic stress
          InflowsPercentile > 0.8 ~ "High",    # High natural flows
          TRUE ~ "Normal"),
-      
    ) %>%
    
    # =======================================================================================
@@ -195,7 +174,6 @@ model_data <- data %>%
    # =======================================================================================
 
    mutate(
-      
       # Define stress-thresholds
       MariettaStressThreshold = quantile(Inflows, 0.2, na.rm = TRUE),
       ConowingoStressThreshold = quantile(Discharge, 0.2, na.rm = TRUE),
@@ -209,12 +187,10 @@ model_data <- data %>%
       MariettaStressIntensity = pmax(0, (MariettaStressThreshold - Inflows) / MariettaStressThreshold),
       ConowingoStressIntensity = pmax(0, (ConowingoStressThreshold - Discharge) / ConowingoStressThreshold),
       FERCStressIntensity = pmax(0, (FERC - Discharge) / FERC)
-      
    ) %>%
    
    # Calculate running stress-accumulation metrics
    mutate(
-      
       # Consecutive hours of stress (reset when stress ends)
       ConsecutiveStressHours_Marietta = sequence(rle(MariettaStressed)$lengths) * MariettaStressed,
       ConsecutiveStressHours_Conowingo = sequence(rle(ConowingoStressed)$lengths) * ConowingoStressed,
@@ -238,7 +214,6 @@ model_data <- data %>%
       HighFlowThreshold = quantile(Inflows, 0.8, na.rm = TRUE),
       IsHighFlow = Inflows > HighFlowThreshold,
       DaysSinceHighFlow = NA_real_
-      
    ) %>%
    
    # Calculate days since high flow (requires a loop-like operation)
@@ -257,9 +232,7 @@ model_data <- data %>%
    # =======================================================================================
    
    mutate(
-      
       StressLevel = case_when(
-         
          # HIGH STRESS: Moderate cumulative stress and some duration
          (CumulativeStress_7day_Marietta > quantile(CumulativeStress_7day_Marietta, 0.7, na.rm = TRUE)) &
          (ConsecutiveStressHours_Marietta > 24 * 1) ~ "High", # 1+ day consecutive
@@ -275,7 +248,6 @@ model_data <- data %>%
          
          # NORMAL CONDITIONS: Everything else
          TRUE ~ 'Normal'
-         
       ),
       
       # Binary indicators for model use
@@ -283,7 +255,6 @@ model_data <- data %>%
       IsModerateStress = StressLevel %in% c("Critical", "High", "Moderate"),
       IsFlush = StressLevel == "Flush",
       IsStressed = StressLevel %in% c("Critical", "High", "Moderate")  # Any stress
-      
    ) %>%
    
    # =======================================================================================
@@ -294,7 +265,6 @@ model_data <- data %>%
    # We need to estimate the true sustained flow at the mouth
 
    mutate(
-      
       # First check what the flow discrepancies look like
       FlowDiscrepancy = abs(Discharge - LagInflows48),
       HighThreshold = quantile(FlowDiscrepancy, 0.8, na.rm = TRUE),
@@ -314,7 +284,6 @@ model_data <- data %>%
       
       # ====== Stress-Dependent Latent Flow (based on previous section) ======== #
       StressLatent = case_when(
-         
          #  HIGH STRESS: moderately emphasize natural flows
          StressLevel == "High" ~ 
             0.3 * RollingPowDischarge14 + 0.7 * RollingPowInflows2,
@@ -329,15 +298,12 @@ model_data <- data %>%
          
          # NORMAL: standard balanced weighting
          TRUE ~ 0.6 * PowLagDischarge72 + 0.4 * PowLagInflows48
-         
       ),
       
       BestLatent = case_when(
-         
          IsHighStress ~ 0.3 * PowLagDischarge72 + 0.7 * RollingPowInflows2,  # Best lag + best rolling
          IsFlush ~ 0.8 * PowLagDischarge72 + 0.2 * RollingPowInflows2,       # Operational emphasis
          TRUE ~ 0.6 * PowLagDischarge72 + 0.4 * RollingPowDischarge14        # Best performers
-         
       )
    ) 
   

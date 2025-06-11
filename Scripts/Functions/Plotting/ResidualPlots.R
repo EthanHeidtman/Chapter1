@@ -3,6 +3,7 @@
 # ============================================================================
 
 generate_residual_plots <- function(pred_df, model_name) {
+   library(ggplot2)
    
    pred_df$residuals <- pred_df$Observed - pred_df$Predicted
    pred_df$std_residuals <- scale(pred_df$residuals)[,1]

@@ -4,6 +4,8 @@
 
 generate_high_salinity_plots <- function(pred_df, model_name) {
    
+   library(ggplot2)
+   
    # Filter high salinity events
    high_events <- pred_df %>% filter(is_high == TRUE)
    

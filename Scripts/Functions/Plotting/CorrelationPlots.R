@@ -3,6 +3,7 @@
 # ============================================================================
 
 generate_correlation_plots <- function(pred_df, model_name) {
+   library(ggplot2)
    
    # A. Correlation Matrix Plot
    cor_data <- pred_df %>% 
