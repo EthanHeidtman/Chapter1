@@ -1,6 +1,6 @@
 # This function systematically builds the best model for salinity prediction
 
-model_builder <- function(data, salinity_threshold) {
+linear_model_builder <- function(data, salinity_threshold) {
    
    cat("STARTING SYSTEMATIC MODEL BUILDING PROCESS\n")
    cat("==========================================\n")

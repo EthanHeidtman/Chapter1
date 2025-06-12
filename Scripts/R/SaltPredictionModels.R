@@ -410,151 +410,24 @@ performance_criteria <- list(
    )
 )
 
-results <- model_builder(model_data, salinity_threshold)
+linear_model_results <- linear_model_builder(model_data, salinity_threshold)
+# plots <- generate_model_diagnostics(model = results[['model']], model_name = 'Best Linear Model', data = model_data)
+# plots$plots$performance
+# plots$plots$high_salinity
+# plots$plots$correlations
+# plots$plots$temporal
+# plots$plots$residuals
+# plots$statistics
 
-plots <- generate_model_diagnostics(model = results[['model']], model_name = 'Best Linear Model', data = model_data)
-plots$plots$performance
-plots$plots$high_salinity
-plots$plots$correlations
-plots$plots$temporal
-plots$plots$residuals
-plots$statistics
+gam_model_results <- gam_model_builder(data = model_data, linear_model_results$model, response_var = 'Salinity', salinity_threshold)
+
+
+
 ############################ GAM AND THRESHOLD-BASED MODELS ######################
 
 # =======================================================================================
 # Generalized Additive Models (GAM) to allow for nonlinear relationships among predictors
 # =======================================================================================
-
-### Prepare data for the GAM models
-model_data <- model_data %>%
-   mutate(
-      # Log transformation with small constant to handle zeros
-      LogSalinity = log(Salinity + 0.001),
-      
-      # Logit-like transformation (bounded between 0 and max observed)
-      MaxSalinity = max(Salinity, na.rm = TRUE),
-      BoundedSalinity = pmin(Salinity / MaxSalinity, 0.999),
-      LogitSalinity = log(BoundedSalinity / (1 - BoundedSalinity)),
-      
-      # High salinity indicator
-      IsHighSalinity = Salinity > salinity_threshold,
-      
-      # Interaction terms that might be important for extreme events
-      DischargeXTide = Norm_PowLagDischarge12 * Norm_Tide,
-      InflowsXStress = Norm_RollingPowInflows2 * as.numeric(IsHighStress)
-      
-   )
-
-### Part 1: Basic GAM Model ###
-gam1 <- gam(
-   Salinity ~ 
-      # Smoothed terms for the main flow predictors (k is the wiggliness)
-      s(Norm_PowLagDischarge12, k = 10) + 
-      s(Norm_RollingPowDischarge10, k = 10) +
-      s(Norm_RollingPowInflows2, k = 10) +
-      s(Norm_Tide, k = 8) + 
-      
-      # Linear terms for stress and season
-      IsHighStress + 
-      SalinitySeason +
-      Norm_StressHours_30day_Marietta,
-   
-   data = model_data, 
-   method = 'REML', # better for model selection
-   family = Gamma(link = "log")  # Better for positive skewed data
-)
-
-### Part 2: GAM model with smoothed interaction terms and seasonality
-gam2 <- gam(
-   Salinity ~ 
-      # Main smoothed predictors
-      s(Norm_PowLagDischarge12, k = 12) +
-      s(Norm_RollingPowInflows2, k = 12) +
-      s(Norm_Tide, k = 8) +
-      
-      # Interaction Smooths (for capturing extreme events)
-      s(Norm_PowLagDischarge12, Norm_RollingPowInflows2, k = 15) +
-      s(Norm_PowLagDischarge12, Norm_Tide, k = 12) +
-   
-      # Cyclic smooth for seasonality (time of year)
-      s(DayOfYear, bs = "cc", k = 12) +
-   
-      # Stress effects
-      IsHighStress + 
-      s(Norm_StressHours_30day_Marietta, k = 8),
-   
-   data = model_data,
-   method = "REML",
-   family = Gamma(link = "log")
-)
-
-### Part 3: GAM model with regime-dependent smooths
-gam3 <- gam(
-   Salinity ~ 
-      # Regime-dependent smooths using 'by' parameter
-      s(Norm_PowLagDischarge12, by = IsHighStress, k = 10) +
-      s(Norm_PowLagDischarge12, by = I(1 - IsHighStress), k = 10) +
-   
-      s(Norm_RollingPowInflows2, by = IsHighStress, k = 10) +
-      s(Norm_RollingPowInflows2, by = I(1 - IsHighStress), k = 10) +
-   
-      # Tide effects
-      s(Norm_Tide, k = 8) +
-      s(Norm_Tide, by = IsHighStress, k = 6) +
-   
-      # Seasonal and stress components
-      s(DayOfYear, bs = "cc", k = 12) +
-      s(Norm_StressHours_30day_Marietta, k = 8) +
-   
-      # Include latent flow
-      s(Norm_BestLatent, k = 10) +
-      
-      # Base stress effect
-      IsHighStress,
-   
-   data = model_data,
-   method = "REML",
-   family = Gamma(link = "log"),
-   weights = ifelse(data$IsHighSalinity, 3, 1)  # Weight high salinity events more
-)
-
-### Part 4: GAM model with heavy weighting toward high-salinity events
-
-# Create weights - much higher for extreme events
-weights <- ifelse(data$Salinity > salinity_threshold, 
-                  10,  # 10x weight for high salinity
-                  1)
-
-# Additional weight for very extreme events
-extreme_threshold <- quantile(data$Salinity, 0.95, na.rm = TRUE)
-weights <- ifelse(data$Salinity > extreme_threshold, 20, weights)
-
-gam_weighted <- gam(
-   Salinity ~ 
-      # Main effects with increased complexity for extreme events
-      s(Norm_PowLagDischarge12, k = 15) +
-      s(Norm_RollingPowInflows2, k = 15) +
-      s(Norm_BestLatent, k = 12) +
-      
-      # Interaction effects crucial for extremes
-      s(Norm_PowLagDischarge12, Norm_RollingPowInflows2, k = 20) +
-      s(Norm_PowLagDischarge12, Norm_StressHours_30day_Marietta, k = 15) +
-      
-      # Tide and seasonal effects
-      s(Norm_Tide, k = 8) +
-      s(DayOfYear, bs = "cc", k = 12) +
-      
-      # Stress effects
-      IsHighStress +
-      s(Norm_StressHours_30day_Marietta, k = 10) +
-      s(Norm_ConsecutiveStressHours_Marietta, k = 8),
-   
-   data = model_data,
-   method = "REML",
-   family = Gamma(link = "log"),
-   weights = weights
-)
-
 
 # =======================================================================================
 # Threshold-Based or Change-Point Models to improve performance at high salinity
