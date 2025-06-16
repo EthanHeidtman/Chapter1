@@ -419,6 +419,8 @@ linear_model_results <- linear_model_builder(model_data, salinity_threshold)
 # plots$plots$residuals
 # plots$statistics
 
+linear_model <- linear_model_results$model
+
 gam_model_results <- gam_model_builder(data = model_data, linear_model_results$model, response_var = 'Salinity', salinity_threshold)
 
 

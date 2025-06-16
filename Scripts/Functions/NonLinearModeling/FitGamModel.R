@@ -3,7 +3,7 @@
 fit_gam <- function(data, linear_formula, linear_predictors, weights = NULL, strategy = 'baseline', family = gaussian) {
    
    # Load package for GAM modeling
-   library(mgcv)
+   require(mgcv)
    
    # Build the GAM formula based on the identified strategy (default = baseline)
    gam_formula <- build_gam_formula(linear_formula, linear_predictors, strategy)

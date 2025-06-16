@@ -12,19 +12,21 @@ gam_model_builder <- function(data, linear_model, response_var, salinity_thresho
    
    # Step 1: Create different weighting schemes
    cat("Step 1: Creating weighting schemes for extreme events...\n")
-   weights_none <- NULL
-   weights_quantile <- create_extreme_weights(data[[response_var]], "quantile_progressive")
-   weights_exponential <- create_extreme_weights(data[[response_var]], "exponential")
-   weights_binary <- create_extreme_weights(data[[response_var]], "binary_extreme")
-   
+   weight_schemes <- list(
+      'none' = NULL,
+      "quantile" = create_extreme_weights(data[[response_var]], "quantile_progressive"),
+      "exponential" = create_extreme_weights(data[[response_var]], "exponential"),
+      "binary" = create_extreme_weights(data[[response_var]], "binary_extreme")
+   )
+
    # Step 2: Define GAM enhancement strategies
    cat("Step 2: Defining GAM enhancement strategies...\n")
    gam_strategies <- list(
       "baseline" = "linear",                       # Reproduce linear model exactly
       "smooth_all" = "smooth_all",                 # Smooth all continuous predictors
       "smooth_flow" = "smooth_flow",               # Smooth only flow variables
-      "smooth_stress" = "smooth_stress",           # Smooth only tidal variables
-      "tensor_flow_stress" = "tensor",             # Tensor product of flow and tidal
+      "smooth_stress" = "smooth_stress",           # Smooth only stress variables
+      "tensor_flow_stress" = "tensor",             # Tensor product of flow and stress
       "mixed_interactions" = "mixed_interactions"  # Strategic mix of smooth and tensor terms
    )
    
@@ -75,7 +77,7 @@ gam_model_builder <- function(data, linear_model, response_var, salinity_thresho
                
                results[[model_id]] <- eval_result
             } else {
-               cat(sprintf("    WARNING: Model %s failed to fit\n", model_id))
+               cat(sprintf("WARNING: Model %s failed to fit\n", model_id))
             }
          }
       }
