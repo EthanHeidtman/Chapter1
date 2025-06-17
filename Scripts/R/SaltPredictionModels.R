@@ -334,7 +334,8 @@ model_data <- model_data %>%
                      'Is')),
             .after = Salinity) %>%                          # Organize all of the columns
    relocate(FERC, SalinitySeason, where(is.logical), 
-            where(is.character), contains('Threshold'), .after = Inflows)
+            where(is.character), contains('Threshold'), .after = Inflows) %>%
+   mutate_if(is.logical, as.factor) # Make logicals factors for GAM modeling
    
 # Normalize Predictors and Add to model_data
 preds_to_normalize <- colnames(model_data)[20 : ncol(model_data)] # Starting from the discharge column

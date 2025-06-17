@@ -44,6 +44,7 @@ convert_interactions_to_gam <- function(interactions, vars, method = "smart") {
    if(length(interactions) == 0) return(character(0))
    
    converted <- character(0)
+   by_variables <- character(0) # Track the variables used in "by" terms
    
    for(interaction in interactions) {
       variables <- strsplit(interaction, ":")[[1]]
@@ -57,66 +58,74 @@ convert_interactions_to_gam <- function(interactions, vars, method = "smart") {
       tide_in_int <- variables[variables %in% vars$tide_vars]
       
       if(method == "smart") {
-         converted_term <- convert_interaction_smart(variables, continuous_in_int, categorical_in_int,
-                                                     flow_in_int, stress_in_int, time_in_int, tide_in_int)
+         result <- convert_interaction_smart(variables, continuous_in_int, categorical_in_int,
+                                             flow_in_int, stress_in_int, time_in_int, tide_in_int)
       } else if(method == "tensor") {
-         converted_term <- convert_interaction_tensor(variables, continuous_in_int, categorical_in_int)
+         result <- convert_interaction_tensor(variables, continuous_in_int, categorical_in_int)
       } else if(method == "by_terms") {
-         converted_term <- convert_interaction_by_terms(variables, continuous_in_int, categorical_in_int)
+         result <- convert_interaction_by_terms(variables, continuous_in_int, categorical_in_int)
       } else if(method == "smooth") {
-         converted_term <- convert_interaction_smooth(variables, continuous_in_int)
+         result <- convert_interaction_smooth(variables, continuous_in_int)
       } else {
-         converted_term <- interaction  # Keep parametric
+         result <- list(term = interaction, by_var = NULL)  # Keep parametric
       }
       
-      converted <- c(converted, converted_term)
+      converted <- c(converted, result$term)
+      if(!is.null(result$by_var)) {
+         by_variables <- c(by_variables, result$by_var)
+      }
    }
    
-   return(converted)
+   return(list(terms = converted, by_vars = unique(by_variables)))
 }
 
 # Smart interaction conversion based on variable types and salinity modeling knowledge
 convert_interaction_smart <- function(variables, continuous_in_int, categorical_in_int, 
                                       flow_in_int, stress_in_int, time_in_int, tide_in_int) {
    
-   # Priority interactions for salinity modeling:
-   # 1. Flow-Tide interactions (most critical) -> tensor products
-   # 2. Flow-Time interactions (seasonal patterns) -> tensor products  
-   # 3. Stress-Time interactions (seasonal stress patterns) -> tensor products
-   # 4. Categorical-Continuous interactions -> by terms
-   # 5. Other continuous-continuous -> smooth interactions
-   
-   if(length(flow_in_int) > 0 && length(tide_in_int) > 0) {
+   # Priority: categorical-continuous interactions become by terms
+   if(length(categorical_in_int) > 0 && length(continuous_in_int) > 0) {
+      # Choose the most important categorical variable for by term
+      by_var <- categorical_in_int[1]  # Take first categorical
+      
+      if(length(continuous_in_int) == 1) {
+         term <- paste0("s(", continuous_in_int[1], ", by = ", by_var, ")")
+      } else {
+         term <- paste0("te(", paste(continuous_in_int, collapse = ", "), ", by = ", by_var, ")")
+      }
+      return(list(term = term, by_var = by_var))
+      
+   } else if(length(flow_in_int) > 0 && length(tide_in_int) > 0) {
       # Flow-tide interaction - critical for salinity
       if(length(variables) == 2) {
-         return(paste0("te(", flow_in_int[1], ", ", tide_in_int[1], ")"))
+         term <- paste0("te(", flow_in_int[1], ", ", tide_in_int[1], ")")
       } else {
-         return(paste0("te(", paste(variables, collapse = ", "), ")"))
+         term <- paste0("te(", paste(variables, collapse = ", "), ")")
       }
+      return(list(term = term, by_var = NULL))
+      
    } else if(length(flow_in_int) > 0 && length(time_in_int) > 0) {
       # Flow-time seasonal interaction
-      return(paste0("te(", flow_in_int[1], ", ", time_in_int[1], ")"))
+      term <- paste0("te(", flow_in_int[1], ", ", time_in_int[1], ")")
+      return(list(term = term, by_var = NULL))
+      
    } else if(length(stress_in_int) > 0 && length(time_in_int) > 0) {
       # Stress-time seasonal interaction
-      return(paste0("te(", stress_in_int[1], ", ", time_in_int[1], ")"))
-   } else if(length(categorical_in_int) > 0 && length(continuous_in_int) > 0) {
-      # Categorical-continuous interaction -> by terms
-      if(length(continuous_in_int) == 1) {
-         return(paste0("s(", continuous_in_int[1], ", by = ", categorical_in_int[1], ")"))
-      } else {
-         return(paste0("te(", paste(continuous_in_int, collapse = ", "), 
-                       ", by = ", categorical_in_int[1], ")"))
-      }
+      term <- paste0("te(", stress_in_int[1], ", ", time_in_int[1], ")")
+      return(list(term = term, by_var = NULL))
+      
    } else if(length(continuous_in_int) >= 2) {
       # Multiple continuous variables -> tensor or smooth interaction
       if(length(variables) == 2) {
-         return(paste0("s(", variables[1], ", ", variables[2], ")"))
+         term <- paste0("s(", variables[1], ", ", variables[2], ")")
       } else {
-         return(paste0("te(", paste(variables, collapse = ", "), ")"))
+         term <- paste0("te(", paste(variables, collapse = ", "), ")")
       }
+      return(list(term = term, by_var = NULL))
+      
    } else {
       # Keep as parametric interaction
-      return(paste(variables, collapse = ":"))
+      return(list(term = paste(variables, collapse = ":"), by_var = NULL))
    }
 }
 
@@ -124,46 +133,51 @@ convert_interaction_smart <- function(variables, continuous_in_int, categorical_
 convert_interaction_tensor <- function(variables, continuous_in_int, categorical_in_int) {
    if(length(continuous_in_int) >= 2) {
       if(length(categorical_in_int) > 0) {
-         return(paste0("te(", paste(continuous_in_int, collapse = ", "), 
-                       ", by = ", categorical_in_int[1], ")"))
+         by_var <- categorical_in_int[1]
+         term <- paste0("te(", paste(continuous_in_int, collapse = ", "), ", by = ", by_var, ")")
+         return(list(term = term, by_var = by_var))
       } else {
-         return(paste0("te(", paste(continuous_in_int, collapse = ", "), ")"))
+         term <- paste0("te(", paste(continuous_in_int, collapse = ", "), ")")
+         return(list(term = term, by_var = NULL))
       }
    } else {
-      return(paste(variables, collapse = ":"))  # Keep parametric
+      return(list(term = paste(variables, collapse = ":"), by_var = NULL))  # Keep parametric
    }
 }
 
 # Convert interaction to by terms
 convert_interaction_by_terms <- function(variables, continuous_in_int, categorical_in_int) {
    if(length(categorical_in_int) > 0 && length(continuous_in_int) > 0) {
+      by_var <- categorical_in_int[1]
       if(length(continuous_in_int) == 1) {
-         return(paste0("s(", continuous_in_int[1], ", by = ", categorical_in_int[1], ")"))
+         term <- paste0("s(", continuous_in_int[1], ", by = ", by_var, ")")
       } else {
-         return(paste0("te(", paste(continuous_in_int, collapse = ", "), 
-                       ", by = ", categorical_in_int[1], ")"))
+         term <- paste0("te(", paste(continuous_in_int, collapse = ", "), ", by = ", by_var, ")")
       }
+      return(list(term = term, by_var = by_var))
    } else {
-      return(paste(variables, collapse = ":"))  # Keep parametric
+      return(list(term = paste(variables, collapse = ":"), by_var = NULL))  # Keep parametric
    }
 }
 
-#' Convert interaction to smooth terms
+# Convert interaction to smooth terms
 convert_interaction_smooth <- function(variables, continuous_in_int) {
    if(length(continuous_in_int) >= 2) {
-      if(length(vars) == 2) {
-         return(paste0("s(", vars[1], ", ", vars[2], ")"))
+      if(length(continuous_in_int) == 2) {
+         term <- paste0("s(", continuous_in_int[1], ", ", continuous_in_int[2], ")")
       } else {
-         return(paste0("te(", paste(vars, collapse = ", "), ")"))
+         term <- paste0("te(", paste(continuous_in_int, collapse = ", "), ")")
       }
+      return(list(term = term, by_var = NULL))
    } else {
-      return(paste(variables, collapse = ":"))  # Keep parametric
+      return(list(term = paste(variables, collapse = ":"), by_var = NULL))  # Keep parametric
    }
 }
 
 # Create strategic tensor products for key variable combinations
 create_strategic_tensors <- function(vars, strategy_focus = "Salinity") {
    tensor_terms <- character(0)
+   by_vars <- character(0)
    
    if(strategy_focus == "Salinity") {
       # Key interactions for salinity modeling
@@ -193,5 +207,5 @@ create_strategic_tensors <- function(vars, strategy_focus = "Salinity") {
       }
    }
    
-   return(tensor_terms)
+   return(list(terms = tensor_terms, by_vars = by_vars))
 }

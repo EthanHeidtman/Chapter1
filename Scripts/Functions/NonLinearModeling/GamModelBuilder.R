@@ -38,7 +38,8 @@ gam_model_builder <- function(data, linear_model, response_var, salinity_thresho
       "gaussian" = gaussian(),
       "gamma" = Gamma(link = "log"),
       "tweedie" = tw(),
-      "quasi" = quasi(link = "identity", variance = "mu^2")
+      "quasi" = quasi(link = "identity", variance = "mu^2"),
+      'scat' = scat()
    )
    
    # Step 4: Systematic model fitting

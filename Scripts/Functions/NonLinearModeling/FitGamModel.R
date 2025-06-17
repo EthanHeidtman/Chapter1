@@ -1,6 +1,6 @@
 # Function to fit Generalized Additive Models (GAMs)
 
-fit_gam <- function(data, linear_formula, linear_predictors, weights = NULL, strategy = 'baseline', family = gaussian) {
+fit_gam <- function(data, linear_formula, linear_predictors, weights = NULL, strategy = 'baseline', family) {
    
    # Load package for GAM modeling
    require(mgcv)
