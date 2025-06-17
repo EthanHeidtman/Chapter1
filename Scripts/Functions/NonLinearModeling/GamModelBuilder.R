@@ -26,7 +26,9 @@ gam_model_builder <- function(data, linear_model, response_var, salinity_thresho
       "smooth_all" = "smooth_all",                 # Smooth all continuous predictors
       "smooth_flow" = "smooth_flow",               # Smooth only flow variables
       "smooth_stress" = "smooth_stress",           # Smooth only stress variables
+      "smooth_tide" = "smooth_tide",               # Smooth only tide variables
       "tensor_flow_stress" = "tensor",             # Tensor product of flow and stress
+      "tensor_flow_tide" = "tensor",               # Tensor product of flow and tide
       "mixed_interactions" = "mixed_interactions"  # Strategic mix of smooth and tensor terms
    )
    
@@ -59,7 +61,6 @@ gam_model_builder <- function(data, linear_model, response_var, salinity_thresho
                data = data,
                linear_formula = linear_formula,
                linear_predictors = linear_predictors,
-               response_var = response_var,
                weights = weight_schemes[[weight_name]],
                strategy = gam_strategies[[strategy_name]],
                family = distributions[[dist_name]]
