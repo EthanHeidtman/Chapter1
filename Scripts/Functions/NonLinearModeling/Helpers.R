@@ -60,14 +60,19 @@ convert_interactions_to_gam <- function(interactions, vars, method = "smart") {
       if(method == "smart") {
          result <- convert_interaction_smart(variables, continuous_in_int, categorical_in_int,
                                              flow_in_int, stress_in_int, time_in_int, tide_in_int)
+         
       } else if(method == "tensor") {
          result <- convert_interaction_tensor(variables, continuous_in_int, categorical_in_int)
+         
       } else if(method == "by_terms") {
          result <- convert_interaction_by_terms(variables, continuous_in_int, categorical_in_int)
+         
       } else if(method == "smooth") {
          result <- convert_interaction_smooth(variables, continuous_in_int)
+         
       } else {
          result <- list(term = interaction, by_var = NULL)  # Keep parametric
+         
       }
       
       converted <- c(converted, result$term)
@@ -83,7 +88,7 @@ convert_interactions_to_gam <- function(interactions, vars, method = "smart") {
 convert_interaction_smart <- function(variables, continuous_in_int, categorical_in_int, 
                                       flow_in_int, stress_in_int, time_in_int, tide_in_int) {
    
-   # Priority: categorical-continuous interactions become by terms
+   # Priority: categorical-continuous interactions become 'by' terms (can't have terms as main predictors and 'by' terms)
    if(length(categorical_in_int) > 0 && length(continuous_in_int) > 0) {
       # Choose the most important categorical variable for by term
       by_var <- categorical_in_int[1]  # Take first categorical

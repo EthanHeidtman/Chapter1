@@ -1,11 +1,10 @@
 # Function to create different weighting schemes for salinity
-
 create_extreme_weights <- function(response_var, method = "quantile_progressive") {
    
    if(method == "quantile_progressive") {
       # Progressive weighting based on quantiles
       breaks <- quantile(response_var, probs = c(0, 0.5, 0.7, 0.85, 0.95, 1.0), na.rm = TRUE)
-      weights <- cut(response_var, breaks, labels = c(1, 1.5, 3, 8, 20), include.lowest = TRUE)
+      weights <- cut(response_var, breaks, labels = c(1, 1.5, 3, 8, 20), include.lowest = TRUE) # Give serious weights to the high salinity
       return(as.numeric(as.character(weights)))
    }
    

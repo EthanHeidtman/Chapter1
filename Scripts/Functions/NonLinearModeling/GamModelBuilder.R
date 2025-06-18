@@ -32,11 +32,11 @@ gam_model_builder <- function(data, linear_model, response_var, salinity_thresho
    # Step 3: Define alternative distributions
    cat("Step 3: Defining alternative distributions...\n")
    distributions <- list(
-      "gaussian" = gaussian(),
-      "gamma" = Gamma(link = "log"),
-      "tweedie" = tw(),
-      "quasi" = quasi(link = "identity", variance = "mu^2"),
-      'scat' = scat()
+      "gaussian" = gaussian(),                                
+      "gamma" = Gamma(link = "log"),                          
+      "tweedie" = tw(),                                       # Exponential Tweedie family distributions (more flexible)
+      "quasi" = quasi(link = "identity", variance = "mu^2"),  # Quasi-family distribution
+      'scat' = scat()                                         # scaled-t, for heavy tailed response variables
    )
    
    # Step 4: Define testing phases (to save computational time)
@@ -190,13 +190,6 @@ gam_model_builder <- function(data, linear_model, response_var, salinity_thresho
          cat(sprintf("  Strategies: %s\n", paste(stages[[3]]$strategies, collapse = ", ")))
          cat(sprintf("  Distributions: %s\n", paste(stages[[3]]$distributions, collapse = ", ")))
       }
-      
-      # # Save progress after each stage
-      # save(results, all_performance, stages, 
-      #      file = paste0("gam_results_stage_", stage$stage_num, ".RData"))
-      # 
-      # cat(sprintf("\nStage %d complete. Progress saved.\n", stage$stage_num))
-      # cat(rep("-", 60), "\n")
    }
    
    # Final summary
