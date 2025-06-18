@@ -3,9 +3,6 @@ gam_model_builder <- function(data, linear_model, response_var, salinity_thresho
    cat("======= Generalized Additive Model Approach =======\n")
    cat("Starting from the best linear model to better capture salinity events\n\n")
    
-   # Initialize results storage
-   results <- list()
-   
    # Extract linear model formula and predictors
    linear_formula <- formula(linear_model)
    linear_predictors <- all.vars(linear_formula)[-1]  # Remove response variable
@@ -42,51 +39,187 @@ gam_model_builder <- function(data, linear_model, response_var, salinity_thresho
       'scat' = scat()
    )
    
-   # Step 4: Systematic model fitting
-   cat("Step 4: Systematic model fitting...\n\n")
+   # Step 4: Define testing phases (to save computational time)
+   cat("Step 4: Defining testing phases...\n")
+   stages <- list(
+      list(
+         stage_num = 1,
+         name = "Strategy Screening",
+         strategies = names(gam_strategies),
+         weights = "quantile",
+         distributions = "gaussian"
+      ),
+      list(
+         stage_num = 2, 
+         name = "Distribution Testing",
+         strategies = NULL,  # Will be filled from stage 1 results
+         weights = "quantile",
+         distributions = names(distributions)
+      ),
+      list(
+         stage_num = 3,
+         name = "Weight Scheme Testing", 
+         strategies = NULL,  # Will be filled from stage 2 results
+         weights = names(weight_schemes),
+         distributions = NULL  # Will be filled from stage 2 results
+      )
+   )
    
-   model_counter <- 0
-   total_models <- length(gam_strategies) * length(weight_schemes) * length(distributions)
+   # Initialize results storage
+   results <- list()
+   all_performance <- list()
    
-   for(strategy_name in names(gam_strategies)) {
-      for(weight_name in names(weight_schemes)) {
-         for(dist_name in names(distributions)) {
-            
-            model_counter <- model_counter + 1
-            model_id <- paste(strategy_name, weight_name, dist_name, sep = "_")
-            
-            cat(sprintf("  [%d/%d] Fitting: %s\n", model_counter, total_models, model_id))
-            
-            # Fit the GAM model
-            gam_result <- fit_gam(
-               data = data,
-               linear_formula = linear_formula,
-               linear_predictors = linear_predictors,
-               weights = weight_schemes[[weight_name]],
-               strategy = gam_strategies[[strategy_name]],
-               family = distributions[[dist_name]]
-            )
-            
-            # Evaluate if model fitted successfully
-            if(!is.null(gam_result$model)) {
-               eval_result <- evaluate_model(gam_result$model, data, salinity_threshold, "gam")
-               eval_result$model <- gam_result$model
-               eval_result$formula <- gam_result$formula
-               eval_result$strategy <- strategy_name
-               eval_result$weight_scheme <- weight_name
-               eval_result$distribution <- dist_name
-               eval_result$score <- performance_score(eval_result)
+   # Step 5: Systematic model fitting
+   cat("Step 5: Systematic model fitting...\n\n")
+   
+   for (stage in stages) {
+      cat(sprintf("\n=== STAGE %d: %s ===\n", stage$stage_num, stage$name))
+      
+      # Skip if configuration is incomplete (shouldn't happen for stage 1)
+      if(is.null(stage$strategies) || is.null(stage$distributions)) {
+         cat("Skipping stage due to incomplete configuration\n")
+         next
+      }
+      
+      # Calculate and display model count for this stage
+      total_models <- length(stage$strategies) * 
+         length(stage$weights) * 
+         length(stage$distributions)
+      cat(sprintf("Fitting %d models for Stage %d...\n\n", total_models, stage$stage))
+      
+      # Fit all models for current stage
+      stage_results <- list()
+      model_counter <- 0
+      
+      for(strategy_name in stage$strategies) {
+         for(weight_name in stage$weights) {
+            for(dist_name in stage$distributions) {
                
-               results[[model_id]] <- eval_result
-            } else {
-               cat(sprintf("WARNING: Model %s failed to fit\n", model_id))
+               model_counter <- model_counter + 1
+               model_id <- paste("stage", stage$stage_num, strategy_name, weight_name, dist_name, sep = "_")
+               
+               cat(sprintf("  [%d/%d] Fitting: %s_%s_%s\n", 
+                           model_counter, total_models, strategy_name, weight_name, dist_name))
+               
+               # Fit the GAM model
+               gam_result <- fit_gam(
+                  data = data,
+                  linear_formula = linear_formula,
+                  linear_predictors = linear_predictors,
+                  weights = weight_schemes[[weight_name]],
+                  strategy = gam_strategies[[strategy_name]],
+                  family = distributions[[dist_name]]
+               )
+               
+               # Evaluate if model fitted successfully
+               if(!is.null(gam_result$model)) {
+                  eval_result <- evaluate_model(gam_result$model, data, salinity_threshold, "gam")
+                  eval_result$model <- gam_result$model
+                  eval_result$formula <- gam_result$formula
+                  eval_result$strategy <- strategy_name
+                  eval_result$weight_scheme <- weight_name
+                  eval_result$distribution <- dist_name
+                  eval_result$score <- performance_score(eval_result)
+                  
+                  stage_results[[model_id]] <- eval_result
+                  results[[model_id]] <- eval_result
+               } else {
+                  cat(sprintf("WARNING: Model %s failed to fit\n", model_id))
+               }
             }
          }
       }
+      
+      # Analyze stage results
+      cat(sprintf("\n=== STAGE %d ANALYSIS ===\n", stage$stage_num))
+      
+      if(length(stage_results) == 0) {
+         cat("ERROR: No models fitted successfully in this stage!\n")
+         break
+      }
+      
+      # Create performance summary for this stage
+      stage_performance <- data.frame(
+         model_id = names(stage_results),
+         strategy = sapply(stage_results, function(x) x$strategy),
+         weight_scheme = sapply(stage_results, function(x) x$weight_scheme),
+         distribution = sapply(stage_results, function(x) x$distribution),
+         score = sapply(stage_results, function(x) x$score),
+         stage = stage$stage_num,
+         stringsAsFactors = FALSE
+      )
+      
+      # Sort by performance score
+      stage_performance <- stage_performance[order(-stage_performance$score), ]
+      all_performance[[paste0("stage_", stage$stage_num)]] <- stage_performance
+      
+      # Display top performers
+      cat("Top performers for Stage", stage$stage_num, ":\n")
+      top_n <- min(10, nrow(stage_performance))
+      for(i in 1:top_n) {
+         cat(sprintf("  %d. %s_%s_%s (score: %.4f)\n", 
+                     i,
+                     stage_performance$strategy[i],
+                     stage_performance$weight_scheme[i],
+                     stage_performance$distribution[i],
+                     stage_performance$score[i]))
+      }
+      
+      # Configure next stage based on current results
+      if(stage$stage_num == 1) {
+         # Select top 3 strategies for stage 2
+         strategy_scores <- aggregate(stage_performance$score, 
+                                      by = list(strategy = stage_performance$strategy),
+                                      FUN = mean, na.rm = TRUE)
+         strategy_scores <- strategy_scores[order(-strategy_scores$x), ]
+         top_strategies <- strategy_scores$strategy[1:min(3, nrow(strategy_scores))]
+         
+         stages[[2]]$strategies <- top_strategies
+         
+         cat(sprintf("\nSelected strategies for Stage 2: %s\n", 
+                     paste(top_strategies, collapse = ", ")))
+         
+      } else if(stage_config$stage == 2) {
+         # Select top 2 strategy-distribution combos for stage 3
+         top_combos <- stage_performance[1:min(2, nrow(stage_performance)), ]
+         
+         stages[[3]]$strategies <- unique(top_combos$strategy)
+         stages[[3]]$distributions <- unique(top_combos$distribution)
+         
+         cat(sprintf("\nSelected for Stage 3:\n"))
+         cat(sprintf("  Strategies: %s\n", paste(stages[[3]]$strategies, collapse = ", ")))
+         cat(sprintf("  Distributions: %s\n", paste(stages[[3]]$distributions, collapse = ", ")))
+      }
+      
+      # # Save progress after each stage
+      # save(results, all_performance, stages, 
+      #      file = paste0("gam_results_stage_", stage$stage_num, ".RData"))
+      # 
+      # cat(sprintf("\nStage %d complete. Progress saved.\n", stage$stage_num))
+      # cat(rep("-", 60), "\n")
    }
    
-   # Step 5: Summarize results and select best model
-   cat("\nStep 5: Model fitting complete. Summarizing results...\n")
+   # Final summary
+   cat("\n", rep("=", 80), "\n")
+   cat("ALL STAGES COMPLETE!\n")
+   cat(rep("=", 80), "\n")
+   
+   # Overall summary
+   for(stage_name in names(all_performance)) {
+      perf_data <- all_performance[[stage_name]]
+      stage_number <- unique(perf_data$stage)[1]
+      
+      cat(sprintf("Stage %d: %d models, best score: %.4f (%s_%s_%s)\n", 
+                  stage_number,
+                  nrow(perf_data),
+                  perf_data$score[1],
+                  perf_data$strategy[1],
+                  perf_data$weight_scheme[1],
+                  perf_data$distribution[1]))
+   }
+   
+   # Step 6: Summarize results and select best model
+   cat("\nStep 6: Model fitting complete. Summarizing results...\n")
    
    # Create summary table of all models
    summary_table <- data.frame(
@@ -121,13 +254,13 @@ gam_model_builder <- function(data, linear_model, response_var, salinity_thresho
    )
    
    # Extract formula as character string
-   formula_char <- deparse(best_result$formula)
+   formula_char <- deparse(best_result$formula$formula)
    if(length(formula_char) > 1) {
       formula_char <- paste(formula_char, collapse = " ")
    }
    
    # Extract predictor names from the best model
-   predictors <- all.vars(best_result$formula)[-1]  # Remove response variable
+   predictors <- all.vars(best_result$formula$formula)[-1]  # Remove response variable
    
    # Create stage results (record of the modeling process)
    stage_results <- list(

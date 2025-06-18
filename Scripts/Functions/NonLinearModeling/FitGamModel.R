@@ -10,11 +10,28 @@ fit_gam <- function(data, linear_formula, linear_predictors, weights = NULL, str
    
    # Fit the model with error handling
    tryCatch({
-      if(is.null(weights)) {
-         gam_model <- mgcv::gam(gam_formula$formula, data = data, family = family) # Family = distribution, weights = weighting scheme
-      } else {
-         gam_model <- mgcv::gam(gam_formula$formula, data = data, family = family, weights = weights)
+      
+      # Build arguments list
+      gam_args <- list(
+         formula = gam_formula$formula,
+         data = data,
+         family = family
+      )
+      
+      # Only include weights if they are not NULL
+      if (!is.null(weights)) {
+         # Check that weights are numeric and the right length
+         stopifnot(is.numeric(weights), length(weights) == nrow(data))
+         gam_args$weights <- weights
       }
+      
+      gam_model <- do.call(mgcv::gam, gam_args)
+      
+      # if(is.null(weights)) {
+      #    gam_model <- mgcv::gam(gam_formula$formula, data = data, family = family) # Family = distribution, weights = weighting scheme
+      # } else {
+      #    gam_model <- mgcv::gam(gam_formula$formula, data = data, family = family, weights = weights)
+      # }
       
       return(list(
          model = gam_model,
