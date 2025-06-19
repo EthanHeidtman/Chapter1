@@ -30,7 +30,7 @@ evaluate_model <- function(model, data, threshold = performance_criteria$thresho
    rss <- sum((obs_clean - pred_clean)^2)
    overall_r2 <- ifelse(tss == 0, 0, 1 - rss/tss)
    
-   # Use your existing extreme_event_metrics function
+   # High salinity event metrics
    high_metrics <- extreme_event_metrics(obs_clean, pred_clean, threshold)
    
    # R-squared for high salinity events
@@ -48,17 +48,36 @@ evaluate_model <- function(model, data, threshold = performance_criteria$thresho
    # Skill metrics using your existing function
    skill_metrics <- calculate_skill_metrics(obs_clean, pred_clean)
    
-   # RELAXED model validity check - much more lenient
+   # Model complexity metrics (important for GAMs)
+   complexity_metrics <- calculate_model_complexity(model, model_type)
+   
+   # Model validity check
+   min_high_sal_count <- if (exists("performance_criteria") && 
+                             !is.null(performance_criteria$thresholds$min_high_sal_count)) {
+      performance_criteria$thresholds$min_high_sal_count
+   } else {
+      5  # Default minimum
+   }
+   
    model_validity <- (
       !is.na(high_metrics$count) &&
-         high_metrics$count >= performance_criteria$thresholds$min_high_sal_count
-      # Removed the strict hit rate and false alarm rate requirements
+         high_metrics$count >= min_high_sal_count &&
+         !is.na(overall_r2) &&
+         is.finite(overall_rmse)
    )
+   
+   # Residual analysis for GAMs
+   residual_metrics <- if (model_type == "gam") {
+      calculate_gam_residual_metrics(model, obs_clean, pred_clean)
+   } else {
+      list()
+   }
    
    return(list(
       # Overall metrics
       overall_rmse = overall_rmse,
       overall_r2 = overall_r2,
+      overall_mae = mean(abs(obs_clean - pred_clean)), # new
       
       # High salinity metrics
       high_salinity_rmse = high_metrics$rmse,
@@ -74,6 +93,12 @@ evaluate_model <- function(model, data, threshold = performance_criteria$thresho
       
       # Skill metrics
       skill_metrics = skill_metrics,
+      
+      # Model complexity (important for GAMs)
+      complexity_metrics = complexity_metrics, # new
+      
+      # GAM-specific residual metrics
+      residual_metrics = residual_metrics, # new
       
       # Meta information
       total_observations = length(obs_clean),

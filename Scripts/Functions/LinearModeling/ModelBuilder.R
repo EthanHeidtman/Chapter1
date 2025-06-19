@@ -189,6 +189,8 @@ linear_model_builder <- function(data, salinity_threshold) {
    final_model <- lm(as.formula(final_formula), data = data)
    final_evaluation <- evaluate_model(final_model, data, salinity_threshold, 'linear')
    
+   final_evaluation$model_type = 'linear'
+   
    # Calculate final score if not already done
    if (is.na(final_score)) {
       final_score <- performance_score(final_evaluation)
@@ -218,7 +220,9 @@ linear_model_builder <- function(data, salinity_threshold) {
          total_predictors = length(final_predictors),
          final_score = final_score,
          model_type = "linear",
-         build_method = if(exists("stage10_combinations") && !is.na(stage10_combinations$best_combination) && final_score == stage10_combinations$best_score) "combination" else "sequential"
+         build_method = if(exists("stage10_combinations") && 
+                           !is.na(stage10_combinations$best_combination) && 
+                           final_score == stage10_combinations$best_score) "combination" else "sequential"
       )
    )
    

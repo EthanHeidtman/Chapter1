@@ -3,6 +3,20 @@ build_gam_formula <- function(linear_formula, linear_predictors, strategy) {
    
    response_var <- all.vars(linear_formula)[1]
    
+   # Default k configuration
+   default_k_config <- list(
+      main_effects = 10,        # For main effect smooths
+      flow_vars = 15,           # Flow variables may need more flexibility
+      stress_vars = 12,         # Stress variables moderate complexity
+      tidal_vars = 8,           # Tidal effects typically simpler
+      interactions = 6,         # By-terms should be conservative
+      tensor_flow = c(8, 6),    # Tensor products: [main_var, by_var]
+      tensor_stress = c(10, 6), # Stress tensors slightly more complex
+      categorical_by = 4,       # When continuous varies by categorical
+      max_k = 20,               # Hard limit to prevent excessive computation
+      min_k = 3                 # Minimum for meaningful smooths
+   )
+   
    # Parse the original linear formula (returns various groups of predictors)
    var_types <- parse_linear_formula(linear_formula)
    

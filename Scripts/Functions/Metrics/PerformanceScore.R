@@ -22,7 +22,7 @@ performance_score <- function(model_results, weights = performance_criteria$weig
                              0.4 * hit_rate_val +
                              0.3 * csi_val +
                              0.2 * (1 - far_val) +
-                             0.1 * pmax(0, hit_rate_val - far_val)  # TSS
+                             0.1 * pmax(0, hit_rate_val - far_val)  # True skill statistic
    ))
    
    # High salinity accuracy score (0-1, higher is better)
@@ -54,50 +54,7 @@ performance_score <- function(model_results, weights = performance_criteria$weig
    stability_score <- pmax(0, pmin(1, 0.6 * pmax(0, nse_val) + 0.4 * pmax(0, skill_val)))
    
    # Parsimony score 
-   # For linear models, use number of coefficients
-   if (model_type == "linear") {
-      # Estimate complexity from model object if available
-      # Simple heuristic: penalize based on typical predictor counts
-      if (!is.null(model_results$n_predictors)) {
-         n_pred <- model_results$n_predictors
-      } else {
-         n_pred <- 2  
-      }
-      
-      # Score decreases as predictors increase (diminishing returns)
-      # Score ranges from ~0.3 (15+ predictors) to 1.0 (1 predictor)
-      parsimony_score <- 1 / (1 + (n_pred - 1) * 0.1)
-      
-   } else if (model_type == "gam") {
-      # For GAM models, consider both number of terms and smoothing complexity
-      if (!is.null(model_results$edf_sum)) {
-         edf_sum <- model_results$edf_sum  # Effective degrees of freedom
-      } else {
-         edf_sum <- 10  # Default assumption for GAM
-      }
-      
-      # More severe penalty for GAMs due to smoothing terms
-      parsimony_score <- 1 / (1 + (edf_sum - 1) * 0.05)
-      
-   } else if (model_type == "threshold") {
-      # Threshold models have regime complexity
-      if (!is.null(model_results$n_regimes)) {
-         n_regimes <- model_results$n_regimes
-      } else {
-         n_regimes <- 2  # Default assumption
-      }
-      
-      # Penalty for multiple regimes plus parameters per regime
-      complexity <- n_regimes * 3  # Assume ~3 parameters per regime
-      parsimony_score <- 1 / (1 + (complexity - 3) * 0.08)
-      
-   } else {
-      # Default for unknown model types
-      parsimony_score <- 0.7
-   }
-   
-   # Ensure between 0.1 and 1.0
-   parsimony_score <- pmax(0.1, pmin(1.0, parsimony_score))
+   parsimony_score <- calculate_parsimony_score(model_results, model_type)
    
    # Calculate weighted composite score
    composite_score <- (
@@ -110,4 +67,9 @@ performance_score <- function(model_results, weights = performance_criteria$weig
    )
    
    return(as.numeric(composite_score))
+}
+
+# Use safe defaults for missing values
+safe_value <- function(val, default = 0) {
+   ifelse(is.null(val) || is.na(val), default, val)
 }

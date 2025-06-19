@@ -172,14 +172,14 @@ gam_model_builder <- function(data, linear_model, response_var, salinity_thresho
                                       by = list(strategy = stage_performance$strategy),
                                       FUN = mean, na.rm = TRUE)
          strategy_scores <- strategy_scores[order(-strategy_scores$x), ]
-         top_strategies <- strategy_scores$strategy[1:min(3, nrow(strategy_scores))]
+         top_strategies <- strategy_scores$strategy[1:min(4, nrow(strategy_scores))]
          
          stages[[2]]$strategies <- top_strategies
          
          cat(sprintf("\nSelected strategies for Stage 2: %s\n", 
                      paste(top_strategies, collapse = ", ")))
          
-      } else if(stage_config$stage == 2) {
+      } else if(stage$stage == 2) {
          # Select top 2 strategy-distribution combos for stage 3
          top_combos <- stage_performance[1:min(2, nrow(stage_performance)), ]
          
@@ -234,26 +234,32 @@ gam_model_builder <- function(data, linear_model, response_var, salinity_thresho
    best_model_id <- summary_table$model_id[1]
    best_result <- results[[best_model_id]]
    
-   # Create summary statistics similar to linear model builder
-   model_summary <- list(
-      best_model_id = best_model_id,
-      strategy = best_result$strategy,
-      weight_scheme = best_result$weight_scheme,
-      distribution = best_result$distribution,
-      n_models_tested = length(results),
-      n_successful_fits = sum(sapply(results, function(x) !is.null(x$model))),
-      score_range = range(summary_table$score),
-      top_strategies = names(sort(table(summary_table$strategy[1:min(10, nrow(summary_table))]), decreasing = TRUE))
-   )
+   # # Create summary statistics similar to linear model builder
+   # model_summary <- list(
+   #    best_model_id = best_model_id,
+   #    strategy = best_result$strategy,
+   #    weight_scheme = best_result$weight_scheme,
+   #    distribution = best_result$distribution,
+   #    n_models_tested = length(results),
+   #    n_successful_fits = sum(sapply(results, function(x) !is.null(x$model))),
+   #    score_range = range(summary_table$score),
+   #    top_strategies = names(sort(table(summary_table$strategy[1:min(10, nrow(summary_table))]), decreasing = TRUE))
+   # )
    
    # Extract formula as character string
-   formula_char <- deparse(best_result$formula$formula)
-   if(length(formula_char) > 1) {
-      formula_char <- paste(formula_char, collapse = " ")
+   # Get formula from model object consistently
+   if ("gam" %in% class(best_result$model)) {
+      formula_char <- as.character(best_result$model$formula)[c(2,1,3)]
+      formula_char <- paste(formula_char[c(2,1,3)], collapse = " ")
+   } else {
+      formula_char <- deparse(best_result$formula)
+      if(length(formula_char) > 1) {
+         formula_char <- paste(formula_char, collapse = " ")
+      }
    }
    
    # Extract predictor names from the best model
-   predictors <- all.vars(best_result$formula$formula)[-1]  # Remove response variable
+   predictors <- all.vars(best_result$model$formula)[-1]  # Remove response variable
    
    # Create stage results (record of the modeling process)
    stage_results <- list(
@@ -276,10 +282,29 @@ gam_model_builder <- function(data, linear_model, response_var, salinity_thresho
       model = best_result$model,
       formula = formula_char,
       predictors = predictors,
-      evaluation = best_result,  # This contains all the evaluation metrics
+      evaluation = c(
+         best_result[which(names(best_result) == 'overall_rmse') : which(names(best_result) == 'total_observations')],
+         list(
+            model_type = "gam",
+            # Preserve GAM-specific information
+            strategy = best_result$strategy,
+            weight_scheme = best_result$weight_scheme,
+            distribution = best_result$distribution
+         )
+      ),
       score = best_result$score,
       stage_results = stage_results,
-      summary = model_summary
+      summary = list(                           # FIXED: consistent summary structure
+         total_predictors = length(predictors),
+         final_score = best_result$score,
+         model_type = "gam",                   
+         build_method = "systematic_gam",
+         strategy = best_result$strategy,
+         weight_scheme = best_result$weight_scheme,
+         distribution = best_result$distribution,
+         n_models_tested = length(results),
+         n_successful_fits = sum(sapply(results, function(x) !is.null(x$model)))
+      )
    )
    
    class(final_result) <- "gam_model_builder_result"

@@ -390,14 +390,14 @@ predictor_config <- list(
 # Define performance criteria with updated weights
 performance_criteria <- list(
    weights = c(
-      # High salinity event metrics (60% of total weight)
-      "high_sal_detection" = 0.25,      # Detection capability 
-      "high_sal_accuracy" = 0.20,       # Accuracy of high salinity predictions
-      "high_sal_reliability" = 0.15,    # Reliability (false alarm control)
+      # High salinity event metrics (65% of total weight)
+      "high_sal_detection" = 0.30,      # Detection capability 
+      "high_sal_accuracy" = 0.25,       # Accuracy of high salinity predictions
+      "high_sal_reliability" = 0.10,    # Reliability (false alarm control)
       
-      # Overall model performance (35% of total weight)
+      # Overall model performance (30% of total weight)
       "overall_performance" = 0.25,     # General model fit
-      "model_stability" = 0.10,         # Consistent performance across conditions
+      "model_stability" = 0.05,         # Consistent performance across conditions
       
       # Model characteristics (5% of total weight)
       "parsimony" = 0.05                # Model complexity penalty
