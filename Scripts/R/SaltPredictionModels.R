@@ -349,43 +349,82 @@ norm_params <- normalized_predictors$parameters
 
 # Define predictor categories and their candidates
 predictor_config <- list(
-   
+
    # Tide predictors (will always include the best one in subsequent models)
-   tide = c("Norm_Tide", "Norm_TideRate", 'Norm_LagTide1', 'Norm_LagTide2', 'Norm_LagTide4', 
+   tide = c("Norm_Tide", "Norm_TideRate", 'Norm_LagTide1', 'Norm_LagTide2', 'Norm_LagTide4',
             'Norm_TideRange6', 'Norm_TideRange12', 'Norm_TideRange24', 'Norm_LowFlowTideRange',
             'Norm_WeightedTideRange12'),
-   
+
    # Discharge predictors (test systematically)
-   discharge_lag = c("Norm_PowLagDischarge1", "Norm_PowLagDischarge3", "Norm_PowLagDischarge6", 
+   discharge_lag = c("Norm_PowLagDischarge1", "Norm_PowLagDischarge3", "Norm_PowLagDischarge6",
                      "Norm_PowLagDischarge10", "Norm_PowLagDischarge12", "Norm_PowLagDischarge24",
                      "Norm_PowLagDischarge36", "Norm_PowLagDischarge48", "Norm_PowLagDischarge72"),
-   
-   discharge_rolling = c("Norm_RollingPowDischarge0.5", "Norm_RollingPowDischarge1", 
+
+   discharge_rolling = c("Norm_RollingPowDischarge0.5", "Norm_RollingPowDischarge1",
                          "Norm_RollingPowDischarge2", "Norm_RollingPowDischarge4",
-                         "Norm_RollingPowDischarge7", "Norm_RollingPowDischarge10", 
+                         "Norm_RollingPowDischarge7", "Norm_RollingPowDischarge10",
                          "Norm_RollingPowDischarge14"),
-   
+
    # Inflow predictors
    inflow_lag = c("Norm_LagInflows12", "Norm_LagInflows24", "Norm_LagInflows48", "Norm_LagInflows72"),
-   
-   inflow_rolling = c("Norm_RollingPowInflows1", "Norm_RollingPowInflows2", 
+
+   inflow_rolling = c("Norm_RollingPowInflows1", "Norm_RollingPowInflows2",
                       "Norm_RollingPowInflows7", "Norm_RollingPowInflows10"),
-   
+
    # Latent flow features
    latent_flow = c("Norm_SimpleLatent", "Norm_StressLatent", "Norm_BestLatent"),
-   
+
    # Stress indicators
    stress_binary = c("IsModerateStress", "IsHighStress", "IsFlush", "IsStressed"),
-   stress_continuous = c("Norm_StressHours_7day_Marietta", "Norm_StressHours_14day_Marietta", 
+   stress_continuous = c("Norm_StressHours_7day_Marietta", "Norm_StressHours_14day_Marietta",
                          "Norm_StressHours_30day_Marietta", "Norm_StressHours_7day_Conowingo",
                          "Norm_StressHours_14day_Conowingo", "Norm_StressHours_30day_Conowingo",
                          "Norm_CumulativeStress_7day_Marietta", "Norm_CumulativeStress_14day_Marietta",
                          "Norm_CumulativeStress_30day_Marietta", "DaysSinceHighFlow"),
-   
+
    # Seasonal/temporal
    temporal = c("SalinitySeason", "DayOfYear")
-   
+
 )
+
+# predictor_config <- list(
+#    
+#    # Tide predictors (will always include the best one in subsequent models)
+#    tide = c("Tide", "TideRate", 'LagTide1', 'LagTide2', 'LagTide4', 
+#             'TideRange6', 'TideRange12', 'TideRange24', 'LowFlowTideRange',
+#             'WeightedTideRange12'),
+#    
+#    # Discharge predictors (test systematically)
+#    discharge_lag = c("PowLagDischarge1", "PowLagDischarge3", "PowLagDischarge6", 
+#                      "PowLagDischarge10", "PowLagDischarge12", "PowLagDischarge24",
+#                      "PowLagDischarge36", "PowLagDischarge48", "PowLagDischarge72"),
+#    
+#    discharge_rolling = c("RollingPowDischarge0.5", "RollingPowDischarge1", 
+#                          "RollingPowDischarge2", "RollingPowDischarge4",
+#                          "RollingPowDischarge7", "RollingPowDischarge10", 
+#                          "RollingPowDischarge14"),
+#    
+#    # Inflow predictors
+#    inflow_lag = c("LagInflows12", "LagInflows24", "LagInflows48", "LagInflows72"),
+#    
+#    inflow_rolling = c("RollingPowInflows1", "RollingPowInflows2", 
+#                       "RollingPowInflows7", "RollingPowInflows10"),
+#    
+#    # Latent flow features
+#    latent_flow = c("SimpleLatent", "StressLatent", "BestLatent"),
+#    
+#    # Stress indicators
+#    stress_binary = c("IsModerateStress", "IsHighStress", "IsFlush", "IsStressed"),
+#    stress_continuous = c("StressHours_7day_Marietta", "StressHours_14day_Marietta", 
+#                          "StressHours_30day_Marietta", "StressHours_7day_Conowingo",
+#                          "StressHours_14day_Conowingo", "StressHours_30day_Conowingo",
+#                          "CumulativeStress_7day_Marietta", "CumulativeStress_14day_Marietta",
+#                          "CumulativeStress_30day_Marietta", "DaysSinceHighFlow"),
+#    
+#    # Seasonal/temporal
+#    temporal = c("SalinitySeason", "DayOfYear")
+#    
+# )
 
 # Define performance criteria with updated weights
 performance_criteria <- list(
@@ -420,7 +459,7 @@ linear_model_results <- linear_model_builder(model_data, salinity_threshold)
 # plots$plots$residuals
 # plots$statistics
 
-linear_model <- linear_model_results$model
+# linear_model <- linear_model_results$model
 
 gam_model_results <- gam_model_builder(data = model_data, linear_model_results$model, response_var = 'Salinity', salinity_threshold)
 
@@ -568,52 +607,112 @@ model12 <- model12$sample(
 )
 
 ############################### MODEL EVALUATION ###############################
-
-
-
-
-test <- get_predictions(results[["model"]], model_data)
-high_events <- test %>% 
-   filter(is_high) %>% 
-   arrange(date_time)
-
-if(nrow(high_events) > 0) {
-   # Get a window around the first high event
-   first_high_event <- high_events$date_time[1]
-   window_start <- first_high_event - days(5)
-   window_end <- first_high_event + days(5)
-   
-   p7 <- ggplot(filter(test, date_time >= window_start & date_time <= window_end), 
-                aes(x = date_time)) +
-      geom_ribbon(aes(ymin = lower_ci, ymax = upper_ci), alpha = 0.2) +
-      geom_line(aes(y = observed), color = "black") +
-      geom_line(aes(y = predicted), color = "blue") +
-      geom_point(data = filter(test, is_high & date_time >= window_start & date_time <= window_end), 
-                 aes(y = observed), color = "red", size = 2) +
-      labs(title = "10-Day Window Around a High Salinity Event",
-           x = "Date",
-           y = "Salinity (ppt)") +
-      theme_minimal() +
-      theme(axis.text.x = element_text(angle = 45, hjust = 1))
-   
-   print(p7)
-}
-
-
-p1 <- ggplot(test, aes(x = date_time)) +
-   geom_line(aes(y = observed, color = 'Observed'), na.rm = TRUE, linewidth = 0.5) + 
-   geom_line(aes(y = predicted, color = 'Predicted'), na.rm = TRUE, linewidth = 1.1) + 
-   geom_point(data = filter(test, observed >= 1), aes(y = observed, color = 'Above Threshold'), na.rm = TRUE, size = 2) +
+linear_df <- get_predictions(linear_model_results$model, model_data)
+linear_df <- linear_df %>%
+   mutate(Year = year(DateTime),
+          Month = month(DateTime),
+          Day = day(DateTime))
+ggplot(linear_df, aes(x = DateTime)) +
+   geom_line(aes(y = Observed, color = 'Observed'), na.rm = TRUE, linewidth = 0.5) + 
+   geom_line(aes(y = Predicted, color = 'Predicted'), na.rm = TRUE, linewidth = 1.1) + 
+   geom_point(data = filter(linear_df, Observed >= 1), aes(y = Observed, color = 'Above Threshold'), na.rm = TRUE, size = 2) +
    scale_color_manual(name = NULL, values = c('Observed' = 'black', 'Predicted' = 'blue', 'Above Threshold' = 'red')) + 
-   scale_x_datetime(limits = c(as_datetime('2015-02-28'), as_datetime('2015-12-31')), date_labels = '%b-%Y') + 
+   #scale_x_datetime(limits = c(as_datetime('2011-02-28'), as_datetime('2011-12-31')), date_labels = '%b-%Y') + 
    theme_bw() + 
-   labs(x = 'Date', y = 'Salinity (ppt)', title = paste('2015 Best Model:\n', results[["formula"]])) + 
+   labs(x = 'Date', y = 'Salinity (ppt)', title = paste('Best Linear Model:\n', linear_model_results[["formula"]])) + 
+   theme(plot.title = element_text(size = 16),
+         legend.text = element_text(size = 14), 
+         axis.text = element_text(size = 13),
+         axis.title = element_text(size = 14)) +
+   facet_wrap(~Year, scales = 'free')
+
+gam_df <- get_predictions(gam_model_results$model, model_data, 'gam')
+gam_df <- gam_df %>%
+   mutate(Year = year(DateTime),
+          Month = month(DateTime),
+          Day = day(DateTime))
+ggplot(gam_df, aes(x = DateTime)) +
+   geom_line(aes(y = Observed, color = 'Observed'), na.rm = TRUE, linewidth = 0.5) + 
+   geom_line(aes(y = Predicted, color = 'Predicted'), na.rm = TRUE, linewidth = 1.1) + 
+   geom_point(data = filter(gam_df, Observed >= 1), aes(y = Observed, color = 'Above Threshold'), na.rm = TRUE, size = 2) +
+   scale_color_manual(name = NULL, values = c('Observed' = 'black', 'Predicted' = 'blue', 'Above Threshold' = 'red')) + 
+   #scale_x_datetime(limits = c(as_datetime('2011-02-28'), as_datetime('2011-12-31')), date_labels = '%b-%Y') + 
+   theme_bw() + 
+   labs(x = 'Date', y = 'Salinity (ppt)', title = paste('Best GAM Model:\n', linear_model_results[["formula"]])) + 
+   theme(plot.title = element_text(size = 16),
+         legend.text = element_text(size = 14), 
+         axis.text = element_text(size = 13),
+         axis.title = element_text(size = 14)) +
+   facet_wrap(~Year, scales = 'free')
+
+
+
+# Check the results
+cat("Predicted range:", range(test_preds$Predicted, na.rm = TRUE), "\n")
+cat("Lower CI range:", range(test_preds$lower_ci, na.rm = TRUE), "\n") 
+cat("Upper CI range:", range(test_preds$upper_ci, na.rm = TRUE), "\n")
+
+# All should be positive now
+
+# test <- get_predictions(linear_model_results[["model"]], model_data)
+# test <- test %>%
+#    mutate(Year = year(DateTime),
+#           Month = month(DateTime),
+#           Day = day(DateTime))
+# high_events <- test %>% 
+#    filter(is_high) %>% 
+#    arrange(DateTime)
+# 
+# if(nrow(high_events) > 0) {
+#    # Get a window around the first high event
+#    first_high_event <- high_events$DateTime[1]
+#    window_start <- first_high_event - days(5)
+#    window_end <- first_high_event + days(5)
+#    
+#    p7 <- ggplot(filter(test, DateTime >= window_start & DateTime <= window_end), 
+#                 aes(x = DateTime)) +
+#       geom_ribbon(aes(ymin = lower_ci, ymax = upper_ci), alpha = 0.2) +
+#       geom_line(aes(y = Observed), color = "black") +
+#       geom_line(aes(y = Predicted), color = "blue") +
+#       geom_point(data = filter(test, is_high & DateTime >= window_start & DateTime <= window_end), 
+#                  aes(y = Observed), color = "red", size = 2) +
+#       labs(title = "10-Day Window Around a High Salinity Event",
+#            x = "Date",
+#            y = "Salinity (ppt)") +
+#       theme_minimal() +
+#       theme(axis.text.x = element_text(angle = 45, hjust = 1))
+#    
+#    print(p7)
+# }
+
+p1 <- ggplot(test3, aes(x = DateTime)) +
+   geom_line(aes(y = Observed, color = 'Observed'), na.rm = TRUE, linewidth = 0.5) + 
+   geom_line(aes(y = Predicted, color = 'Predicted'), na.rm = TRUE, linewidth = 1.1) + 
+   geom_point(data = filter(test, Observed >= 1), aes(y = Observed, color = 'Above Threshold'), na.rm = TRUE, size = 2) +
+   scale_color_manual(name = NULL, values = c('Observed' = 'black', 'Predicted' = 'blue', 'Above Threshold' = 'red')) + 
+   facet_wrap(~Year, scale = 'free') + 
+   labs(x = 'Date', y = 'Salinity (ppt)') + 
+   theme_bw()
+ggsave('all_years.png', p1, path = '~/Downloads', dpi = 700, height = 9, width = 15)
+
+
+
+p1 <- ggplot(test, aes(x = DateTime)) +
+   geom_line(aes(y = Observed, color = 'Observed'), na.rm = TRUE, linewidth = 0.5) + 
+   geom_line(aes(y = Predicted, color = 'Predicted'), na.rm = TRUE, linewidth = 1.1) + 
+   geom_point(data = filter(test, Observed >= 1), aes(y = Observed, color = 'Above Threshold'), na.rm = TRUE, size = 2) +
+   scale_color_manual(name = NULL, values = c('Observed' = 'black', 'Predicted' = 'blue', 'Above Threshold' = 'red')) + 
+   scale_x_datetime(limits = c(as_datetime('2011-02-28'), as_datetime('2011-12-31')), date_labels = '%b-%Y') + 
+   theme_bw() + 
+   labs(x = 'Date', y = 'Salinity (ppt)', title = paste('2015 Best Model:\n', linear_model_results[["formula"]])) + 
    #labs(x = 'Date', y = 'Salinity (ppt)', title = '2016 Best Model: Salinity ~ 4hrTideLag + 2WeekRollingDischarge + 10DayRollingInflow') +
-   ylim(0, 0.4) + 
+   ylim(0, 0.5) + 
    theme(plot.title = element_text(size = 16),
          legend.text = element_text(size = 14), 
          axis.text = element_text(size = 13),
          axis.title = element_text(size = 14)) 
+
+
 ggsave('2015.png', p1, path = '~/Downloads', dpi = 700, height = 8, width = 14)
 ggsave('2016.png', p1, path = '~/Downloads', dpi = 700, height = 8, width = 14)
 

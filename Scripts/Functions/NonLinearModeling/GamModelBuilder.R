@@ -72,7 +72,8 @@ gam_model_builder <- function(data, linear_model, response_var, salinity_thresho
    # Step 5: Systematic model fitting
    cat("Step 5: Systematic model fitting...\n\n")
    
-   for (stage in stages) {
+   for (stage_idx in seq_along(stages)) {
+      stage <- stages[[stage_idx]]
       cat(sprintf("\n=== STAGE %d: %s ===\n", stage$stage_num, stage$name))
       
       # Skip if configuration is incomplete (shouldn't happen for stage 1)
@@ -113,7 +114,7 @@ gam_model_builder <- function(data, linear_model, response_var, salinity_thresho
                
                # Evaluate if model fitted successfully
                if(!is.null(gam_result$model)) {
-                  eval_result <- evaluate_model(gam_result$model, data, salinity_threshold, "gam")
+                  eval_result <- evaluate_model(gam_result$model, data, salinity_threshold, model_type = "gam")
                   eval_result$model <- gam_result$model
                   eval_result$formula <- gam_result$formula
                   eval_result$strategy <- strategy_name
@@ -179,7 +180,7 @@ gam_model_builder <- function(data, linear_model, response_var, salinity_thresho
          cat(sprintf("\nSelected strategies for Stage 2: %s\n", 
                      paste(top_strategies, collapse = ", ")))
          
-      } else if(stage$stage == 2) {
+      } else if(stage$stage_num == 2) {
          # Select top 2 strategy-distribution combos for stage 3
          top_combos <- stage_performance[1:min(2, nrow(stage_performance)), ]
          
@@ -234,18 +235,6 @@ gam_model_builder <- function(data, linear_model, response_var, salinity_thresho
    best_model_id <- summary_table$model_id[1]
    best_result <- results[[best_model_id]]
    
-   # # Create summary statistics similar to linear model builder
-   # model_summary <- list(
-   #    best_model_id = best_model_id,
-   #    strategy = best_result$strategy,
-   #    weight_scheme = best_result$weight_scheme,
-   #    distribution = best_result$distribution,
-   #    n_models_tested = length(results),
-   #    n_successful_fits = sum(sapply(results, function(x) !is.null(x$model))),
-   #    score_range = range(summary_table$score),
-   #    top_strategies = names(sort(table(summary_table$strategy[1:min(10, nrow(summary_table))]), decreasing = TRUE))
-   # )
-   
    # Extract formula as character string
    # Get formula from model object consistently
    if ("gam" %in% class(best_result$model)) {
@@ -294,7 +283,7 @@ gam_model_builder <- function(data, linear_model, response_var, salinity_thresho
       ),
       score = best_result$score,
       stage_results = stage_results,
-      summary = list(                           # FIXED: consistent summary structure
+      summary = list(                          
          total_predictors = length(predictors),
          final_score = best_result$score,
          model_type = "gam",                   

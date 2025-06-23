@@ -3,13 +3,13 @@ evaluate_model <- function(model, data, threshold = performance_criteria$thresho
                            model_type = "linear") {
    
    # Get predictions based on model type
-   predicted <- get_model_predictions(model, data, model_type)
+   predicted <- get_predictions(model, data, model_type)
    observed <- data$Salinity
    
    # Remove rows where either observed or predicted is NA
-   valid_idx <- !is.na(observed) & !is.na(predicted)
+   valid_idx <- !is.na(observed) & !is.na(predicted$Predicted)
    obs_clean <- observed[valid_idx]
-   pred_clean <- predicted[valid_idx]
+   pred_clean <- predicted[valid_idx, which(colnames(predicted) == 'Predicted')]
    
    if (length(obs_clean) == 0) {
       return(list(

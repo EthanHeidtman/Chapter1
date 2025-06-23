@@ -1,65 +1,76 @@
-
-# Function to get the predictions made by a specific model
-get_model_predictions <- function(model, data, model_type = "linear") {
+get_predictions <- function(model, data, model_type = "linear", threshold = salinity_threshold) {
    tryCatch({
       if (model_type == 'gam') {
          if (inherits(model, 'gam')) {
-            # Use predict.gam which handles smooth terms properly
-            predictions <- predict(model, newdata = data, type = "response")
-            
-            # Handle different family distributions appropriately
+            # For GAM models, handle confidence intervals properly
             family_name <- model$family$family
-            if (family_name %in% c("Gamma", "quasi")) {
-               # Ensure predictions are positive for log-link families
-               predictions <- pmax(predictions, 1e-6)
-            } else if (family_name == "Tweedie") {
-               # Tweedie predictions should be positive
-               predictions <- pmax(predictions, 1e-6)
+            
+            if (family_name %in% c("Gamma", "quasi") && model$family$link == "log") {
+               # For log-link families, get predictions on link scale first
+               preds_link <- predict(model, newdata = data, type = "link", se.fit = TRUE)
+               link_pred <- preds_link$fit
+               link_se <- preds_link$se.fit
+               
+               # Transform to response scale
+               predicted <- exp(link_pred)
+               predicted <- pmax(predicted, 1e-6)  # Ensure positive
+               
+               # Calculate confidence intervals on link scale then transform
+               lower_ci <- if(all(is.na(link_se))) rep(NA, length(predicted)) else exp(link_pred - 1.96 * link_se)
+               upper_ci <- if(all(is.na(link_se))) rep(NA, length(predicted)) else exp(link_pred + 1.96 * link_se)
+               
+            } else {
+               # For other families (Tweedie, gaussian, etc.), use response scale directly
+               preds <- predict(model, newdata = data, type = "response", se.fit = TRUE)
+               predicted <- preds$fit
+               se <- preds$se.fit
+               
+               # Ensure positive predictions for appropriate families
+               if (family_name == "Tweedie") {
+                  predicted <- pmax(predicted, 1e-6)
+               }
+               
+               # Standard confidence intervals
+               lower_ci <- if(all(is.na(se))) rep(NA, length(predicted)) else predicted - 1.96 * se
+               upper_ci <- if(all(is.na(se))) rep(NA, length(predicted)) else predicted + 1.96 * se
             }
             
-            return(predictions)
+            pred_df <- data.frame(
+               DateTime = data$DateTime,
+               Observed = data$Salinity,
+               Predicted = predicted,
+               lower_ci = lower_ci,
+               upper_ci = upper_ci,
+               is_high = data$Salinity > threshold,
+               stringsAsFactors = FALSE
+            )
+            
+            return(pred_df)
          } else {
             warning("Model type specified as 'gam' but model is not a GAM object")
-            return(rep(NA, nrow(data)))
+            return(NULL)
          }
       } else if (model_type == 'linear') {
          if (inherits(model, "lm")) {
-            return(predict(model, newdata = data))
+            preds <- predict(model, newdata = data, se.fit = TRUE)
+            predicted <- preds$fit
+            se <- preds$se.fit
+            
+            pred_df <- data.frame(
+               DateTime = data$DateTime,
+               Observed = data$Salinity,
+               Predicted = predicted,
+               lower_ci = if(all(is.na(se))) rep(NA, length(predicted)) else predicted - 1.96 * se,
+               upper_ci = if(all(is.na(se))) rep(NA, length(predicted)) else predicted + 1.96 * se,
+               is_high = data$Salinity > threshold,
+               stringsAsFactors = FALSE
+            )
+            
+            return(pred_df)
          } else {
             warning("Model type specified as 'linear' but model is not an lm object")
             return(rep(NA, nrow(data)))
          }
-      } else if (model_type == 'threshold') {
-         # Handle threshold models (which are lists containing multiple models)
-         predictions <- numeric(nrow(data))
-         
-         if ("LowDischargeRegime" %in% names(data)) {
-            # Discharge-based threshold model
-            low_idx <- data$LowDischargeRegime
-            high_idx <- !data$LowDischargeRegime
-            
-            if (sum(low_idx, na.rm = TRUE) > 0) {
-               predictions[low_idx] <- predict(model$low_regime, newdata = data[low_idx, ])
-            }
-            if (sum(high_idx, na.rm = TRUE) > 0) {
-               predictions[high_idx] <- predict(model$high_regime, newdata = data[high_idx, ])
-            }
-            
-         } else if ("IsHighStress" %in% names(data)) {
-            # Stress-based threshold model
-            normal_idx <- !data$IsHighStress
-            stress_idx <- data$IsHighStress
-            
-            if (sum(normal_idx, na.rm = TRUE) > 0) {
-               predictions[normal_idx] <- predict(model$normal_regime, newdata = data[normal_idx, ])
-            }
-            if (sum(stress_idx, na.rm = TRUE) > 0) {
-               predictions[stress_idx] <- predict(model$stress_regime, newdata = data[stress_idx, ])
-            }
-         }
-      } else {
-         # If no specified type, try generic predict method
-         return(predict(model, newdata = data))
       }
    }, error = function(e) {
       warning(paste("Error in get_model_predictions:", e$message))
