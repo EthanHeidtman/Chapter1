@@ -1,7 +1,11 @@
 # Formula to systematically build formula for each particular strategy
-build_gam_formula <- function(linear_formula, linear_predictors, strategy) {
+build_gam_formula <- function(linear_formula, linear_predictors, strategy, k_config = NULL) {
    
-   response_var <- all.vars(linear_formula)[1]
+   # Extract response variable properly - fix for formula reversal issue
+   response_var <- as.character(linear_formula)[2]  # Left side of formula
+   if(is.na(response_var) || response_var == "") {
+      response_var <- all.vars(linear_formula)[1]  # Fallback method
+   }
    
    # Default k configuration
    default_k_config <- list(
@@ -10,8 +14,8 @@ build_gam_formula <- function(linear_formula, linear_predictors, strategy) {
       stress_vars = 12,         # Stress variables moderate complexity
       tidal_vars = 8,           # Tidal effects typically simpler
       interactions = 6,         # By-terms should be conservative
-      tensor_flow = c(8, 6),    # Tensor products: [main_var, by_var]
-      tensor_stress = c(10, 6), # Stress tensors slightly more complex
+      tensor_main = 10,         # Main variable in tensor products
+      tensor_secondary = 6,     # Secondary variable in tensor products
       categorical_by = 4,       # When continuous varies by categorical
       max_k = 20,               # Hard limit to prevent excessive computation
       min_k = 3                 # Minimum for meaningful smooths
@@ -19,6 +23,9 @@ build_gam_formula <- function(linear_formula, linear_predictors, strategy) {
    
    # Parse the original linear formula (returns various groups of predictors)
    var_types <- parse_linear_formula(linear_formula)
+   
+   # Merge user config with defaults
+   k_config <- if(is.null(k_config)) default_k_config else modifyList(default_k_config, k_config)
    
    # Build formula based on strategy
    if(strategy == "linear" || strategy == "baseline") {
@@ -28,12 +35,16 @@ build_gam_formula <- function(linear_formula, linear_predictors, strategy) {
       
    } else if(strategy == "smooth_all") {
       # Convert interactions first to identify by variables
-      interaction_result <- convert_interactions_to_gam(var_types$interactions, var_types, "smart")
+      interaction_result <- convert_interactions_to_gam(var_types$interactions, var_types, "smart", k_config)
       by_vars_used <- interaction_result$by_vars
       
       # Smooth all continuous main effects, excluding those used in by terms
       continuous_for_smooth <- setdiff(var_types$continuous_vars, by_vars_used)
-      smooth_main <- if(length(continuous_for_smooth) > 0) paste0("s(", continuous_for_smooth, ")") else NULL
+      smooth_main <- if(length(continuous_for_smooth) > 0) {
+         sapply(continuous_for_smooth, function(x) {
+            create_smooth_term(x, k_val = NULL, k_config = k_config, var_types = var_types)
+         })
+      } else NULL
       
       # Keep categorical variables as parametric main effects only if not used in by terms
       categorical_for_main <- setdiff(var_types$categorical_vars, by_vars_used)
@@ -43,12 +54,16 @@ build_gam_formula <- function(linear_formula, linear_predictors, strategy) {
       
    } else if(strategy == "smooth_flow") {
       # Convert interactions first
-      interaction_result <- convert_interactions_to_gam(var_types$interactions, var_types, "by_terms")
+      interaction_result <- convert_interactions_to_gam(var_types$interactions, var_types, "by_terms", k_config)
       by_vars_used <- interaction_result$by_vars
       
       # Smooth only flow variables not used in by terms
       flow_for_smooth <- setdiff(var_types$flow_vars, by_vars_used)
-      smooth_terms <- if(length(flow_for_smooth) > 0) paste0("s(", flow_for_smooth, ")") else NULL
+      smooth_terms <- if(length(flow_for_smooth) > 0) {
+         sapply(flow_for_smooth, function(x) {
+            create_smooth_term(x, k_val = k_config$flow_vars, k_config = k_config, var_types = var_types)
+         })
+      } else NULL
       
       # Linear terms excluding those used in by terms
       linear_terms <- setdiff(var_types$main_effects, c(var_types$flow_vars, by_vars_used))
@@ -57,12 +72,16 @@ build_gam_formula <- function(linear_formula, linear_predictors, strategy) {
       
    } else if(strategy == "smooth_stress") {
       # Convert interactions first
-      interaction_result <- convert_interactions_to_gam(var_types$interactions, var_types, "by_terms")
+      interaction_result <- convert_interactions_to_gam(var_types$interactions, var_types, "by_terms", k_config)
       by_vars_used <- interaction_result$by_vars
       
       # Smooth only stress variables not used in by terms
       stress_for_smooth <- setdiff(var_types$stress_vars, by_vars_used)
-      smooth_terms <- if(length(stress_for_smooth) > 0) paste0("s(", stress_for_smooth, ")") else NULL
+      smooth_terms <- if(length(stress_for_smooth) > 0) {
+         sapply(stress_for_smooth, function(x) {
+            create_smooth_term(x, k_val = k_config$stress_vars, k_config = k_config, var_types = var_types)
+         })
+      } else NULL
       
       # Linear terms excluding those used in by terms
       linear_terms <- setdiff(var_types$main_effects, c(var_types$stress_vars, by_vars_used))
@@ -71,10 +90,10 @@ build_gam_formula <- function(linear_formula, linear_predictors, strategy) {
       
    } else if(strategy == "tensor" || strategy == "tensor_flow_stress") {
       # Create strategic tensor products first
-      tensor_result <- create_strategic_tensors(var_types, "salinity")
+      tensor_result <- create_strategic_tensors(var_types, "salinity", k_config)
       
       # Convert remaining interactions
-      interaction_result <- convert_interactions_to_gam(var_types$interactions, var_types, "parametric")
+      interaction_result <- convert_interactions_to_gam(var_types$interactions, var_types, "parametric", k_config)
       by_vars_used <- c(tensor_result$by_vars, interaction_result$by_vars)
       
       # Get variables already handled by tensor terms
@@ -85,19 +104,23 @@ build_gam_formula <- function(linear_formula, linear_predictors, strategy) {
       remaining_continuous <- setdiff(var_types$continuous_vars, c(tensor_vars, by_vars_used))
       remaining_categorical <- setdiff(var_types$categorical_vars, by_vars_used)
       
-      remaining_smooth <- if(length(remaining_continuous) > 0) paste0("s(", remaining_continuous, ")") else NULL
+      remaining_smooth <- if(length(remaining_continuous) > 0) {
+         sapply(remaining_continuous, create_smooth_term)
+      } else NULL
       
       formula_rhs <- paste(c(tensor_result$terms, remaining_smooth, remaining_categorical, interaction_result$terms), 
                            collapse = " + ")
       
    } else if(strategy == "mixed_interactions") {
       # Convert interactions first with smart method
-      interaction_result <- convert_interactions_to_gam(var_types$interactions, var_types, "smart")
+      interaction_result <- convert_interactions_to_gam(var_types$interactions, var_types, "smart", k_config)
       by_vars_used <- interaction_result$by_vars
       
       # Smooth continuous main effects not used in by terms
       continuous_for_smooth <- setdiff(var_types$continuous_vars, by_vars_used)
-      smooth_main <- if(length(continuous_for_smooth) > 0) paste0("s(", continuous_for_smooth, ")") else NULL
+      smooth_main <- if(length(continuous_for_smooth) > 0) {
+         sapply(continuous_for_smooth, create_smooth_term)
+      } else NULL
       
       # Parametric categorical main effects not used in by terms
       categorical_for_main <- setdiff(var_types$categorical_vars, by_vars_used)
@@ -119,15 +142,21 @@ build_gam_formula <- function(linear_formula, linear_predictors, strategy) {
    # Remove empty terms
    terms <- strsplit(formula_rhs, "\\s*\\+\\s*")[[1]]
    terms <- terms[terms != "" & !is.na(terms)]
-   formula_rhs <- paste(terms, collapse = " + ")
+   #terms <- terms[grepl("^\\s*(s|te)\\s*\\(", terms)]
    
-   # Handle edge case where formula_rhs is empty
-   if(formula_rhs == "" || is.na(formula_rhs)) {
-      formula_rhs <- "1"  # Intercept only
+   if (length(terms) == 0) {
+      formula_rhs <- "1"
+   } else {
+      formula_rhs <- paste(terms, collapse = " + ")
    }
    
-   # Construct final formula
-   gam_formula <- as.formula(paste(response_var, "~", formula_rhs))
+   # Construct final formula - fix for formula reversal
+   if(formula_rhs == "1" || formula_rhs == "") {
+      gam_formula <- as.formula(paste(response_var, "~ 1"))
+   } else {
+      gam_formula <- as.formula(paste(response_var, "~", formula_rhs))
+   }
+   
    
    return(list(
       formula = gam_formula,

@@ -387,45 +387,6 @@ predictor_config <- list(
 
 )
 
-# predictor_config <- list(
-#    
-#    # Tide predictors (will always include the best one in subsequent models)
-#    tide = c("Tide", "TideRate", 'LagTide1', 'LagTide2', 'LagTide4', 
-#             'TideRange6', 'TideRange12', 'TideRange24', 'LowFlowTideRange',
-#             'WeightedTideRange12'),
-#    
-#    # Discharge predictors (test systematically)
-#    discharge_lag = c("PowLagDischarge1", "PowLagDischarge3", "PowLagDischarge6", 
-#                      "PowLagDischarge10", "PowLagDischarge12", "PowLagDischarge24",
-#                      "PowLagDischarge36", "PowLagDischarge48", "PowLagDischarge72"),
-#    
-#    discharge_rolling = c("RollingPowDischarge0.5", "RollingPowDischarge1", 
-#                          "RollingPowDischarge2", "RollingPowDischarge4",
-#                          "RollingPowDischarge7", "RollingPowDischarge10", 
-#                          "RollingPowDischarge14"),
-#    
-#    # Inflow predictors
-#    inflow_lag = c("LagInflows12", "LagInflows24", "LagInflows48", "LagInflows72"),
-#    
-#    inflow_rolling = c("RollingPowInflows1", "RollingPowInflows2", 
-#                       "RollingPowInflows7", "RollingPowInflows10"),
-#    
-#    # Latent flow features
-#    latent_flow = c("SimpleLatent", "StressLatent", "BestLatent"),
-#    
-#    # Stress indicators
-#    stress_binary = c("IsModerateStress", "IsHighStress", "IsFlush", "IsStressed"),
-#    stress_continuous = c("StressHours_7day_Marietta", "StressHours_14day_Marietta", 
-#                          "StressHours_30day_Marietta", "StressHours_7day_Conowingo",
-#                          "StressHours_14day_Conowingo", "StressHours_30day_Conowingo",
-#                          "CumulativeStress_7day_Marietta", "CumulativeStress_14day_Marietta",
-#                          "CumulativeStress_30day_Marietta", "DaysSinceHighFlow"),
-#    
-#    # Seasonal/temporal
-#    temporal = c("SalinitySeason", "DayOfYear")
-#    
-# )
-
 # Define performance criteria with updated weights
 performance_criteria <- list(
    weights = c(
@@ -451,7 +412,7 @@ performance_criteria <- list(
 )
 
 linear_model_results <- linear_model_builder(model_data, salinity_threshold)
-# plots <- generate_model_diagnostics(model = results[['model']], model_name = 'Best Linear Model', data = model_data)
+#plots <- generate_model_diagnostics(model = linear_model_results$model, model_name = 'Best Linear Model', data = model_data)
 # plots$plots$performance
 # plots$plots$high_salinity
 # plots$plots$correlations
@@ -638,7 +599,7 @@ ggplot(gam_df, aes(x = DateTime)) +
    scale_color_manual(name = NULL, values = c('Observed' = 'black', 'Predicted' = 'blue', 'Above Threshold' = 'red')) + 
    #scale_x_datetime(limits = c(as_datetime('2011-02-28'), as_datetime('2011-12-31')), date_labels = '%b-%Y') + 
    theme_bw() + 
-   labs(x = 'Date', y = 'Salinity (ppt)', title = paste('Best GAM Model:\n', linear_model_results[["formula"]])) + 
+   labs(x = 'Date', y = 'Salinity (ppt)', title = paste('Best GAM Model:\n', gam_model_results$formula)) + 
    theme(plot.title = element_text(size = 16),
          legend.text = element_text(size = 14), 
          axis.text = element_text(size = 13),
