@@ -1,3 +1,97 @@
+fit_gam_worker <- function(strategy_name, weight_name, dist_name, 
+                           data_df, response_col, formula_obj, predictors_vec, 
+                           salinity_thresh, stage_number) {
+   
+   # Load required packages inside worker
+   if (!requireNamespace("mgcv", quietly = TRUE)) {
+      return(list(success = FALSE, error = "mgcv not available"))
+   }
+   
+   tryCatch({
+      # Reconstruct minimal objects inside worker - no external dependencies
+      response_values <- data_df[[response_col]]
+      
+      # Simple weight creation functions (avoid external function calls)
+      create_weights_local <- function(values, type) {
+         if (type == "quantile") {
+            q95 <- quantile(values, 0.95, na.rm = TRUE)
+            weights <- ifelse(values >= q95, 2, 1)
+         } else if (type == "exponential") {
+            q90 <- quantile(values, 0.90, na.rm = TRUE)
+            weights <- ifelse(values >= q90, exp((values - q90) / sd(values, na.rm = TRUE)), 1)
+         } else if (type == "binary") {
+            q95 <- quantile(values, 0.95, na.rm = TRUE)
+            weights <- ifelse(values >= q95, 3, 1)
+         } else {
+            weights <- NULL
+         }
+         return(weights)
+      }
+      
+      local_weight_schemes <- list(
+         'none' = NULL,
+         "quantile" = create_weights_local(response_values, "quantile"),
+         "exponential" = create_weights_local(response_values, "exponential"),
+         "binary" = create_weights_local(response_values, "binary")
+      )
+      
+      local_gam_strategies <- list(
+         "baseline" = "linear",
+         "smooth_all" = "smooth_all",
+         "smooth_flow" = "smooth_flow",
+         "smooth_stress" = "smooth_stress",
+         "smooth_tide" = "smooth_tide",
+         "tensor_flow_stress" = "tensor",
+         "tensor_flow_tide" = "tensor",
+         "mixed_interactions" = "mixed_interactions"
+      )
+      
+      local_distributions <- list(
+         "gaussian" = gaussian(),
+         "gamma" = Gamma(link = "log"),
+         "tweedie" = tw(),
+         "quasi" = quasi(link = "identity", variance = "mu^2"),
+         "scat" = scat()
+      )
+      
+      # Call your fit_gam function
+      result <- fit_gam(
+         strategy = strategy_name,
+         weight = weight_name, 
+         distribution = dist_name,
+         data = data_df,
+         linear_formula = formula_obj,
+         linear_predictors = predictors_vec,
+         weight_schemes = local_weight_schemes,
+         gam_strategies = local_gam_strategies,
+         distributions = local_distributions,
+         salinity_threshold = salinity_thresh,
+         stage_num = stage_number,
+         strip = TRUE
+      )
+      
+      # Return only essential information to minimize memory transfer
+      if (!is.null(result) && !is.null(result$result)) {
+         return(list(
+            model_id = result$model_id,
+            strategy = result$result$strategy,
+            weight_scheme = result$result$weight_scheme,
+            distribution = result$result$distribution,
+            score = result$result$score,
+            success = TRUE
+         ))
+      } else {
+         return(list(success = FALSE, error = "fit_gam returned NULL"))
+      }
+      
+   }, error = function(e) {
+      return(list(success = FALSE, error = as.character(e$message)))
+   })
+}
+
+
+
+
 parallel_gam_model_builder <- function(data, linear_model, response_var, salinity_threshold,
                                        workers = 6,
                                        parallel_plan = 'multisession') {
@@ -11,13 +105,16 @@ parallel_gam_model_builder <- function(data, linear_model, response_var, salinit
    
    # Set up parallelization plan
    plan(multisession, workers = workers)
-   #plan(sequential)
    options(future.globals.maxSize = 2 * 1024^3)  # 2 gb max
    
    # Extract and clean linear formula and predictors
    linear_formula <- formula(linear_model)
    environment(linear_formula) <- .GlobalEnv # detach the model from the model environment
    linear_predictors <- all.vars(linear_formula)[-1]
+   
+   # Create minimal data object - only necessary columns
+   required_cols <- unique(c(response_var, linear_predictors))
+   data_minimal <- data[, required_cols, drop = FALSE]
    
    # Step 1: Create weighting schemes
    cat("Step 1: Creating weighting schemes for extreme events...\n")
@@ -76,7 +173,8 @@ parallel_gam_model_builder <- function(data, linear_model, response_var, salinit
    stage_times <- numeric(length(stages))
    results <- list()
    all_performance <- list()
-   
+
+   # Attempt parallel processing with minimal memory footprint
    for (stage_idx in seq_along(stages)) {
       stage <- stages[[stage_idx]]
       cat(sprintf("\n=== STAGE %d: %s ===\n", stage$stage_num, stage$name))
@@ -86,7 +184,7 @@ parallel_gam_model_builder <- function(data, linear_model, response_var, salinit
          next
       }
       
-      # Create combinations for parallelization
+      # Create parameter combinations
       combos <- expand.grid(
          strategy = stage$strategies,
          weight = stage$weights,
@@ -94,52 +192,87 @@ parallel_gam_model_builder <- function(data, linear_model, response_var, salinit
          stringsAsFactors = FALSE
       )
       
-      total_models <- length(stage$strategies) * length(stage$weights) * length(stage$distributions)
-      cat(sprintf("Fitting %d models for Stage %d...\n\n", total_models, stage$stage_num))
+      total_models <- nrow(combos)
+      cat(sprintf("Fitting %d models for Stage %d...\n", total_models, stage$stage_num))
       
-      # Track time for each stage
       start_time <- Sys.time()
+      model_results <- NULL
       
-      # Parallel model fitting
-      # model_list <- future_pmap(combos, fit_one_model, .progress = TRUE, 
-      #                           .options = furrr_options(seed = TRUE, scheduling = stage_scheduling[stage_idx]))
-      model_list <- future_map(seq_len(nrow(combos)), function(i) {
-         fit_gam(
-            strategy = combos$strategy[i],
-            weight = combos$weight[i], 
-            distribution = combos$distribution[i],
-            data = data,
-            linear_formula = linear_formula,
-            linear_predictors = linear_predictors,
-            weight_schemes = weight_schemes,
-            gam_strategies = gam_strategies,
-            distributions = distributions,
-            salinity_threshold = salinity_threshold,
-            stage_num = stage$stage_num,
-            strip = TRUE
+      # Try parallel processing with very strict controls
+      tryCatch({
+         plan(multisession, workers = min(workers, 2))
+         options(future.globals.maxSize = 500 * 1024^2)  # Only 500MB
+         
+         # Use future_map with explicit globals specification
+         model_results <- future_map(1:total_models, 
+                                     function(i) {
+                                        fit_gam_worker(
+                                           strategy_name = combos$strategy[i],
+                                           weight_name = combos$weight[i],
+                                           dist_name = combos$distribution[i],
+                                           data_df = data_minimal,
+                                           response_col = response_var,
+                                           formula_obj = linear_formula,
+                                           predictors_vec = linear_predictors,
+                                           salinity_thresh = salinity_threshold,
+                                           stage_number = stage$stage_num
+                                        )
+                                     },
+                                     .options = furrr_options(
+                                        seed = TRUE, 
+                                        scheduling = 1,
+                                        globals = c("fit_gam_worker", "data_minimal", "linear_formula", 
+                                                    "linear_predictors", "response_var", "salinity_threshold")
+                                     )
          )
-      }, .progress = TRUE, .options = furrr_options(seed = TRUE, scheduling = stage_scheduling[stage_idx]))
-      
+         
+         plan(sequential)
+         
+      }, error = function(e) {
+         cat("Parallel processing failed:", e$message, "\n")
+         cat("Falling back to sequential processing...\n")
+         plan(sequential)
+         
+         # Sequential processing
+         model_results <- vector("list", total_models)
+         for (i in 1:total_models) {
+            cat("Processing model", i, "of", total_models, "\n")
+            model_results[[i]] <- fit_gam_worker(
+               strategy_name = combos$strategy[i],
+               weight_name = combos$weight[i],
+               dist_name = combos$distribution[i],
+               data_df = data_minimal,
+               response_col = response_var,
+               formula_obj = linear_formula,
+               predictors_vec = linear_predictors,
+               salinity_thresh = salinity_threshold,
+               stage_number = stage$stage_num
+            )
+            gc()
+         }
+      })
+   
       stage_times[stage_idx] <- as.numeric(difftime(Sys.time(), start_time, units = "mins"))
       
-      model_list <- compact(model_list)
-      stage_results <- setNames(lapply(model_list, `[[`, "result"),
-                                sapply(model_list, `[[`, "model_id"))
-      results <- c(results, stage_results)
+      # Process results
+      successful_results <- model_results[sapply(model_results, function(x) isTRUE(x$success))]
       
-      # Evaluation
-      cat(sprintf("\n=== STAGE %d ANALYSIS ===\n", stage$stage_num))
-      if (length(stage_results) == 0) {
+      if (length(successful_results) == 0) {
          cat("ERROR: No models fitted successfully in this stage!\n")
          break
       }
       
+      # Store results
+      stage_results <- setNames(successful_results, sapply(successful_results, function(x) x$model_id))
+      results <- c(results, stage_results)
+      
+      # Create performance summary
       stage_performance <- data.frame(
-         model_id = names(stage_results),
-         strategy = sapply(stage_results, function(x) x$strategy),
-         weight_scheme = sapply(stage_results, function(x) x$weight_scheme),
-         distribution = sapply(stage_results, function(x) x$distribution),
-         score = sapply(stage_results, function(x) x$score),
+         model_id = sapply(successful_results, function(x) x$model_id),
+         strategy = sapply(successful_results, function(x) x$strategy),
+         weight_scheme = sapply(successful_results, function(x) x$weight_scheme),
+         distribution = sapply(successful_results, function(x) x$distribution),
+         score = sapply(successful_results, function(x) x$score),
          stage = stage$stage_num,
          stringsAsFactors = FALSE
       )
@@ -147,7 +280,7 @@ parallel_gam_model_builder <- function(data, linear_model, response_var, salinit
       all_performance[[paste0("stage_", stage$stage_num)]] <- stage_performance
       
       cat("Top performers for Stage", stage$stage_num, ":\n")
-      top_n <- min(10, nrow(stage_performance))
+      top_n <- min(5, nrow(stage_performance))
       for (i in 1:top_n) {
          cat(sprintf("  %d. %s_%s_%s (score: %.4f)\n",
                      i,
@@ -157,9 +290,9 @@ parallel_gam_model_builder <- function(data, linear_model, response_var, salinit
                      stage_performance$score[i]))
       }
       
-      # Next stage configuration
+      # Configure next stage
       if (stage$stage_num == 1) {
-         top_strategies <- head(aggregate(score ~ strategy, stage_performance, mean)[order(-aggregate(score ~ strategy, stage_performance, mean)$score), "strategy"], 4)
+         top_strategies <- head(aggregate(score ~ strategy, stage_performance, mean)[order(-aggregate(score ~ strategy, stage_performance, mean)$score), "strategy"], 3)
          stages[[2]]$strategies <- top_strategies
          cat(sprintf("\nSelected strategies for Stage 2: %s\n", paste(top_strategies, collapse = ", ")))
       } else if (stage$stage_num == 2) {
@@ -170,7 +303,107 @@ parallel_gam_model_builder <- function(data, linear_model, response_var, salinit
          cat(sprintf("  Strategies: %s\n", paste(stages[[3]]$strategies, collapse = ", ")))
          cat(sprintf("  Distributions: %s\n", paste(stages[[3]]$distributions, collapse = ", ")))
       }
+      
+      gc()  # Clean up after each stage
    }
+   
+   
+   # # Process each stage
+   # for (stage_idx in seq_along(stages)) {
+   #    stage <- stages[[stage_idx]]
+   #    cat(sprintf("\n=== STAGE %d: %s ===\n", stage$stage_num, stage$name))
+   #    
+   #    if (is.null(stage$strategies) || is.null(stage$distributions)) {
+   #       cat("Skipping stage due to incomplete configuration\n")
+   #       next
+   #    }
+   #    
+   #    # Create combinations for parallelization
+   #    combos <- expand.grid(
+   #       strategy = stage$strategies,
+   #       weight = stage$weights,
+   #       distribution = stage$distributions,
+   #       stringsAsFactors = FALSE
+   #    )
+   #    
+   #    total_models <- length(stage$strategies) * length(stage$weights) * length(stage$distributions)
+   #    cat(sprintf("Fitting %d models for Stage %d...\n\n", total_models, stage$stage_num))
+   #    
+   #    # Track time for each stage
+   #    start_time <- Sys.time()
+   #    model_results <- NULL
+   #    
+   #    # Parallel model fitting
+   #    # model_list <- future_pmap(combos, fit_one_model, .progress = TRUE, 
+   #    #                           .options = furrr_options(seed = TRUE, scheduling = stage_scheduling[stage_idx]))
+   #    model_list <- future_map(seq_len(nrow(combos)), function(i) {
+   #       fit_gam(
+   #          strategy = combos$strategy[i],
+   #          weight = combos$weight[i], 
+   #          distribution = combos$distribution[i],
+   #          data = data,
+   #          linear_formula = linear_formula,
+   #          linear_predictors = linear_predictors,
+   #          weight_schemes = weight_schemes,
+   #          gam_strategies = gam_strategies,
+   #          distributions = distributions,
+   #          salinity_threshold = salinity_threshold,
+   #          stage_num = stage$stage_num,
+   #          strip = TRUE
+   #       )
+   #    }, .progress = TRUE, .options = furrr_options(seed = TRUE, scheduling = stage_scheduling[stage_idx]))
+   #    
+   #    stage_times[stage_idx] <- as.numeric(difftime(Sys.time(), start_time, units = "mins"))
+   #    
+   #    model_list <- compact(model_list)
+   #    stage_results <- setNames(lapply(model_list, `[[`, "result"),
+   #                              sapply(model_list, `[[`, "model_id"))
+   #    results <- c(results, stage_results)
+   #    
+   #    # Evaluation
+   #    cat(sprintf("\n=== STAGE %d ANALYSIS ===\n", stage$stage_num))
+   #    if (length(stage_results) == 0) {
+   #       cat("ERROR: No models fitted successfully in this stage!\n")
+   #       break
+   #    }
+   #    
+   #    stage_performance <- data.frame(
+   #       model_id = names(stage_results),
+   #       strategy = sapply(stage_results, function(x) x$strategy),
+   #       weight_scheme = sapply(stage_results, function(x) x$weight_scheme),
+   #       distribution = sapply(stage_results, function(x) x$distribution),
+   #       score = sapply(stage_results, function(x) x$score),
+   #       stage = stage$stage_num,
+   #       stringsAsFactors = FALSE
+   #    )
+   #    stage_performance <- stage_performance[order(-stage_performance$score), ]
+   #    all_performance[[paste0("stage_", stage$stage_num)]] <- stage_performance
+   #    
+   #    cat("Top performers for Stage", stage$stage_num, ":\n")
+   #    top_n <- min(10, nrow(stage_performance))
+   #    for (i in 1:top_n) {
+   #       cat(sprintf("  %d. %s_%s_%s (score: %.4f)\n",
+   #                   i,
+   #                   stage_performance$strategy[i],
+   #                   stage_performance$weight_scheme[i],
+   #                   stage_performance$distribution[i],
+   #                   stage_performance$score[i]))
+   #    }
+   #    
+   #    # Next stage configuration
+   #    if (stage$stage_num == 1) {
+   #       top_strategies <- head(aggregate(score ~ strategy, stage_performance, mean)[order(-aggregate(score ~ strategy, stage_performance, mean)$score), "strategy"], 4)
+   #       stages[[2]]$strategies <- top_strategies
+   #       cat(sprintf("\nSelected strategies for Stage 2: %s\n", paste(top_strategies, collapse = ", ")))
+   #    } else if (stage$stage_num == 2) {
+   #       top_combos <- head(stage_performance, 2)
+   #       stages[[3]]$strategies <- unique(top_combos$strategy)
+   #       stages[[3]]$distributions <- unique(top_combos$distribution)
+   #       cat("Selected for Stage 3:\n")
+   #       cat(sprintf("  Strategies: %s\n", paste(stages[[3]]$strategies, collapse = ", ")))
+   #       cat(sprintf("  Distributions: %s\n", paste(stages[[3]]$distributions, collapse = ", ")))
+   #    }
+   # }
    
    cat("\n", strrep("=", 80), "\nALL STAGES COMPLETE!\n", strrep("=", 80), "\n")
    cat("\nStage Runtimes (minutes):\n")

@@ -426,8 +426,8 @@ linear_model_results <- linear_model_builder(model_data, salinity_threshold)
 
 # linear_model <- linear_model_results$model
 
-gam_model_results <- gam_model_builder(data = model_data, linear_model_results$model, response_var = 'Salinity', salinity_threshold)
-test <- parallel_gam_model_builder(data = model_data, linear_model_results$model, response_var = 'Salinity', salinity_threshold)
+# gam_model_results <- gam_model_builder(data = model_data, linear_model_results$model, response_var = 'Salinity', salinity_threshold)
+# test <- parallel_gam_model_builder(data = model_data, linear_model_results$model, response_var = 'Salinity', salinity_threshold)
 
 test_data <- model_data %>%
    filter(Year == 2016)
