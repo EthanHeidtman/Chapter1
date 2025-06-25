@@ -420,9 +420,18 @@ linear_model_results <- linear_model_builder(model_data, salinity_threshold)
 # plots$plots$residuals
 # plots$statistics
 
+
+# Clean the R environment to save RAM for subsequent modeling
+####
+
 # linear_model <- linear_model_results$model
 
 gam_model_results <- gam_model_builder(data = model_data, linear_model_results$model, response_var = 'Salinity', salinity_threshold)
+test <- parallel_gam_model_builder(data = model_data, linear_model_results$model, response_var = 'Salinity', salinity_threshold)
+
+test_data <- model_data %>%
+   filter(Year == 2016)
+test_gam <- parallel_gam_model_builder(data = test_data, linear_model_results$model, response_var = 'Salinity', salinity_threshold)
 
 
 
@@ -587,7 +596,8 @@ ggplot(linear_df, aes(x = DateTime)) +
          axis.title = element_text(size = 14)) +
    facet_wrap(~Year, scales = 'free')
 
-gam_df <- get_predictions(gam_model_results$model, model_data, 'gam')
+#gam_df <- get_predictions(gam_model_results$model, model_data, 'gam')
+gam_df <- get_predictions(test_gam$model, test_data, 'gam')
 gam_df <- gam_df %>%
    mutate(Year = year(DateTime),
           Month = month(DateTime),
