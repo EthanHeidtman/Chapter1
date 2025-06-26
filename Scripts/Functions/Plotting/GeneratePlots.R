@@ -1,7 +1,7 @@
 # Main diagnostic function - generates all plots for a model
 generate_model_diagnostics <- function(model, data, model_name = "Linear Model", 
                                        model_type = "linear", save_plots = FALSE, 
-                                       output_dir = "~/Outputs/LinearModels") {
+                                       output_dir = "~/Outputs/ModelingPlots") {
    
    # Get predictions using your existing function
    pred_df <- get_predictions(model, data, model_type)

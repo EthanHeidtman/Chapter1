@@ -4,8 +4,14 @@ gam_model_builder <- function(data, linear_model, response_var, salinity_thresho
    cat("Starting from the best linear model to better capture salinity events\n\n")
    
    # Extract linear model formula and predictors
+   # Extract and clean linear formula and predictors
    linear_formula <- formula(linear_model)
-   linear_predictors <- all.vars(linear_formula)[-1]  # Remove response variable
+   environment(linear_formula) <- .GlobalEnv # detach the model from the model environment
+   linear_predictors <- all.vars(linear_formula)[-1]
+   
+   # Create minimal data object - only necessary columns
+   required_cols <- unique(c('DateTime', response_var, linear_predictors))
+   data <- data[, required_cols, drop = FALSE]
    
    # Step 1: Create different weighting schemes
    cat("Step 1: Creating weighting schemes for extreme events...\n")
@@ -25,7 +31,7 @@ gam_model_builder <- function(data, linear_model, response_var, salinity_thresho
       "smooth_stress" = "smooth_stress",           # Smooth only stress variables
       "smooth_tide" = "smooth_tide",               # Smooth only tide variables
       "tensor_flow_stress" = "tensor",             # Tensor product of flow and stress
-      "tensor_flow_tide" = "tensor",               # Tensor product of flow and tide
+      # "tensor_flow_tide" = "tensor",               # Tensor product of flow and tide
       "mixed_interactions" = "mixed_interactions"  # Strategic mix of smooth and tensor terms
    )
    
@@ -34,9 +40,9 @@ gam_model_builder <- function(data, linear_model, response_var, salinity_thresho
    distributions <- list(
       "gaussian" = gaussian(),                                
       "gamma" = Gamma(link = "log"),                          
-      "tweedie" = tw(),                                       # Exponential Tweedie family distributions (more flexible)
-      "quasi" = quasi(link = "identity", variance = "mu^2"),  # Quasi-family distribution
-      'scat' = scat()                                         # scaled-t, for heavy tailed response variables
+      "tweedie" = tw()                                       # Exponential Tweedie family distributions (more flexible)
+      # "quasi" = quasi(link = "identity", variance = "mu^2"),  # Quasi-family distribution
+      # 'scat' = scat()                                         # scaled-t, for heavy tailed response variables
    )
    
    # Step 4: Define testing phases (to save computational time)
@@ -68,6 +74,7 @@ gam_model_builder <- function(data, linear_model, response_var, salinity_thresho
    # Initialize results storage
    results <- list()
    all_performance <- list()
+   stage_times <- numeric(length(stages))
    
    # Step 5: Systematic model fitting
    cat("Step 5: Systematic model fitting...\n\n")
@@ -92,6 +99,8 @@ gam_model_builder <- function(data, linear_model, response_var, salinity_thresho
       stage_results <- list()
       model_counter <- 0
       
+      start_time <- Sys.time()
+      
       for(strategy_name in stage$strategies) {
          for(weight_name in stage$weights) {
             for(dist_name in stage$distributions) {
@@ -102,34 +111,41 @@ gam_model_builder <- function(data, linear_model, response_var, salinity_thresho
                cat(sprintf("  [%d/%d] Fitting: %s_%s_%s\n", 
                            model_counter, total_models, strategy_name, weight_name, dist_name))
                
-               # Fit the GAM model
+               # Fit the GAM model with strip = TRUE for speed
                gam_result <- fit_gam(
                   data = data,
                   linear_formula = linear_formula,
                   linear_predictors = linear_predictors,
-                  weights = weight_schemes[[weight_name]],
-                  strategy = gam_strategies[[strategy_name]],
-                  family = distributions[[dist_name]]
+                  strategy = strategy_name,
+                  weight = weight_name,
+                  distribution = dist_name,
+                  weight_schemes = weight_schemes,
+                  gam_strategies = gam_strategies,
+                  distributions = distributions,
+                  salinity_threshold = salinity_threshold,
+                  stage_num = stage$stage_num,
+                  strip = TRUE  # Strip models during optimization phase
                )
-               
+            
                # Evaluate if model fitted successfully
-               if(!is.null(gam_result$model)) {
-                  eval_result <- evaluate_model(gam_result$model, data, salinity_threshold, model_type = "gam")
-                  eval_result$model <- gam_result$model
-                  eval_result$formula <- gam_result$formula
-                  eval_result$strategy <- strategy_name
-                  eval_result$weight_scheme <- weight_name
-                  eval_result$distribution <- dist_name
-                  eval_result$score <- performance_score(eval_result)
-                  
-                  stage_results[[model_id]] <- eval_result
-                  results[[model_id]] <- eval_result
+               if(!is.null(gam_result)) {
+                  stage_results[[model_id]] <- gam_result$result
+                  results[[model_id]] <- gam_result$result
                } else {
                   cat(sprintf("WARNING: Model %s failed to fit\n", model_id))
+               }
+               
+               # Garbage collection after every few models to keep memory usage down
+               if(model_counter %% 3 == 0) {  # More frequent GC
+                  gc(verbose = FALSE)
+                  # Clear any lingering large objects
+                  if(exists("gam_result")) rm(gam_result)
                }
             }
          }
       }
+      
+      stage_times[stage_idx] <- as.numeric(difftime(Sys.time(), start_time, units = "mins"))
       
       # Analyze stage results
       cat(sprintf("\n=== STAGE %d ANALYSIS ===\n", stage$stage_num))
@@ -191,12 +207,23 @@ gam_model_builder <- function(data, linear_model, response_var, salinity_thresho
          cat(sprintf("  Strategies: %s\n", paste(stages[[3]]$strategies, collapse = ", ")))
          cat(sprintf("  Distributions: %s\n", paste(stages[[3]]$distributions, collapse = ", ")))
       }
+      
+      # Force garbage collection after each stage
+      gc(verbose = FALSE)
    }
    
    # Final summary
    cat("\n", rep("=", 80), "\n")
    cat("ALL STAGES COMPLETE!\n")
    cat(rep("=", 80), "\n")
+   
+   # Display stage runtimes
+   cat("\nStage Runtimes (minutes):\n")
+   for(i in seq_along(stage_times)) {
+      if(i <= length(stages)) {
+         cat(sprintf("  Stage %d (%s): %.2f min\n", i, stages[[i]]$name, stage_times[i]))
+      }
+   }
    
    # Overall summary
    for(stage_name in names(all_performance)) {
@@ -231,12 +258,41 @@ gam_model_builder <- function(data, linear_model, response_var, salinity_thresho
    cat("\nTop 10 performing models:\n")
    print(head(summary_table, 10))
    
-   # Get the best model
+   # Get the best model configuration
    best_model_id <- summary_table$model_id[1]
    best_result <- results[[best_model_id]]
    
+   # Step 7: Refit the best model without stripping for final use
+   cat("\nStep 7: Refitting best model with full components for final use...\n")
+   cat(sprintf("Best configuration: %s_%s_%s (score: %.4f)\n", 
+               best_result$strategy, best_result$weight_scheme, best_result$distribution, best_result$score))
+   
+   # Refit the best model without stripping
+   final_gam_result <- fit_gam(
+      data = data,
+      linear_formula = linear_formula,
+      linear_predictors = linear_predictors,
+      strategy = best_result$strategy,
+      weight = best_result$weight_scheme,
+      distribution = best_result$distribution,
+      weight_schemes = weight_schemes,
+      gam_strategies = gam_strategies,
+      distributions = distributions,
+      salinity_threshold = salinity_threshold,
+      stage_num = 99,  # Special stage number for final refit
+      strip = FALSE    # Keep all model components
+   )
+   
+   if(!is.null(final_gam_result)) {
+      # Use the full model for final results
+      best_result$model <- final_gam_result$result$model
+      best_result$formula <- final_gam_result$result$formula
+      cat("Best model successfully refitted with full components.\n")
+   } else {
+      cat("WARNING: Final refit failed, using stripped model from optimization.\n")
+   }
+   
    # Extract formula as character string
-   # Get formula from model object consistently
    if ("gam" %in% class(best_result$model)) {
       formula_char <- as.character(best_result$model$formula)[c(2,1,3)]
       formula_char <- paste(formula_char[c(2,1,3)], collapse = " ")
@@ -263,7 +319,8 @@ gam_model_builder <- function(data, linear_model, response_var, salinity_thresho
       performance_by_weights = aggregate(score ~ weights, data = summary_table, FUN = mean, na.rm = TRUE),
       performance_by_distribution = aggregate(score ~ distribution, data = summary_table, FUN = mean, na.rm = TRUE),
       all_results_table = summary_table,
-      detailed_results = results
+      stage_times = stage_times,
+      total_runtime = sum(stage_times)
    )
    
    # Return structured output matching linear model builder format
@@ -287,16 +344,21 @@ gam_model_builder <- function(data, linear_model, response_var, salinity_thresho
          total_predictors = length(predictors),
          final_score = best_result$score,
          model_type = "gam",                   
-         build_method = "systematic_gam",
+         build_method = "optimized_systematic_gam",
          strategy = best_result$strategy,
          weight_scheme = best_result$weight_scheme,
          distribution = best_result$distribution,
          n_models_tested = length(results),
-         n_successful_fits = sum(sapply(results, function(x) !is.null(x$model)))
+         n_successful_fits = sum(sapply(results, function(x) !is.null(x$model))),
+         total_runtime_minutes = sum(stage_times),
+         average_models_per_minute = length(results) / sum(stage_times)
       )
    )
    
    class(final_result) <- "gam_model_builder_result"
+   
+   cat(sprintf("\nOptimization complete! Tested %d models in %.2f minutes (%.1f models/min)\n",
+               length(results), sum(stage_times), length(results) / sum(stage_times)))
    
    return(final_result)
 }

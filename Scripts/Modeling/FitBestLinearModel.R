@@ -420,161 +420,29 @@ linear_model_results <- linear_model_builder(model_data, salinity_threshold)
 # plots$plots$residuals
 # plots$statistics
 
+# Check what large objects are in your global environment
+#sort(sapply(ls(), function(x) object.size(get(x))), decreasing = TRUE)[1:10]
 
-# Clean the R environment to save RAM for subsequent modeling
-####
+linear_model <- linear_model_results$model
+rm(linear_model_results, normalized_predictors)
 
-# linear_model <- linear_model_results$model
+# Check what large objects are in your global environment
+sort(sapply(ls(), function(x) object.size(get(x))), decreasing = TRUE)[1:10]
 
-# gam_model_results <- gam_model_builder(data = model_data, linear_model_results$model, response_var = 'Salinity', salinity_threshold)
-# test <- parallel_gam_model_builder(data = model_data, linear_model_results$model, response_var = 'Salinity', salinity_threshold)
-
-test_data <- model_data %>%
-   filter(Year == 2016)
-test_gam <- parallel_gam_model_builder(data = test_data, linear_model_results$model, response_var = 'Salinity', salinity_threshold)
-
-
-
-############################ GAM AND THRESHOLD-BASED MODELS ######################
-
-# =======================================================================================
-# Generalized Additive Models (GAM) to allow for nonlinear relationships among predictors
-# =======================================================================================
-
-# =======================================================================================
-# Threshold-Based or Change-Point Models to improve performance at high salinity
-# =======================================================================================
-
-### Threshold Model 1: simple discharge-based threshold
-
-# First, find the optimal discharge threshold
-discharge_values <- sort(unique(model_data$Norm_PowLagDischarge12))
-discharge_range <- quantile(discharge_values, c(0.1, 0.9), na.rm = TRUE)
-
-# Test thresholds in the middle range
-test_thresholds <- seq(discharge_range[1], discharge_range[2], length.out = 20)
-
-best_aic <- Inf
-best_threshold <- NULL
-
-for (threshold in test_thresholds) {
-   
-   # Create regime indicator
-   data_temp <- model_data %>%
-      mutate(LowDischargeRegime = Norm_PowLagDischarge12 < threshold)
-   
-   # Fit separate models for each regime
-   tryCatch({
-      
-      model_low <- lm(
-         Salinity ~ Norm_PowLagDischarge12 + Norm_RollingPowInflows2 + 
-            Norm_Tide + IsHighStress + SalinitySeason + 
-            Norm_StressHours_30day_Marietta,
-         data = filter(data_temp, LowDischargeRegime)
-      )
-      
-      model_high <- lm(
-         Salinity ~ Norm_PowLagDischarge12 + Norm_RollingPowInflows2 + 
-            Norm_Tide + IsHighStress + SalinitySeason + 
-            Norm_StressHours_30day_Marietta,
-         data = filter(data_temp, !LowDischargeRegime)
-      )
-      
-      # Calculate combined AIC (approximation)
-      total_aic <- AIC(model_low) + AIC(model_high)
-      
-      if (total_aic < best_aic) {
-         best_aic <- total_aic
-         best_threshold <- threshold
-      }
-      
-   }, error = function(e) {
-      # Skip if model fails to fit
-   })
-}
-
-# Fit final model with best threshold
-data_final <- model_data %>%
-   mutate(LowDischargeRegime = Norm_PowLagDischarge12 < best_threshold)
-
-model_low_final <- lm(
-   Salinity ~ Norm_PowLagDischarge12 + Norm_RollingPowInflows2 + 
-      Norm_Tide + IsHighStress + SalinitySeason + 
-      Norm_StressHours_30day_Marietta,
-   data = filter(data_final, LowDischargeRegime)
-)
-
-model_high_final <- lm(
-   Salinity ~ Norm_PowLagDischarge12 + Norm_RollingPowInflows2 + 
-      Norm_Tide + IsHighStress + SalinitySeason + 
-      Norm_StressHours_30day_Marietta,
-   data = filter(data_final, !LowDischargeRegime)
-)
-
-# Gather results 
-threshold1 <- list(
-   low_regime = model_low_final,
-   high_regime = model_high_final,
-   threshold = best_threshold,
-   data = data_final
-)
+gam_model_results <- gam_model_builder(data = model_data, linear_model, response_var = 'Salinity', salinity_threshold)
+plots <- generate_model_diagnostics(model = gam_model_results$model, model_name = 'Best GAM Model', data = model_data, model_type = 'gam')
+plots$plots$performance
+plots$plots$high_salinity
+plots$plots$correlations
+plots$plots$temporal
+plots$plots$residuals
+plots$statistics
 
 
-### Threshold Model 2: Stress-based regime switching
-model_normal <- lm(
-   Salinity ~ Norm_PowLagDischarge12 + Norm_RollingPowInflows2 + 
-      Norm_Tide + SalinitySeason + Norm_BestLatent,
-   data = filter(model_data, !IsHighStress)
-)
+# test_data <- model_data %>%
+#    filter(Year == 2016)
+# test_gam <- gam_model_builder(data = test_data, linear_model, response_var = 'Salinity', salinity_threshold)
 
-model_stress <- lm(
-   Salinity ~ Norm_PowLagDischarge12 + Norm_RollingPowInflows2 + 
-      Norm_Tide + SalinitySeason + Norm_StressHours_30day_Marietta + 
-      Norm_BestLatent + Norm_ConsecutiveStressHours_Marietta,
-   data = filter(model_data, IsHighStress)
-)
-
-threshold2 <- list(
-   normal_regime = model_normal,
-   stress_regime = model_stress,
-   data = model_data
-)
-
-
-############################ HIERARCHICAL BAYESIAN MODELS ########################
-
-## Model 10: One Layer Bayesian Hierarchical Model
-model10 <- cmdstan_model('Scripts/Stan/BayesOneLayer.stan')
-model10 <- model10$sample(
-   data = stan_data,
-   seed = 123,
-   chains = 4,
-   parallel_chains = 4,
-   iter_warmup = 1000,
-   iter_sampling = 1000
-)
-
-## Model 11: Two Layer Bayesian Hierarchical Model
-model11 <- cmdstan_model('Scripts/Stan/BayesTwoLayer.stan')
-model11 <- model11$sample(
-   data = stan_data,
-   seed = 123,
-   chains = 4,
-   parallel_chains = 4,
-   iter_warmup = 1000,
-   iter_sampling = 1000
-)
-
-## Model 12: Three Layer Bayesian Hierarchical Model
-model12 <- cmdstan_model('Scripts/Stan/BayesThreeLayer.stan')
-model12 <- model12$sample(
-   data = stan_data,
-   seed = 123,
-   chains = 4,
-   parallel_chains = 4,
-   iter_warmup = 1000,
-   iter_sampling = 1000
-)
 
 ############################### MODEL EVALUATION ###############################
 linear_df <- get_predictions(linear_model_results$model, model_data)
@@ -589,15 +457,15 @@ ggplot(linear_df, aes(x = DateTime)) +
    scale_color_manual(name = NULL, values = c('Observed' = 'black', 'Predicted' = 'blue', 'Above Threshold' = 'red')) + 
    #scale_x_datetime(limits = c(as_datetime('2011-02-28'), as_datetime('2011-12-31')), date_labels = '%b-%Y') + 
    theme_bw() + 
-   labs(x = 'Date', y = 'Salinity (ppt)', title = paste('Best Linear Model:\n', linear_model_results[["formula"]])) + 
+   labs(x = 'Date', y = 'Salinity (ppt)', title = paste('Best Linear Model:\n', linear_model)) + 
    theme(plot.title = element_text(size = 16),
          legend.text = element_text(size = 14), 
          axis.text = element_text(size = 13),
          axis.title = element_text(size = 14)) +
    facet_wrap(~Year, scales = 'free')
 
-#gam_df <- get_predictions(gam_model_results$model, model_data, 'gam')
-gam_df <- get_predictions(test_gam$model, test_data, 'gam')
+gam_df <- get_predictions(gam_model_results$model, model_data, 'gam')
+#gam_df <- get_predictions(test_gam$model, test_data, 'gam')
 gam_df <- gam_df %>%
    mutate(Year = year(DateTime),
           Month = month(DateTime),
@@ -609,7 +477,7 @@ ggplot(gam_df, aes(x = DateTime)) +
    scale_color_manual(name = NULL, values = c('Observed' = 'black', 'Predicted' = 'blue', 'Above Threshold' = 'red')) + 
    #scale_x_datetime(limits = c(as_datetime('2011-02-28'), as_datetime('2011-12-31')), date_labels = '%b-%Y') + 
    theme_bw() + 
-   labs(x = 'Date', y = 'Salinity (ppt)', title = paste('Best GAM Model:\n', gam_model_results$formula)) + 
+   labs(x = 'Date', y = 'Salinity (ppt)', title = paste('Best GAM Model:\n', gam_model_results$model$formula)) + 
    theme(plot.title = element_text(size = 16),
          legend.text = element_text(size = 14), 
          axis.text = element_text(size = 13),

@@ -48,6 +48,9 @@ fit_gam <- function(data, linear_formula, linear_predictors, strategy, weight, d
          gam_model$qr <- NULL
          gam_model$call <- NULL
          environment(gam_model$formula) <- baseenv() # Most important, cleans the environment to save space
+         if (!is.null(gam_model$terms)) {
+            environment(gam_model$terms) <- baseenv()
+         }
       }
       
       # Combine results
