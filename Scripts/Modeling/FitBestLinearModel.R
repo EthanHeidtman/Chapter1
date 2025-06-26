@@ -426,22 +426,27 @@ linear_model_results <- linear_model_builder(model_data, salinity_threshold)
 linear_model <- linear_model_results$model
 rm(linear_model_results, normalized_predictors)
 
-# Check what large objects are in your global environment
-sort(sapply(ls(), function(x) object.size(get(x))), decreasing = TRUE)[1:10]
+# # Check what large objects are in your global environment
+# sort(sapply(ls(), function(x) object.size(get(x))), decreasing = TRUE)[1:10]
+# 
+# gam_model_results <- gam_model_builder(data = model_data, linear_model, response_var = 'Salinity', salinity_threshold)
+# plots <- generate_model_diagnostics(model = gam_model_results$model, model_name = 'Best GAM Model', data = model_data, model_type = 'gam')
+# plots$plots$performance
+# plots$plots$high_salinity
+# plots$plots$correlations
+# plots$plots$temporal
+# plots$plots$residuals
+# plots$statistics
 
-gam_model_results <- gam_model_builder(data = model_data, linear_model, response_var = 'Salinity', salinity_threshold)
-plots <- generate_model_diagnostics(model = gam_model_results$model, model_name = 'Best GAM Model', data = model_data, model_type = 'gam')
-plots$plots$performance
-plots$plots$high_salinity
-plots$plots$correlations
-plots$plots$temporal
-plots$plots$residuals
-plots$statistics
 
-
-# test_data <- model_data %>%
-#    filter(Year == 2016)
+test_data <- model_data %>%
+   filter(Year == 2016)
 # test_gam <- gam_model_builder(data = test_data, linear_model, response_var = 'Salinity', salinity_threshold)
+
+# qsave(test_gam, '~/Desktop/Testing/2016Test.qs')
+# qsave(gam_model_results, '~/Desktop/Testing/FullTest.qs')
+test_gam <- qread('~/Desktop/Testing/2016Test.qs')
+gam_model_results <- qread('~/Desktop/Testing/FullTest.qs')
 
 
 ############################### MODEL EVALUATION ###############################
@@ -465,7 +470,6 @@ ggplot(linear_df, aes(x = DateTime)) +
    facet_wrap(~Year, scales = 'free')
 
 gam_df <- get_predictions(gam_model_results$model, model_data, 'gam')
-#gam_df <- get_predictions(test_gam$model, test_data, 'gam')
 gam_df <- gam_df %>%
    mutate(Year = year(DateTime),
           Month = month(DateTime),
@@ -478,6 +482,25 @@ ggplot(gam_df, aes(x = DateTime)) +
    #scale_x_datetime(limits = c(as_datetime('2011-02-28'), as_datetime('2011-12-31')), date_labels = '%b-%Y') + 
    theme_bw() + 
    labs(x = 'Date', y = 'Salinity (ppt)', title = paste('Best GAM Model:\n', gam_model_results$model$formula)) + 
+   theme(plot.title = element_text(size = 16),
+         legend.text = element_text(size = 14), 
+         axis.text = element_text(size = 13),
+         axis.title = element_text(size = 14)) +
+   facet_wrap(~Year, scales = 'free')
+
+test_df <- get_predictions(test_gam$model, test_data, 'gam')
+test_df <- test_df %>%
+   mutate(Year = year(DateTime),
+          Month = month(DateTime),
+          Day = day(DateTime))
+ggplot(test_df, aes(x = DateTime)) +
+   geom_line(aes(y = Observed, color = 'Observed'), na.rm = TRUE, linewidth = 0.5) + 
+   geom_line(aes(y = Predicted, color = 'Predicted'), na.rm = TRUE, linewidth = 1.1) + 
+   geom_point(data = filter(test_df, Observed >= 1), aes(y = Observed, color = 'Above Threshold'), na.rm = TRUE, size = 2) +
+   scale_color_manual(name = NULL, values = c('Observed' = 'black', 'Predicted' = 'blue', 'Above Threshold' = 'red')) + 
+   #scale_x_datetime(limits = c(as_datetime('2011-02-28'), as_datetime('2011-12-31')), date_labels = '%b-%Y') + 
+   theme_bw() + 
+   labs(x = 'Date', y = 'Salinity (ppt)', title = paste('Best GAM Model:\n', test_gam$model$formula)) + 
    theme(plot.title = element_text(size = 16),
          legend.text = element_text(size = 14), 
          axis.text = element_text(size = 13),
