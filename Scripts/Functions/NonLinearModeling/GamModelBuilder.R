@@ -1,25 +1,32 @@
-gam_model_builder <- function(data, linear_model, response_var, salinity_threshold) {
+gam_model_builder <- function(data, linear_model, response_var, salinity_threshold,
+                              use_ar = FALSE, ar_order = 1, use_qgam = FALSE, quantile = 0.5,
+                              time_var = "DateTime", group_var = "Year") {
    
    cat("======= Generalized Additive Model Approach =======\n")
    cat("Starting from the best linear model to better capture salinity events\n\n")
    
+   
    # Extract linear model formula and predictors
    # Extract and clean linear formula and predictors
    linear_formula <- formula(linear_model)
-   environment(linear_formula) <- .GlobalEnv # detach the model from the model environment
+   #environment(linear_formula) <- .GlobalEnv # detach the model from the model environment
    linear_predictors <- all.vars(linear_formula)[-1]
    
    # Create minimal data object - only necessary columns
-   required_cols <- unique(c('DateTime', response_var, linear_predictors))
+   required_cols <- unique(c('DateTime', 'Year', response_var, linear_predictors))
+   required_cols <- required_cols[required_cols %in% names(data)]
    data <- data[, required_cols, drop = FALSE]
    
    # Step 1: Create different weighting schemes
    cat("Step 1: Creating weighting schemes for extreme events...\n")
    weight_schemes <- list(
       'none' = NULL,
-      "quantile" = create_extreme_weights(data[[response_var]], "quantile_progressive"),
-      "exponential" = create_extreme_weights(data[[response_var]], "exponential"),
-      "binary" = create_extreme_weights(data[[response_var]], "binary_extreme")
+      "quantile" = create_weight_schemes(data[[response_var]], "quantile_progressive"),
+      #"exponential" = create_weight_schemes(data[[response_var]], "exponential"),
+      #"binary" = create_weight_schemes(data[[response_var]], "binary_extreme"),
+      'ar_event_sequence' = create_weight_schemes(data[[response_var]], 'ar_event_sequence', time_var = 'DateTime', data = data),
+      'ar_gradient' = create_weight_schemes(data[[response_var]], 'ar_gradient', time_var = 'DateTime', data = data),
+      'ar_buildup' = create_weight_schemes(data[[response_var]], 'ar_buildup', time_var = 'DateTime', data = data)
    )
 
    # Step 2: Define GAM enhancement strategies
@@ -39,11 +46,16 @@ gam_model_builder <- function(data, linear_model, response_var, salinity_thresho
    cat("Step 3: Defining alternative distributions...\n")
    distributions <- list(
       "gaussian" = gaussian(),                                
-      "gamma" = Gamma(link = "log"),                          
-      "tweedie" = tw()                                       # Exponential Tweedie family distributions (more flexible)
+      "gamma" = Gamma(link = "log")                         
+      #"tweedie" = tw()                                       # Exponential Tweedie family distributions (more flexible)
       # "quasi" = quasi(link = "identity", variance = "mu^2"),  # Quasi-family distribution
       # 'scat' = scat()                                         # scaled-t, for heavy tailed response variables
    )
+   
+   # Adjust distributions for QGAM (which doesn't use family specifications)
+   if (use_qgam) {
+      cat("Note: Using QGAM - distribution parameters will be ignored\n")
+   }
    
    # Step 4: Define testing phases (to save computational time)
    cat("Step 4: Defining testing phases...\n")
@@ -111,6 +123,15 @@ gam_model_builder <- function(data, linear_model, response_var, salinity_thresho
                cat(sprintf("  [%d/%d] Fitting: %s_%s_%s\n", 
                            model_counter, total_models, strategy_name, weight_name, dist_name))
                
+               # Add indicators for advanced features
+               model_indicators <- c()
+               if (use_ar) model_indicators <- c(model_indicators, sprintf("AR(%d)", ar_order))
+               if (use_qgam) model_indicators <- c(model_indicators, sprintf("Q%.2f", quantile))
+               
+               if (length(model_indicators) > 0) {
+                  cat(sprintf(" [%s]", paste(model_indicators, collapse = ", ")))
+               }
+               
                # Fit the GAM model with strip = TRUE for speed
                gam_result <- fit_gam(
                   data = data,
@@ -124,7 +145,13 @@ gam_model_builder <- function(data, linear_model, response_var, salinity_thresho
                   distributions = distributions,
                   salinity_threshold = salinity_threshold,
                   stage_num = stage$stage_num,
-                  strip = TRUE  # Strip models during optimization phase
+                  strip = TRUE,  # Strip models during optimization phase
+                  use_ar = use_ar,
+                  ar_order = ar_order,
+                  use_qgam = use_qgam,
+                  quantile = quantile,
+                  time_var = time_var,
+                  group_var = group_var
                )
             
                # Evaluate if model fitted successfully
@@ -280,7 +307,13 @@ gam_model_builder <- function(data, linear_model, response_var, salinity_thresho
       distributions = distributions,
       salinity_threshold = salinity_threshold,
       stage_num = 99,  # Special stage number for final refit
-      strip = FALSE    # Keep all model components
+      strip = FALSE,    # Keep all model components
+      use_ar = use_ar,
+      ar_order = ar_order,
+      use_qgam = use_qgam,
+      quantile = quantile,
+      time_var = time_var,
+      group_var = group_var
    )
    
    if(!is.null(final_gam_result)) {
@@ -318,9 +351,14 @@ gam_model_builder <- function(data, linear_model, response_var, salinity_thresho
       performance_by_strategy = aggregate(score ~ strategy, data = summary_table, FUN = mean, na.rm = TRUE),
       performance_by_weights = aggregate(score ~ weights, data = summary_table, FUN = mean, na.rm = TRUE),
       performance_by_distribution = aggregate(score ~ distribution, data = summary_table, FUN = mean, na.rm = TRUE),
+      performance_by_model_type = if("model_type" %in% names(summary_table)) {
+         aggregate(score ~ model_type, data = summary_table, FUN = mean, na.rm = TRUE)
+      } else NULL,
       all_results_table = summary_table,
       stage_times = stage_times,
-      total_runtime = sum(stage_times)
+      total_runtime = sum(stage_times),
+      ar_settings = if(use_ar) list(use_ar = use_ar, ar_order = ar_order) else NULL,
+      qgam_settings = if(use_qgam) list(use_qgam = use_qgam, quantile = quantile) else NULL
    )
    
    # Return structured output matching linear model builder format
@@ -335,7 +373,9 @@ gam_model_builder <- function(data, linear_model, response_var, salinity_thresho
             # Preserve GAM-specific information
             strategy = best_result$strategy,
             weight_scheme = best_result$weight_scheme,
-            distribution = best_result$distribution
+            distribution = best_result$distribution,
+            quantile = if(use_qgam) best_result$quantile else NA,
+            ar_order = if(use_ar) best_result$ar_order else NA
          )
       ),
       score = best_result$score,
@@ -351,7 +391,9 @@ gam_model_builder <- function(data, linear_model, response_var, salinity_thresho
          n_models_tested = length(results),
          n_successful_fits = sum(sapply(results, function(x) !is.null(x$model))),
          total_runtime_minutes = sum(stage_times),
-         average_models_per_minute = length(results) / sum(stage_times)
+         average_models_per_minute = length(results) / sum(stage_times),
+         ar_enabled = use_ar,
+         qgam_enabled = use_qgam
       )
    )
    

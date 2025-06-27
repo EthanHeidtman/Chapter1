@@ -11,8 +11,12 @@
 
 ############################ LOAD FUNCTIONS, PACKAGES, AND DATA ############################
 
-# Source all necessary functions, searching subdirectories as well
-lapply(list.files(path = 'Scripts/Functions', pattern = "\\.R$", full.names = TRUE, recursive = TRUE), source)
+# Source all necessary functions, searching subdirectories as well, but use a separate environment to manage bloat for parallelization
+#lapply(list.files(path = 'Scripts/Functions', pattern = "\\.R$", full.names = TRUE, recursive = TRUE), source)
+func_env <- new.env()
+lapply(list.files("Scripts/Functions", full.names = TRUE, pattern = "\\.R$"), function(f) {
+   sys.source(f, envir = func_env)
+})
 
 # Load necessary packages
 library(here)
@@ -30,6 +34,7 @@ library(svglite)
 library(bayesplot)
 library(posterior)
 library(mgcv)
+library(qs)
 
 # Read in final hourly data
 data <- read.csv('Data/Tidied/HourlyDataFinal.csv', 
@@ -412,41 +417,49 @@ performance_criteria <- list(
 )
 
 linear_model_results <- linear_model_builder(model_data, salinity_threshold)
-#plots <- generate_model_diagnostics(model = linear_model_results$model, model_name = 'Best Linear Model', data = model_data)
-# plots$plots$performance
-# plots$plots$high_salinity
-# plots$plots$correlations
-# plots$plots$temporal
-# plots$plots$residuals
-# plots$statistics
+
+
+###################################### GAM Model Building #############################
+
+# Clean up results from linear modeling
+linear_model <- linear_model_results$model
+linear_formula <- formula(linear_model)
+linear_predictors <- all.vars(linear_formula)[-1]
+rm(linear_model_results, normalized_predictors, linear_model)
+
+# Create minimal data object - only necessary columns
+required_cols <- unique(c('DateTime', 'Year', response_var, linear_predictors))
+required_cols <- required_cols[required_cols %in% names(data)]
+gam_data <- model_data[, required_cols, drop = FALSE]
+
 
 # Check what large objects are in your global environment
 #sort(sapply(ls(), function(x) object.size(get(x))), decreasing = TRUE)[1:10]
 
-linear_model <- linear_model_results$model
-rm(linear_model_results, normalized_predictors)
-
-# # Check what large objects are in your global environment
-# sort(sapply(ls(), function(x) object.size(get(x))), decreasing = TRUE)[1:10]
-# 
-# gam_model_results <- gam_model_builder(data = model_data, linear_model, response_var = 'Salinity', salinity_threshold)
-# plots <- generate_model_diagnostics(model = gam_model_results$model, model_name = 'Best GAM Model', data = model_data, model_type = 'gam')
-# plots$plots$performance
-# plots$plots$high_salinity
-# plots$plots$correlations
-# plots$plots$temporal
-# plots$plots$residuals
-# plots$statistics
+# qsave(test_gam, '~/Desktop/Testing/2016Test.qs')
+# qsave(gam_model_results, '~/Desktop/Testing/FullTest.qs')
+# test_gam <- qread('~/Desktop/Testing/2016Test_V1.qs')
+# gam_model_results <- qread('~/Desktop/Testing/FullTest_V1.qs')
 
 
-test_data <- model_data %>%
+
+test_data <- gam_data %>%
    filter(Year == 2016)
 # test_gam <- gam_model_builder(data = test_data, linear_model, response_var = 'Salinity', salinity_threshold)
 
-# qsave(test_gam, '~/Desktop/Testing/2016Test.qs')
-# qsave(gam_model_results, '~/Desktop/Testing/FullTest.qs')
-test_gam <- qread('~/Desktop/Testing/2016Test.qs')
-gam_model_results <- qread('~/Desktop/Testing/FullTest.qs')
+# Basic GAM model building
+basic_gam <- gam_model_builder(test_data, linear_model, "Salinity", salinity_threshold)
+
+# GAM with Auto-regressive terms
+gam_ar <- gam_model_builder(test_data, linear_model, "Salinity", salinity_threshold, use_ar = TRUE, ar_order = 1)
+qsave(basic_gam, '~/Desktop/Testing/2016_GAM_AR.qs')
+
+# Quantile GAM with 75th percentile
+gam_q75 <- gam_model_builder(test_data, linear_model, "Salinity", salinity_threshold, use_qgam = TRUE, quantile = 0.75)
+
+# Combined AR + QGAM
+gam_combined <- gam_model_builder(test_data, linear_model, "Salinity", salinity_threshold, use_ar = TRUE, ar_order = 1, use_qgam = TRUE, quantile = 0.9)
+
 
 
 ############################### MODEL EVALUATION ###############################
@@ -488,7 +501,7 @@ ggplot(gam_df, aes(x = DateTime)) +
          axis.title = element_text(size = 14)) +
    facet_wrap(~Year, scales = 'free')
 
-test_df <- get_predictions(test_gam$model, test_data, 'gam')
+test_df <- get_predictions(gam_ar$model, test_data, 'gam')
 test_df <- test_df %>%
    mutate(Year = year(DateTime),
           Month = month(DateTime),
@@ -500,7 +513,7 @@ ggplot(test_df, aes(x = DateTime)) +
    scale_color_manual(name = NULL, values = c('Observed' = 'black', 'Predicted' = 'blue', 'Above Threshold' = 'red')) + 
    #scale_x_datetime(limits = c(as_datetime('2011-02-28'), as_datetime('2011-12-31')), date_labels = '%b-%Y') + 
    theme_bw() + 
-   labs(x = 'Date', y = 'Salinity (ppt)', title = paste('Best GAM Model:\n', test_gam$model$formula)) + 
+   labs(x = 'Date', y = 'Salinity (ppt)', title = paste('Best GAM Model:\n', gam_ar$model$formula)) + 
    theme(plot.title = element_text(size = 16),
          legend.text = element_text(size = 14), 
          axis.text = element_text(size = 13),
@@ -596,4 +609,12 @@ print(plots$extreme_events)   # Highlights high salinity events
 print(plots$october_2016)     # Focuses on Oct 2016
 print(plots$contour_surface)  # Shows salinity surface
 
+
+#plots <- generate_model_diagnostics(model = linear_model_results$model, model_name = 'Best Linear Model', data = model_data)
+# plots$plots$performance
+# plots$plots$high_salinity
+# plots$plots$correlations
+# plots$plots$temporal
+# plots$plots$residuals
+# plots$statistics
 
