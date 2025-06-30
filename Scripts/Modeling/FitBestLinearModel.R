@@ -14,7 +14,7 @@
 # Source all necessary functions, searching subdirectories as well, but use a separate environment to manage bloat for parallelization
 #lapply(list.files(path = 'Scripts/Functions', pattern = "\\.R$", full.names = TRUE, recursive = TRUE), source)
 func_env <- new.env()
-lapply(list.files("Scripts/Functions", full.names = TRUE, pattern = "\\.R$"), function(f) {
+lapply(list.files("Scripts/Functions", full.names = TRUE, pattern = "\\.R$", recursive = TRUE), function(f) {
    sys.source(f, envir = func_env)
 })
 
@@ -346,7 +346,7 @@ model_data <- model_data %>%
 preds_to_normalize <- colnames(model_data)[20 : ncol(model_data)] # Starting from the discharge column
 
 # Apply the normalization function
-normalized_predictors <- normalize_multiple_predictors(model_data, preds_to_normalize)
+normalized_predictors <- func_env$normalize_multiple_predictors(model_data, preds_to_normalize)
 model_data <- normalized_predictors$data
 norm_params <- normalized_predictors$parameters
 
@@ -416,7 +416,7 @@ performance_criteria <- list(
    )
 )
 
-linear_model_results <- linear_model_builder(model_data, salinity_threshold)
+linear_model_results <- func_env$linear_model_builder(model_data, salinity_threshold)
 
 
 ###################################### GAM Model Building #############################
@@ -426,10 +426,11 @@ linear_model <- linear_model_results$model
 linear_formula <- formula(linear_model)
 linear_predictors <- all.vars(linear_formula)[-1]
 rm(linear_model_results, normalized_predictors, linear_model)
+environment(linear_formula) <- baseenv() # strip the environment
 
 # Create minimal data object - only necessary columns
-required_cols <- unique(c('DateTime', 'Year', response_var, linear_predictors))
-required_cols <- required_cols[required_cols %in% names(data)]
+required_cols <- unique(c('DateTime', 'Year', 'Salinity', linear_predictors))
+required_cols <- required_cols[required_cols %in% names(model_data)]
 gam_data <- model_data[, required_cols, drop = FALSE]
 
 
@@ -441,24 +442,40 @@ gam_data <- model_data[, required_cols, drop = FALSE]
 # test_gam <- qread('~/Desktop/Testing/2016Test_V1.qs')
 # gam_model_results <- qread('~/Desktop/Testing/FullTest_V1.qs')
 
-
+func_env <- new.env()
+lapply(list.files("Scripts/Functions", full.names = TRUE, pattern = "\\.R$", recursive = TRUE), function(f) {
+   sys.source(f, envir = func_env)
+})
 
 test_data <- gam_data %>%
    filter(Year == 2016)
 # test_gam <- gam_model_builder(data = test_data, linear_model, response_var = 'Salinity', salinity_threshold)
 
-# Basic GAM model building
-basic_gam <- gam_model_builder(test_data, linear_model, "Salinity", salinity_threshold)
+# Basic GAM model building (just 2016)
+basic_gam2016 <- func_env$parallel_gam_model_builder(test_data, linear_formula, linear_predictors, response_var = "Salinity", salinity_threshold)
+qsave(basic_gam2016, '~/Desktop/Testing/2016TestBasicGAM.qs')
+basic_gam2016 <- qread('~/Desktop/Testing/2016TestBasicGAM.qs')
 
-# GAM with Auto-regressive terms
-gam_ar <- gam_model_builder(test_data, linear_model, "Salinity", salinity_threshold, use_ar = TRUE, ar_order = 1)
-qsave(basic_gam, '~/Desktop/Testing/2016_GAM_AR.qs')
+# Basic GAM model building (all years)
+basic_gam <- func_env$parallel_gam_model_builder(gam_data, linear_formula, linear_predictors, response_var = "Salinity", salinity_threshold)
+qsave(basic_gam, '~/Desktop/Testing/FullTestBasicGAM.qs')
+basic_gam <- qread('~/Desktop/Testing/FullTestBasicGAM.qs')
+
+# GAM with Auto-regressive terms (just 2016)
+gam_ar2016 <- func_env$parallel_gam_model_builder(test_data, linear_formula, linear_predictors, response_var = "Salinity", salinity_threshold, use_ar = TRUE, ar_order = 1)
+qsave(gam_ar2016, '~/Desktop/Testing/2016TestAR.qs')
+gam_ar2016 <-  qread('~/Desktop/Testing/2016TestAR.qs')
+
+# GAM with Auto-regressive terms (all years)
+gam_ar <- func_env$parallel_gam_model_builder(gam_data, linear_formula, linear_predictors, response_var = "Salinity", salinity_threshold, use_ar = TRUE, ar_order = 1)
+qsave(gam_ar, '~/Desktop/Testing/FullTestAR.qs')
+gam_ar <-  qread('~/Desktop/Testing/FullTestAR.qs')
 
 # Quantile GAM with 75th percentile
-gam_q75 <- gam_model_builder(test_data, linear_model, "Salinity", salinity_threshold, use_qgam = TRUE, quantile = 0.75)
+gam_q75 <- func_env$parallel_gam_model_builder(test_data, linear_formula, linear_predictors, response_var = "Salinity", salinity_threshold, use_qgam = TRUE, quantile = 0.75)
 
 # Combined AR + QGAM
-gam_combined <- gam_model_builder(test_data, linear_model, "Salinity", salinity_threshold, use_ar = TRUE, ar_order = 1, use_qgam = TRUE, quantile = 0.9)
+gam_combined <- func_env$parallel_gam_model_builder(test_data, linear_formula, linear_predictors, response_var = "Salinity", salinity_threshold, use_ar = TRUE, ar_order = 1, use_qgam = TRUE, quantile = 0.9)
 
 
 
@@ -482,7 +499,7 @@ ggplot(linear_df, aes(x = DateTime)) +
          axis.title = element_text(size = 14)) +
    facet_wrap(~Year, scales = 'free')
 
-gam_df <- get_predictions(gam_model_results$model, model_data, 'gam')
+gam_df <- func_env$get_predictions(gam_ar$model, test_data, 'gam')
 gam_df <- gam_df %>%
    mutate(Year = year(DateTime),
           Month = month(DateTime),
@@ -494,14 +511,14 @@ ggplot(gam_df, aes(x = DateTime)) +
    scale_color_manual(name = NULL, values = c('Observed' = 'black', 'Predicted' = 'blue', 'Above Threshold' = 'red')) + 
    #scale_x_datetime(limits = c(as_datetime('2011-02-28'), as_datetime('2011-12-31')), date_labels = '%b-%Y') + 
    theme_bw() + 
-   labs(x = 'Date', y = 'Salinity (ppt)', title = paste('Best GAM Model:\n', gam_model_results$model$formula)) + 
+   labs(x = 'Date', y = 'Salinity (ppt)', title = paste('Best GAM Model:\n', gam_ar$model$formula)) + 
    theme(plot.title = element_text(size = 16),
          legend.text = element_text(size = 14), 
          axis.text = element_text(size = 13),
          axis.title = element_text(size = 14)) +
    facet_wrap(~Year, scales = 'free')
 
-test_df <- get_predictions(gam_ar$model, test_data, 'gam')
+test_df <- func_env$get_predictions(basic_gam2016$model, test_data, 'gam')
 test_df <- test_df %>%
    mutate(Year = year(DateTime),
           Month = month(DateTime),
@@ -513,12 +530,14 @@ ggplot(test_df, aes(x = DateTime)) +
    scale_color_manual(name = NULL, values = c('Observed' = 'black', 'Predicted' = 'blue', 'Above Threshold' = 'red')) + 
    #scale_x_datetime(limits = c(as_datetime('2011-02-28'), as_datetime('2011-12-31')), date_labels = '%b-%Y') + 
    theme_bw() + 
-   labs(x = 'Date', y = 'Salinity (ppt)', title = paste('Best GAM Model:\n', gam_ar$model$formula)) + 
+   labs(x = 'Date', y = 'Salinity (ppt)', title = paste('Best GAM Model:\n', basic_gam$model$formula)) + 
    theme(plot.title = element_text(size = 16),
          legend.text = element_text(size = 14), 
          axis.text = element_text(size = 13),
          axis.title = element_text(size = 14)) +
    facet_wrap(~Year, scales = 'free')
+
+
 
 
 

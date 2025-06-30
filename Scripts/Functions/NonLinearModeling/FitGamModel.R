@@ -5,8 +5,10 @@ fit_gam <- function(data, linear_formula, linear_predictors, strategy, weight, d
                     time_var = NULL, group_var = NULL) {
    
    # Load required packages
-   require(mgcv, quietly = TRUE)
-   if (use_qgam) require(qgam, quietly = TRUE)
+   library(mgcv, quietly = TRUE)
+   if (use_qgam) library(qgam, quietly = TRUE)
+   
+   
    
    model_type <- "gam"
    if (use_ar && use_qgam) {
