@@ -37,3 +37,8 @@ cmdstan-*.tar.gz
 *.log
 *.aux
 *.out
+
+# ======================
+# QS files (very large)
+# ======================
+*.qs
