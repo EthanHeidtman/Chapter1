@@ -8,8 +8,6 @@ fit_gam <- function(data, linear_formula, linear_predictors, strategy, weight, d
    library(mgcv, quietly = TRUE)
    if (use_qgam) library(qgam, quietly = TRUE)
    
-   
-   
    model_type <- "gam"
    if (use_ar && use_qgam) {
       model_type <- "qgamm_ar"
