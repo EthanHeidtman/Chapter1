@@ -4,9 +4,8 @@
 # This script uses modeled tidal data, observed discharge data for the Conowingo 
 # Dam, and observed/modeled salinity data at Havre de Grace to first develop a 
 # predictive relationship for salinity near the Havre de Grace Drinking water
-# intake. The predictive relationship is then formulated into an objective function
-# that represents a shortage index, the amount of time/probability that the Dam's
-# releases are not enough to dilute salt below the safe threshold.
+# intake. This script, the first step, designs a best linear model given a set of 
+# pre-engineered predictor variables and interactions
 
 
 ############################ LOAD FUNCTIONS, PACKAGES, AND DATA ############################
@@ -111,174 +110,12 @@ sink()
 
 # Strip stage results before writing (huge, take time to save and not really needed)
 linear_model_results$stage_results <- NULL
+environment(linear_model_results) <- new.env()
 
 # Write output files
 outputs <- list(linear_model_results)
 file_names <- c('LinearModelResults')
-write_qs_files(outputs, 'Outputs/LinearModeling', file_names)
+write_qs_files(outputs, 'Outputs/LinearModeling', file_names, preset = 'archive')
 
 # Clear environment
 rm(list = ls())
-
-
-
-
-
-############################### MODEL EVALUATION ###############################
-linear_df <- get_predictions(linear_model_results$model, model_data)
-linear_df <- linear_df %>%
-   mutate(Year = year(DateTime),
-          Month = month(DateTime),
-          Day = day(DateTime))
-ggplot(linear_df, aes(x = DateTime)) +
-   geom_line(aes(y = Observed, color = 'Observed'), na.rm = TRUE, linewidth = 0.5) + 
-   geom_line(aes(y = Predicted, color = 'Predicted'), na.rm = TRUE, linewidth = 1.1) + 
-   geom_point(data = filter(linear_df, Observed >= 1), aes(y = Observed, color = 'Above Threshold'), na.rm = TRUE, size = 2) +
-   scale_color_manual(name = NULL, values = c('Observed' = 'black', 'Predicted' = 'blue', 'Above Threshold' = 'red')) + 
-   #scale_x_datetime(limits = c(as_datetime('2011-02-28'), as_datetime('2011-12-31')), date_labels = '%b-%Y') + 
-   theme_bw() + 
-   labs(x = 'Date', y = 'Salinity (ppt)', title = paste('Best Linear Model:\n', linear_model)) + 
-   theme(plot.title = element_text(size = 16),
-         legend.text = element_text(size = 14), 
-         axis.text = element_text(size = 13),
-         axis.title = element_text(size = 14)) +
-   facet_wrap(~Year, scales = 'free')
-
-gam_df <- func_env$get_predictions(gam_ar$model, test_data, 'gam')
-gam_df <- gam_df %>%
-   mutate(Year = year(DateTime),
-          Month = month(DateTime),
-          Day = day(DateTime))
-ggplot(gam_df, aes(x = DateTime)) +
-   geom_line(aes(y = Observed, color = 'Observed'), na.rm = TRUE, linewidth = 0.5) + 
-   geom_line(aes(y = Predicted, color = 'Predicted'), na.rm = TRUE, linewidth = 1.1) + 
-   geom_point(data = filter(gam_df, Observed >= 1), aes(y = Observed, color = 'Above Threshold'), na.rm = TRUE, size = 2) +
-   scale_color_manual(name = NULL, values = c('Observed' = 'black', 'Predicted' = 'blue', 'Above Threshold' = 'red')) + 
-   #scale_x_datetime(limits = c(as_datetime('2011-02-28'), as_datetime('2011-12-31')), date_labels = '%b-%Y') + 
-   theme_bw() + 
-   labs(x = 'Date', y = 'Salinity (ppt)', title = paste('Best GAM Model:\n', gam_ar$model$formula)) + 
-   theme(plot.title = element_text(size = 16),
-         legend.text = element_text(size = 14), 
-         axis.text = element_text(size = 13),
-         axis.title = element_text(size = 14)) +
-   facet_wrap(~Year, scales = 'free')
-
-test_df <- func_env$get_predictions(basic_gam2016$model, test_data, 'gam')
-test_df <- test_df %>%
-   mutate(Year = year(DateTime),
-          Month = month(DateTime),
-          Day = day(DateTime))
-ggplot(test_df, aes(x = DateTime)) +
-   geom_line(aes(y = Observed, color = 'Observed'), na.rm = TRUE, linewidth = 0.5) + 
-   geom_line(aes(y = Predicted, color = 'Predicted'), na.rm = TRUE, linewidth = 1.1) + 
-   geom_point(data = filter(test_df, Observed >= 1), aes(y = Observed, color = 'Above Threshold'), na.rm = TRUE, size = 2) +
-   scale_color_manual(name = NULL, values = c('Observed' = 'black', 'Predicted' = 'blue', 'Above Threshold' = 'red')) + 
-   #scale_x_datetime(limits = c(as_datetime('2011-02-28'), as_datetime('2011-12-31')), date_labels = '%b-%Y') + 
-   theme_bw() + 
-   labs(x = 'Date', y = 'Salinity (ppt)', title = paste('Best GAM Model:\n', basic_gam$model$formula)) + 
-   theme(plot.title = element_text(size = 16),
-         legend.text = element_text(size = 14), 
-         axis.text = element_text(size = 13),
-         axis.title = element_text(size = 14)) +
-   facet_wrap(~Year, scales = 'free')
-
-
-
-
-
-# Check the results
-cat("Predicted range:", range(test_preds$Predicted, na.rm = TRUE), "\n")
-cat("Lower CI range:", range(test_preds$lower_ci, na.rm = TRUE), "\n") 
-cat("Upper CI range:", range(test_preds$upper_ci, na.rm = TRUE), "\n")
-
-# All should be positive now
-
-# test <- get_predictions(linear_model_results[["model"]], model_data)
-# test <- test %>%
-#    mutate(Year = year(DateTime),
-#           Month = month(DateTime),
-#           Day = day(DateTime))
-# high_events <- test %>% 
-#    filter(is_high) %>% 
-#    arrange(DateTime)
-# 
-# if(nrow(high_events) > 0) {
-#    # Get a window around the first high event
-#    first_high_event <- high_events$DateTime[1]
-#    window_start <- first_high_event - days(5)
-#    window_end <- first_high_event + days(5)
-#    
-#    p7 <- ggplot(filter(test, DateTime >= window_start & DateTime <= window_end), 
-#                 aes(x = DateTime)) +
-#       geom_ribbon(aes(ymin = lower_ci, ymax = upper_ci), alpha = 0.2) +
-#       geom_line(aes(y = Observed), color = "black") +
-#       geom_line(aes(y = Predicted), color = "blue") +
-#       geom_point(data = filter(test, is_high & DateTime >= window_start & DateTime <= window_end), 
-#                  aes(y = Observed), color = "red", size = 2) +
-#       labs(title = "10-Day Window Around a High Salinity Event",
-#            x = "Date",
-#            y = "Salinity (ppt)") +
-#       theme_minimal() +
-#       theme(axis.text.x = element_text(angle = 45, hjust = 1))
-#    
-#    print(p7)
-# }
-
-p1 <- ggplot(test3, aes(x = DateTime)) +
-   geom_line(aes(y = Observed, color = 'Observed'), na.rm = TRUE, linewidth = 0.5) + 
-   geom_line(aes(y = Predicted, color = 'Predicted'), na.rm = TRUE, linewidth = 1.1) + 
-   geom_point(data = filter(test, Observed >= 1), aes(y = Observed, color = 'Above Threshold'), na.rm = TRUE, size = 2) +
-   scale_color_manual(name = NULL, values = c('Observed' = 'black', 'Predicted' = 'blue', 'Above Threshold' = 'red')) + 
-   facet_wrap(~Year, scale = 'free') + 
-   labs(x = 'Date', y = 'Salinity (ppt)') + 
-   theme_bw()
-ggsave('all_years.png', p1, path = '~/Downloads', dpi = 700, height = 9, width = 15)
-
-
-
-p1 <- ggplot(test, aes(x = DateTime)) +
-   geom_line(aes(y = Observed, color = 'Observed'), na.rm = TRUE, linewidth = 0.5) + 
-   geom_line(aes(y = Predicted, color = 'Predicted'), na.rm = TRUE, linewidth = 1.1) + 
-   geom_point(data = filter(test, Observed >= 1), aes(y = Observed, color = 'Above Threshold'), na.rm = TRUE, size = 2) +
-   scale_color_manual(name = NULL, values = c('Observed' = 'black', 'Predicted' = 'blue', 'Above Threshold' = 'red')) + 
-   scale_x_datetime(limits = c(as_datetime('2011-02-28'), as_datetime('2011-12-31')), date_labels = '%b-%Y') + 
-   theme_bw() + 
-   labs(x = 'Date', y = 'Salinity (ppt)', title = paste('2015 Best Model:\n', linear_model_results[["formula"]])) + 
-   #labs(x = 'Date', y = 'Salinity (ppt)', title = '2016 Best Model: Salinity ~ 4hrTideLag + 2WeekRollingDischarge + 10DayRollingInflow') +
-   ylim(0, 0.5) + 
-   theme(plot.title = element_text(size = 16),
-         legend.text = element_text(size = 14), 
-         axis.text = element_text(size = 13),
-         axis.title = element_text(size = 14)) 
-
-
-ggsave('2015.png', p1, path = '~/Downloads', dpi = 700, height = 8, width = 14)
-ggsave('2016.png', p1, path = '~/Downloads', dpi = 700, height = 8, width = 14)
-
-
-quick_correlation <- function(data, pred1 = "Norm_RollingPowDischarge14", pred2 = "Norm_StressHours_30day_Marietta") {
-   cor_val <- cor(data[[pred1]], data[[pred2]], use = "complete.obs")
-   cat(sprintf("Correlation between %s and %s: %.3f\n", pred1, pred2, cor_val))
-   return(cor_val)
-}
-
-quick_correlation(model_data)
-
-correlation_results <- analyze_predictor_correlation(model_data)
-print(correlation_results$plots$scatter_salinity)
-
-plots <- create_cleaner_scatter(model_data)
-print(plots$hexbin)           # Shows data density
-print(plots$extreme_events)   # Highlights high salinity events
-print(plots$october_2016)     # Focuses on Oct 2016
-print(plots$contour_surface)  # Shows salinity surface
-
-
-#plots <- generate_model_diagnostics(model = linear_model_results$model, model_name = 'Best Linear Model', data = model_data)
-# plots$plots$performance
-# plots$plots$high_salinity
-# plots$plots$correlations
-# plots$plots$temporal
-# plots$plots$residuals
-# plots$statistics
-
