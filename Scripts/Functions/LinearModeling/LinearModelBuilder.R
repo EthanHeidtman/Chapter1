@@ -1,6 +1,6 @@
 # This function systematically builds the best model for salinity prediction
 
-linear_model_builder <- function(data, salinity_threshold) {
+linear_model_builder <- function(data, salinity_threshold, predictor_config, performance_criteria) {
    
    cat("STARTING SYSTEMATIC MODEL BUILDING PROCESS\n")
    cat("==========================================\n")
@@ -151,11 +151,11 @@ linear_model_builder <- function(data, salinity_threshold) {
          clean_sequential_formula <- gsub('_x_', ' * ', sequential_formula)
          
          sequential_model <- lm(as.formula(clean_sequential_formula), data = data)
-         sequential_result <- evaluate_model(sequential_model, data, salinity_threshold, "linear")
+         sequential_result <- evaluate_model(sequential_model, data, threshold = salinity_threshold, performance_weights = performance_criteria$weights, model_type = "linear")
          sequential_result$model <- sequential_model
          sequential_result$formula <- clean_sequential_formula
-         sequential_result$score <- performance_score(sequential_result)
-         sequential_score <- sequential_result$score
+         #sequential_result$score <- performance_score(sequential_result)
+         sequential_score <- sequential_result$composite_score
          
          cat(sprintf("Sequential score: %.3f, Combination score: %.3f\n", sequential_score, combo_score))
          
@@ -187,14 +187,11 @@ linear_model_builder <- function(data, salinity_threshold) {
    # Build and evaluate final model
    cat(sprintf("\nFinal formula: %s\n", final_formula))
    final_model <- lm(as.formula(final_formula), data = data)
-   final_evaluation <- evaluate_model(final_model, data, salinity_threshold, 'linear')
+   final_evaluation <- evaluate_model(final_model, data, threshold = salinity_threshold, performance_weights = performance_criteria$weights, model_type = 'linear')
+   final_score <- final_evaluation$composite_score
    
-   final_evaluation$model_type = 'linear'
+   #final_evaluation$model_type = 'linear'
    
-   # Calculate final score if not already done
-   if (is.na(final_score)) {
-      final_score <- performance_score(final_evaluation)
-   }
    
    # Compile final results
    final_results <- list(
@@ -202,7 +199,7 @@ linear_model_builder <- function(data, salinity_threshold) {
       formula = final_formula,
       predictors = final_predictors,
       evaluation = final_evaluation,
-      score = final_score,
+      final_score = final_score,
       stage_results = list(
          tide = stage0_tides,
          discharge_lag = stage1_discharge_lag,

@@ -61,28 +61,31 @@ test_predictor_combinations <- function(base_formula, predictor_list, data, max_
             combo_name <- paste(valid_predictors[i], valid_predictors[j], sep = " + ")
             formula_str <- paste(base_formula, valid_predictors[i], "+", valid_predictors[j])
          }
-         #formula_str <- paste(empty_formula, valid_predictors[i], '+', valid_predictors[j])
-         #print(formula_str)
          
          tryCatch({
             model <- lm(as.formula(formula_str), data = data)
             models[[combo_name]] <- model
             
-            eval_result <- evaluate_model(model, data, salinity_threshold, "linear")
+            # Evaluate model
+            eval_result <- evaluate_model(model, data, threshold = salinity_threshold, performance_weights = performance_criteria$weights, model_type = "linear")
             eval_result$model <- model
             eval_result$formula <- formula_str
-            eval_result$score <- performance_score(eval_result)
+            
+            if (!eval_result$model_validity) {
+               cat(sprintf("Skipping %s due to invalid model results\n", predictor))
+               next
+            }
             
             results_list[[combo_name]] <- eval_result
             
             cat(sprintf(
                "%s: High Sal RMSE = %.3f | High MAPE = %.1f%% | Overall R² = %.3f | NSE = %.3f | Score = %.3f\n",
                combo_name,
-               eval_result$high_salinity_rmse,
-               eval_result$high_salinity_mape,
+               eval_result$high_sal_rmse,
+               eval_result$high_sal_mape,
                eval_result$overall_r2,
-               eval_result$skill_metrics$nash_sutcliffe,
-               eval_result$score
+               eval_result$overall_nse,
+               eval_result$composite_score
             ))
             
          }, error = function(e) {
@@ -93,7 +96,7 @@ test_predictor_combinations <- function(base_formula, predictor_list, data, max_
    
    # Test best triplet combinations (top 5 pairs + next best individual)
    if (length(results_list) > 0) {
-      scores <- sapply(results_list, function(x) x$score)
+      scores <- sapply(results_list, function(x) x$composite_score)
       top_pairs <- names(sort(scores, decreasing = TRUE))[1:min(3, length(scores))]
       
       for (pair_name in top_pairs) {
@@ -118,23 +121,27 @@ test_predictor_combinations <- function(base_formula, predictor_list, data, max_
                model <- lm(as.formula(formula_str), data = data)
                models[[triplet_name]] <- model
                
-               eval_result <- evaluate_model(model, data, salinity_threshold, "linear")
+               # Evaluate model
+               eval_result <- evaluate_model(model, data, threshold = salinity_threshold, performance_weights = performance_criteria$weights, model_type = "linear")
                eval_result$model <- model
                eval_result$formula <- formula_str
-               eval_result$score <- performance_score(eval_result)
+               
+               if (!eval_result$model_validity) {
+                  cat(sprintf("Skipping %s due to invalid model results\n", predictor))
+                  next
+               }
                
                results_list[[triplet_name]] <- eval_result
                
                cat(sprintf(
                   "%s: High Sal RMSE = %.3f | High MAPE = %.1f%% | Overall R² = %.3f | NSE = %.3f | Score = %.3f\n",
                   triplet_name,
-                  eval_result$high_salinity_rmse,
-                  eval_result$high_salinity_mape,
+                  eval_result$high_sal_rmse,
+                  eval_result$high_sal_mape,
                   eval_result$overall_r2,
-                  eval_result$skill_metrics$nash_sutcliffe,
-                  eval_result$score
+                  eval_result$overall_nse,
+                  eval_result$composite_score
                ))
-               
             }, error = function(e) {
                cat(sprintf("Error with triplet %s: %s\n", triplet_name, e$message))
             })
@@ -156,7 +163,7 @@ test_predictor_combinations <- function(base_formula, predictor_list, data, max_
    }
    
    # Return ranked results
-   scores <- sapply(results_list, function(x) x$score)
+   scores <- sapply(results_list, function(x) x$composite_score)
    ranked_indices <- order(scores, decreasing = TRUE)
    
    # Return results
@@ -167,12 +174,12 @@ test_predictor_combinations <- function(base_formula, predictor_list, data, max_
       best_combination = names(scores)[ranked_indices[1]],
       best_score = scores[ranked_indices[1]],
       summary_table = data.frame(
-         Combination = names(scores)[ranked_indices],
+         Predictor = ranked_indices,
          Score = scores[ranked_indices],
-         High_Sal_RMSE = sapply(results_list[ranked_indices], function(x) x$high_salinity_rmse),
-         High_Sal_MAPE = sapply(results_list[ranked_indices], function(x) x$high_salinity_mape),
+         High_Sal_RMSE = sapply(results_list[ranked_indices], function(x) x$high_sal_rmse),
+         High_Sal_MAPE = sapply(results_list[ranked_indices], function(x) x$high_sal_mape),
          Overall_R2 = sapply(results_list[ranked_indices], function(x) x$overall_r2),
-         NSE = sapply(results_list[ranked_indices], function(x) x$skill_metrics$nash_sutcliffe),
+         NSE = sapply(results_list[ranked_indices], function(x) x$overall_nse),
          stringsAsFactors = FALSE
       )
    ))

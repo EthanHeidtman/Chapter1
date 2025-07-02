@@ -32,7 +32,7 @@ library(lubridate)
 model_data <- as.data.frame(read_qs_files('Data/Tidied/Final/FinalModelData.qs'))
 
 # Define salinity threshold
-salinity_threshold = 1.0
+salinity_threshold = 0.3
 
 ######################### SIMPLE LINEAR MODEL DEVELOPMENT ############################
 
@@ -77,33 +77,38 @@ predictor_config <- list(
 )
 
 # Define performance criteria with updated weights
+# performance_criteria <- list(
+#    weights = c(
+#       # High salinity event metrics (65% of total weight)
+#       "high_sal_detection" = 0.30,      # Detection capability 
+#       "high_sal_accuracy" = 0.25,       # Accuracy of high salinity predictions
+#       "high_sal_reliability" = 0.10,    # Reliability (false alarm control)
+#       
+#       # Overall model performance (30% of total weight)
+#       "overall_performance" = 0.25,     # General model fit
+#       "model_stability" = 0.05,         # Consistent performance across conditions
+#       
+#       # Model characteristics (5% of total weight)
+#       "parsimony" = 0.05                # Model complexity penalty
+#    )
+# )
 performance_criteria <- list(
    weights = c(
-      # High salinity event metrics (65% of total weight)
-      "high_sal_detection" = 0.30,      # Detection capability 
-      "high_sal_accuracy" = 0.25,       # Accuracy of high salinity predictions
-      "high_sal_reliability" = 0.10,    # Reliability (false alarm control)
+      # High salinity event metrics (70% of total weight)
+      high_sal_detection = 0.25,     # Confusion matrix metrics (hit rate, etc.)
+      high_sal_accuracy = 0.25,      # Error metrics (RMSE, MAE, bias) for high sal events
+      high_sal_reliability = 0.20,   # False alarms and precision
       
-      # Overall model performance (30% of total weight)
-      "overall_performance" = 0.25,     # General model fit
-      "model_stability" = 0.05,         # Consistent performance across conditions
-      
-      # Model characteristics (5% of total weight)
-      "parsimony" = 0.05                # Model complexity penalty
-   ),
-   
-   thresholds = list(
-      min_high_sal_count = 3,           
-      high_salinity_threshold = 0.3,    
-      acceptable_far = 0.30,            
-      min_hit_rate = 0.40               
+      # Model characteristics (30% of total weight)
+      overall_performance = 0.25,    # Overall error metrics
+      complexity = 0.05              # Parsimony and complexity combined
    )
 )
 
 # Save model building output as a text file
-sink("Outputs/LinearModeling/LinearModelBuilderLog.txt")
+sink("Outputs/Experiments/LinearModeling/LinearModelBuilderLog.txt")
 
-linear_model_results <- linear_model_builder(model_data, salinity_threshold)
+linear_model_results <- linear_model_builder(model_data, salinity_threshold, predictor_config, performance_criteria)
 
 # Stop redirecting output and return to console
 sink()
@@ -115,7 +120,7 @@ environment(linear_model_results) <- new.env()
 # Write output files
 outputs <- list(linear_model_results)
 file_names <- c('LinearModelResults')
-write_qs_files(outputs, 'Outputs/LinearModeling', file_names, preset = 'archive')
+write_qs_files(outputs, 'Outputs/Experiments/LinearModeling', file_names, preset = 'archive')
 
 # Clear environment
 rm(list = ls())

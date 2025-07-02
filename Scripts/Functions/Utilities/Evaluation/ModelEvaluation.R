@@ -1,5 +1,5 @@
 # Function to perform model evaluation
-evaluate_model <- function(model, data, threshold = performance_criteria$thresholds$high_salinity_threshold, 
+evaluate_model1.0 <- function(model, data, threshold = performance_criteria$thresholds$high_salinity_threshold, 
                            model_type = "linear") {
    
    # Get predictions based on model type
@@ -77,7 +77,7 @@ evaluate_model <- function(model, data, threshold = performance_criteria$thresho
       # Overall metrics
       overall_rmse = overall_rmse,
       overall_r2 = overall_r2,
-      overall_mae = mean(abs(obs_clean - pred_clean)), # new
+      overall_mae = mean(abs(obs_clean - pred_clean)), 
       
       # High salinity metrics
       high_salinity_rmse = high_metrics$rmse,
@@ -95,10 +95,10 @@ evaluate_model <- function(model, data, threshold = performance_criteria$thresho
       skill_metrics = skill_metrics,
       
       # Model complexity (important for GAMs)
-      complexity_metrics = complexity_metrics, # new
+      complexity_metrics = complexity_metrics,
       
       # GAM-specific residual metrics
-      residual_metrics = residual_metrics, # new
+      residual_metrics = residual_metrics, 
       
       # Meta information
       total_observations = length(obs_clean),

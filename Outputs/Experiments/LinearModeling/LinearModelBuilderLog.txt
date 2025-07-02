@@ -2,297 +2,291 @@ STARTING SYSTEMATIC MODEL BUILDING PROCESS
 ==========================================
 
 === TESTING TIDE PREDICTORS ===
-Norm_Tide: High Sal RMSE = 1.061 | High MAPE = 88.4% | Overall R² = 0.000 | NSE = 0.000 | Score = 0.326
-Norm_TideRate: High Sal RMSE = 1.060 | High MAPE = 88.4% | Overall R² = 0.000 | NSE = 0.000 | Score = 0.326
-Norm_LagTide1: High Sal RMSE = 1.060 | High MAPE = 88.4% | Overall R² = 0.000 | NSE = 0.000 | Score = 0.326
-Norm_LagTide2: High Sal RMSE = 1.060 | High MAPE = 88.4% | Overall R² = 0.000 | NSE = 0.000 | Score = 0.326
-Norm_LagTide4: High Sal RMSE = 1.060 | High MAPE = 88.3% | Overall R² = 0.000 | NSE = 0.000 | Score = 0.326
-Norm_TideRange6: High Sal RMSE = 1.060 | High MAPE = 88.4% | Overall R² = 0.001 | NSE = 0.001 | Score = 0.326
-Norm_TideRange12: High Sal RMSE = 1.061 | High MAPE = 88.4% | Overall R² = 0.004 | NSE = 0.004 | Score = 0.327
-Norm_TideRange24: High Sal RMSE = 1.060 | High MAPE = 88.4% | Overall R² = 0.006 | NSE = 0.006 | Score = 0.327
-Norm_LowFlowTideRange: High Sal RMSE = 1.021 | High MAPE = 85.0% | Overall R² = 0.148 | NSE = 0.148 | Score = 0.357
-Norm_WeightedTideRange12: High Sal RMSE = 1.018 | High MAPE = 84.6% | Overall R² = 0.210 | NSE = 0.210 | Score = 0.370
+Norm_Tide: High Sal RMSE = 0.454 | High MAPE = 68.6% | Overall R² = 0.000 | NSE = 0.000 | Score = 0.048
+Norm_TideRate: High Sal RMSE = 0.454 | High MAPE = 68.6% | Overall R² = 0.000 | NSE = 0.000 | Score = 0.048
+Norm_LagTide1: High Sal RMSE = 0.454 | High MAPE = 68.6% | Overall R² = 0.000 | NSE = 0.000 | Score = 0.048
+Norm_LagTide2: High Sal RMSE = 0.454 | High MAPE = 68.6% | Overall R² = 0.000 | NSE = 0.000 | Score = 0.048
+Norm_LagTide4: High Sal RMSE = 0.454 | High MAPE = 68.6% | Overall R² = 0.000 | NSE = 0.000 | Score = 0.048
+Norm_TideRange6: High Sal RMSE = 0.454 | High MAPE = 68.6% | Overall R² = 0.001 | NSE = 0.001 | Score = 0.048
+Norm_TideRange12: High Sal RMSE = 0.454 | High MAPE = 68.4% | Overall R² = 0.004 | NSE = 0.004 | Score = 0.049
+Norm_TideRange24: High Sal RMSE = 0.453 | High MAPE = 68.4% | Overall R² = 0.006 | NSE = 0.006 | Score = 0.049
+Norm_LowFlowTideRange: High Sal RMSE = 0.431 | High MAPE = 64.8% | Overall R² = 0.148 | NSE = 0.148 | Score = 0.085
+Norm_WeightedTideRange12: High Sal RMSE = 0.425 | High MAPE = 63.7% | Overall R² = 0.210 | NSE = 0.210 | Score = 0.101
 Added: Norm_WeightedTideRange12
 Current formula: Salinity ~ Norm_WeightedTideRange12
 
 === TESTING DISCHARGE_LAG PREDICTORS ===
-Norm_PowLagDischarge1: High Sal RMSE = 1.020 | High MAPE = 84.8% | Overall R² = 0.228 | NSE = 0.228 | Score = 0.370
-Norm_PowLagDischarge3: High Sal RMSE = 1.020 | High MAPE = 84.7% | Overall R² = 0.228 | NSE = 0.228 | Score = 0.370
-Norm_PowLagDischarge6: High Sal RMSE = 1.020 | High MAPE = 84.8% | Overall R² = 0.228 | NSE = 0.228 | Score = 0.370
-Norm_PowLagDischarge10: High Sal RMSE = 1.019 | High MAPE = 84.7% | Overall R² = 0.228 | NSE = 0.228 | Score = 0.370
-Norm_PowLagDischarge12: High Sal RMSE = 1.016 | High MAPE = 84.5% | Overall R² = 0.228 | NSE = 0.228 | Score = 0.370
-Norm_PowLagDischarge24: High Sal RMSE = 1.017 | High MAPE = 84.6% | Overall R² = 0.234 | NSE = 0.234 | Score = 0.371
-Norm_PowLagDischarge36: High Sal RMSE = 1.016 | High MAPE = 84.5% | Overall R² = 0.240 | NSE = 0.240 | Score = 0.373
-Norm_PowLagDischarge48: High Sal RMSE = 1.016 | High MAPE = 84.4% | Overall R² = 0.245 | NSE = 0.245 | Score = 0.374
-Norm_PowLagDischarge72: High Sal RMSE = 1.014 | High MAPE = 84.4% | Overall R² = 0.250 | NSE = 0.250 | Score = 0.375
+Norm_PowLagDischarge1: High Sal RMSE = 0.425 | High MAPE = 63.1% | Overall R² = 0.228 | NSE = 0.228 | Score = 0.104
+Norm_PowLagDischarge3: High Sal RMSE = 0.425 | High MAPE = 63.1% | Overall R² = 0.228 | NSE = 0.228 | Score = 0.104
+Norm_PowLagDischarge6: High Sal RMSE = 0.425 | High MAPE = 63.1% | Overall R² = 0.228 | NSE = 0.228 | Score = 0.104
+Norm_PowLagDischarge10: High Sal RMSE = 0.425 | High MAPE = 63.1% | Overall R² = 0.228 | NSE = 0.228 | Score = 0.104
+Norm_PowLagDischarge12: High Sal RMSE = 0.425 | High MAPE = 63.1% | Overall R² = 0.228 | NSE = 0.228 | Score = 0.104
+Norm_PowLagDischarge24: High Sal RMSE = 0.424 | High MAPE = 63.0% | Overall R² = 0.234 | NSE = 0.234 | Score = 0.106
+Norm_PowLagDischarge36: High Sal RMSE = 0.423 | High MAPE = 62.7% | Overall R² = 0.240 | NSE = 0.240 | Score = 0.107
+Norm_PowLagDischarge48: High Sal RMSE = 0.422 | High MAPE = 62.3% | Overall R² = 0.245 | NSE = 0.245 | Score = 0.108
+Norm_PowLagDischarge72: High Sal RMSE = 0.422 | High MAPE = 62.2% | Overall R² = 0.250 | NSE = 0.250 | Score = 0.110
 Added: Norm_PowLagDischarge72
 Current formula: Salinity ~ Norm_WeightedTideRange12 + Norm_PowLagDischarge72
 
 === TESTING DISCHARGE_ROLLING PREDICTORS ===
-Norm_RollingPowDischarge0.5: High Sal RMSE = 1.017 | High MAPE = 84.6% | Overall R² = 0.264 | NSE = 0.264 | Score = 0.374
-Norm_RollingPowDischarge1: High Sal RMSE = 1.015 | High MAPE = 84.5% | Overall R² = 0.277 | NSE = 0.277 | Score = 0.377
-Norm_RollingPowDischarge2: High Sal RMSE = 1.013 | High MAPE = 84.3% | Overall R² = 0.286 | NSE = 0.286 | Score = 0.379
-Norm_RollingPowDischarge4: High Sal RMSE = 1.010 | High MAPE = 84.0% | Overall R² = 0.301 | NSE = 0.301 | Score = 0.382
-Norm_RollingPowDischarge7: High Sal RMSE = 1.009 | High MAPE = 83.9% | Overall R² = 0.316 | NSE = 0.316 | Score = 0.385
-Norm_RollingPowDischarge10: High Sal RMSE = 1.008 | High MAPE = 83.9% | Overall R² = 0.322 | NSE = 0.322 | Score = 0.386
-Norm_RollingPowDischarge14: High Sal RMSE = 1.008 | High MAPE = 83.8% | Overall R² = 0.324 | NSE = 0.324 | Score = 0.387
+Norm_RollingPowDischarge0.5: High Sal RMSE = 0.422 | High MAPE = 61.8% | Overall R² = 0.264 | NSE = 0.264 | Score = 0.112
+Norm_RollingPowDischarge1: High Sal RMSE = 0.422 | High MAPE = 61.4% | Overall R² = 0.277 | NSE = 0.277 | Score = 0.115
+Norm_RollingPowDischarge2: High Sal RMSE = 0.421 | High MAPE = 61.1% | Overall R² = 0.286 | NSE = 0.286 | Score = 0.118
+Norm_RollingPowDischarge4: High Sal RMSE = 0.418 | High MAPE = 60.6% | Overall R² = 0.301 | NSE = 0.301 | Score = 0.121
+Norm_RollingPowDischarge7: High Sal RMSE = 0.417 | High MAPE = 60.0% | Overall R² = 0.316 | NSE = 0.316 | Score = 0.125
+Norm_RollingPowDischarge10: High Sal RMSE = 0.416 | High MAPE = 59.7% | Overall R² = 0.322 | NSE = 0.322 | Score = 0.126
+Norm_RollingPowDischarge14: High Sal RMSE = 0.415 | High MAPE = 59.4% | Overall R² = 0.324 | NSE = 0.324 | Score = 0.127
 Added: Norm_RollingPowDischarge14
 Current formula: Salinity ~ Norm_WeightedTideRange12 + Norm_PowLagDischarge72 + Norm_RollingPowDischarge14
 
 === TESTING INFLOW_LAG PREDICTORS ===
-Norm_LagInflows12: High Sal RMSE = 1.009 | High MAPE = 83.9% | Overall R² = 0.325 | NSE = 0.325 | Score = 0.384
-Norm_LagInflows24: High Sal RMSE = 1.009 | High MAPE = 83.9% | Overall R² = 0.325 | NSE = 0.325 | Score = 0.384
-Norm_LagInflows48: High Sal RMSE = 1.009 | High MAPE = 83.9% | Overall R² = 0.326 | NSE = 0.326 | Score = 0.384
-Norm_LagInflows72: High Sal RMSE = 1.008 | High MAPE = 83.9% | Overall R² = 0.325 | NSE = 0.325 | Score = 0.384
+Norm_LagInflows12: High Sal RMSE = 0.415 | High MAPE = 59.4% | Overall R² = 0.325 | NSE = 0.325 | Score = 0.126
+Norm_LagInflows24: High Sal RMSE = 0.415 | High MAPE = 59.4% | Overall R² = 0.325 | NSE = 0.325 | Score = 0.126
+Norm_LagInflows48: High Sal RMSE = 0.415 | High MAPE = 59.4% | Overall R² = 0.326 | NSE = 0.326 | Score = 0.126
+Norm_LagInflows72: High Sal RMSE = 0.415 | High MAPE = 59.4% | Overall R² = 0.325 | NSE = 0.325 | Score = 0.126
 Added: Norm_LagInflows48
 Current formula: Salinity ~ Norm_WeightedTideRange12 + Norm_PowLagDischarge72 + Norm_RollingPowDischarge14 + Norm_LagInflows48
 
 === TESTING INFLOW_ROLLING PREDICTORS ===
-Norm_RollingPowInflows1: High Sal RMSE = 1.008 | High MAPE = 83.8% | Overall R² = 0.327 | NSE = 0.327 | Score = 0.382
-Norm_RollingPowInflows2: High Sal RMSE = 1.008 | High MAPE = 83.8% | Overall R² = 0.327 | NSE = 0.327 | Score = 0.382
-Norm_RollingPowInflows7: High Sal RMSE = 1.009 | High MAPE = 83.9% | Overall R² = 0.327 | NSE = 0.327 | Score = 0.382
-Norm_RollingPowInflows10: High Sal RMSE = 1.009 | High MAPE = 83.9% | Overall R² = 0.326 | NSE = 0.326 | Score = 0.382
+Norm_RollingPowInflows1: High Sal RMSE = 0.415 | High MAPE = 59.4% | Overall R² = 0.327 | NSE = 0.327 | Score = 0.126
+Norm_RollingPowInflows2: High Sal RMSE = 0.415 | High MAPE = 59.4% | Overall R² = 0.327 | NSE = 0.327 | Score = 0.126
+Norm_RollingPowInflows7: High Sal RMSE = 0.416 | High MAPE = 59.6% | Overall R² = 0.327 | NSE = 0.327 | Score = 0.126
+Norm_RollingPowInflows10: High Sal RMSE = 0.416 | High MAPE = 59.6% | Overall R² = 0.326 | NSE = 0.326 | Score = 0.126
 Added: Norm_RollingPowInflows2
 Current formula: Salinity ~ Norm_WeightedTideRange12 + Norm_PowLagDischarge72 + Norm_RollingPowDischarge14 + Norm_LagInflows48 + Norm_RollingPowInflows2
 
 === TESTING LATENT_FLOW PREDICTORS ===
-Norm_SimpleLatent: High Sal RMSE = 1.008 | High MAPE = 83.8% | Overall R² = 0.327 | NSE = 0.327 | Score = 0.380
-Norm_StressLatent: High Sal RMSE = 1.008 | High MAPE = 83.8% | Overall R² = 0.327 | NSE = 0.327 | Score = 0.380
-Norm_BestLatent: High Sal RMSE = 1.008 | High MAPE = 83.8% | Overall R² = 0.327 | NSE = 0.327 | Score = 0.380
+Norm_SimpleLatent: High Sal RMSE = 0.415 | High MAPE = 59.5% | Overall R² = 0.327 | NSE = 0.327 | Score = 0.125
+Norm_StressLatent: High Sal RMSE = 0.415 | High MAPE = 59.4% | Overall R² = 0.327 | NSE = 0.327 | Score = 0.125
+Norm_BestLatent: High Sal RMSE = 0.415 | High MAPE = 59.4% | Overall R² = 0.327 | NSE = 0.327 | Score = 0.125
 Added: Norm_SimpleLatent
 Current formula: Salinity ~ Norm_WeightedTideRange12 + Norm_PowLagDischarge72 + Norm_RollingPowDischarge14 + Norm_LagInflows48 + Norm_RollingPowInflows2 + Norm_SimpleLatent
 
 === TESTING STRESS_BINARY PREDICTORS ===
-IsModerateStress: High Sal RMSE = 1.008 | High MAPE = 83.8% | Overall R² = 0.328 | NSE = 0.328 | Score = 0.378
-IsHighStress: High Sal RMSE = 1.005 | High MAPE = 83.6% | Overall R² = 0.329 | NSE = 0.329 | Score = 0.379
-IsFlush: High Sal RMSE = 1.007 | High MAPE = 83.8% | Overall R² = 0.328 | NSE = 0.328 | Score = 0.378
-IsStressed: High Sal RMSE = 1.008 | High MAPE = 83.8% | Overall R² = 0.328 | NSE = 0.328 | Score = 0.378
+IsModerateStress: High Sal RMSE = 0.415 | High MAPE = 59.2% | Overall R² = 0.328 | NSE = 0.328 | Score = 0.124
+IsHighStress: High Sal RMSE = 0.414 | High MAPE = 59.3% | Overall R² = 0.329 | NSE = 0.329 | Score = 0.124
+IsFlush: High Sal RMSE = 0.415 | High MAPE = 59.4% | Overall R² = 0.328 | NSE = 0.328 | Score = 0.124
+IsStressed: High Sal RMSE = 0.415 | High MAPE = 59.2% | Overall R² = 0.328 | NSE = 0.328 | Score = 0.124
 Added: IsHighStress
 
 === TESTING STRESS_CONTINUOUS PREDICTORS ===
-Norm_StressHours_7day_Marietta: High Sal RMSE = 1.003 | High MAPE = 83.4% | Overall R² = 0.331 | NSE = 0.331 | Score = 0.377
-Norm_StressHours_14day_Marietta: High Sal RMSE = 1.003 | High MAPE = 83.4% | Overall R² = 0.335 | NSE = 0.335 | Score = 0.378
-Norm_StressHours_30day_Marietta: High Sal RMSE = 0.995 | High MAPE = 82.7% | Overall R² = 0.345 | NSE = 0.345 | Score = 0.381
-Norm_StressHours_7day_Conowingo: High Sal RMSE = 1.001 | High MAPE = 83.3% | Overall R² = 0.331 | NSE = 0.331 | Score = 0.377
-Norm_StressHours_14day_Conowingo: High Sal RMSE = 1.000 | High MAPE = 83.2% | Overall R² = 0.332 | NSE = 0.332 | Score = 0.378
-Norm_StressHours_30day_Conowingo: High Sal RMSE = 0.994 | High MAPE = 82.6% | Overall R² = 0.336 | NSE = 0.336 | Score = 0.379
-Norm_CumulativeStress_7day_Marietta: High Sal RMSE = 1.002 | High MAPE = 83.3% | Overall R² = 0.333 | NSE = 0.333 | Score = 0.378
-Norm_CumulativeStress_14day_Marietta: High Sal RMSE = 1.005 | High MAPE = 83.6% | Overall R² = 0.332 | NSE = 0.332 | Score = 0.377
-Norm_CumulativeStress_30day_Marietta: High Sal RMSE = 0.995 [1] "Experiments/experiment_row$experiment_id"
-function (..., fsep = .Platform$file.sep) 
-.Internal(file.path(list(...), fsep))
-<bytecode: 0x137317e58>
-<environment: namespace:base>
-ed: Norm_StressHours_30day_Marietta
+Norm_StressHours_7day_Marietta: High Sal RMSE = 0.413 | High MAPE = 59.2% | Overall R² = 0.331 | NSE = 0.331 | Score = 0.124
+Norm_StressHours_14day_Marietta: High Sal RMSE = 0.412 | High MAPE = 58.7% | Overall R² = 0.335 | NSE = 0.335 | Score = 0.125
+Norm_StressHours_30day_Marietta: High Sal RMSE = 0.408 | High MAPE = 58.7% | Overall R² = 0.345 | NSE = 0.345 | Score = 0.127
+Norm_StressHours_7day_Conowingo: High Sal RMSE = 0.411 | High MAPE = 58.5% | Overall R² = 0.331 | NSE = 0.331 | Score = 0.124
+Norm_StressHours_14day_Conowingo: High Sal RMSE = 0.410 | High MAPE = 58.3% | Overall R² = 0.332 | NSE = 0.332 | Score = 0.124
+Norm_StressHours_30day_Conowingo: High Sal RMSE = 0.407 | High MAPE = 58.2% | Overall R² = 0.336 | NSE = 0.336 | Score = 0.125
+Norm_CumulativeStress_7day_Marietta: High Sal RMSE = 0.412 | High MAPE = 59.2% | Overall R² = 0.333 | NSE = 0.333 | Score = 0.124
+Norm_CumulativeStress_14day_Marietta: High Sal RMSE = 0.413 | High MAPE = 59.3% | Overall R² = 0.332 | NSE = 0.332 | Score = 0.124
+Norm_CumulativeStress_30day_Marietta: High Sal RMSE = 0.409 | High MAPE = 59.3% | Overall R² = 0.340 | NSE = 0.340 | Score = 0.126
+Error fitting model with DaysSinceHighFlow: contrasts can be applied only to factors with 2 or more levels
+Added: Norm_StressHours_30day_Marietta
 
 === TESTING TEMPORAL PREDICTORS ===
-SalinitySeason: High Sal RMSE = 0.995 | High MAPE = 82.7% | Overall R² = 0.349 | NSE = 0.349 | Score = 0.378
-DayOfYear: High Sal RMSE = 0.993 | High MAPE = 82.6% | Overall R² = 0.350 | NSE = 0.350 | Score = 0.380
+SalinitySeason: High Sal RMSE = 0.407 | High MAPE = 58.4% | Overall R² = 0.349 | NSE = 0.349 | Score = 0.126
+DayOfYear: High Sal RMSE = 0.406 | High MAPE = 58.2% | Overall R² = 0.350 | NSE = 0.350 | Score = 0.127
 Added: DayOfYear
 === TESTING SYSTEMATIC INTERACTIONS ===
 Base formula: Salinity ~ Norm_WeightedTideRange12 + Norm_PowLagDischarge72 + Norm_RollingPowDischarge14 + Norm_LagInflows48 + Norm_RollingPowInflows2 + Norm_SimpleLatent + IsHighStress + Norm_StressHours_30day_Marietta + DayOfYear
 Best predictors to test: Norm_WeightedTideRange12, Norm_PowLagDischarge72, Norm_RollingPowDischarge14, Norm_LagInflows48, Norm_RollingPowInflows2, Norm_SimpleLatent, IsHighStress, Norm_StressHours_30day_Marietta, DayOfYear
 Testing pairwise interactions...
-Norm_WeightedTideRange12_x_Norm_PowLagDischarge72: High Sal RMSE = 0.993 | High MAPE = 82.6% | Overall R² = 0.350 | NSE = 0.350 | Score = 0.379
-Norm_WeightedTideRange12_x_Norm_RollingPowDischarge14: High Sal RMSE = 0.992 | High MAPE = 82.4% | Overall R² = 0.351 | NSE = 0.351 | Score = 0.379
-Norm_WeightedTideRange12_x_Norm_LagInflows48: High Sal RMSE = 0.993 | High MAPE = 82.6% | Overall R² = 0.350 | NSE = 0.350 | Score = 0.379
-Norm_WeightedTideRange12_x_Norm_RollingPowInflows2: High Sal RMSE = 0.993 | High MAPE = 82.6% | Overall R² = 0.350 | NSE = 0.350 | Score = 0.379
-Norm_WeightedTideRange12_x_Norm_SimpleLatent: High Sal RMSE = 0.993 | High MAPE = 82.6% | Overall R² = 0.350 | NSE = 0.350 | Score = 0.379
-Norm_WeightedTideRange12_x_IsHighStress: High Sal RMSE = 0.993 | High MAPE = 82.6% | Overall R² = 0.350 | NSE = 0.350 | Score = 0.379
-Norm_WeightedTideRange12_x_Norm_StressHours_30day_Marietta: High Sal RMSE = 0.989 | High MAPE = 82.2% | Overall R² = 0.353 | NSE = 0.353 | Score = 0.379
-Norm_WeightedTideRange12_x_DayOfYear: High Sal RMSE = 0.985 | High MAPE = 81.8% | Overall R² = 0.358 | NSE = 0.358 | Score = 0.381
-Norm_PowLagDischarge72_x_Norm_RollingPowDischarge14: High Sal RMSE = 0.993 | High MAPE = 82.5% | Overall R² = 0.351 | NSE = 0.351 | Score = 0.379
-Norm_PowLagDischarge72_x_Norm_LagInflows48: High Sal RMSE = 0.993 | High MAPE = 82.6% | Overall R² = 0.350 | NSE = 0.350 | Score = 0.379
-Norm_PowLagDischarge72_x_Norm_RollingPowInflows2: High Sal RMSE = 0.993 | High MAPE = 82.6% | Overall R² = 0.350 | NSE = 0.350 | Score = 0.379
-Norm_PowLagDischarge72_x_Norm_SimpleLatent: High Sal RMSE = 0.993 | High MAPE = 82.6% | Overall R² = 0.350 | NSE = 0.350 | Score = 0.379
-Norm_PowLagDischarge72_x_IsHighStress: High Sal RMSE = 0.992 | High MAPE = 82.5% | Overall R² = 0.350 | NSE = 0.350 | Score = 0.379
-Norm_PowLagDischarge72_x_Norm_StressHours_30day_Marietta: High Sal RMSE = 0.990 | High MAPE = 82.3% | Overall R² = 0.353 | NSE = 0.353 | Score = 0.379
-Norm_PowLagDischarge72_x_DayOfYear: High Sal RMSE = 0.990 | High MAPE = 82.3% | Overall R² = 0.354 | NSE = 0.354 | Score = 0.380
-Norm_RollingPowDischarge14_x_Norm_LagInflows48: High Sal RMSE = 0.993 | High MAPE = 82.5% | Overall R² = 0.353 | NSE = 0.353 | Score = 0.379
-Norm_RollingPowDischarge14_x_Norm_RollingPowInflows2: High Sal RMSE = 0.992 | High MAPE = 82.4% | Overall R² = 0.352 | NSE = 0.352 | Score = 0.379
-Norm_RollingPowDischarge14_x_Norm_SimpleLatent: High Sal RMSE = 0.992 | High MAPE = 82.5% | Overall R² = 0.351 | NSE = 0.351 | Score = 0.379
-Norm_RollingPowDischarge14_x_IsHighStress: High Sal RMSE = 0.989 | High MAPE = 82.2% | Overall R² = 0.352 | NSE = 0.352 | Score = 0.379
-Norm_RollingPowDischarge14_x_Norm_StressHours_30day_Marietta: High Sal RMSE = 0.986 | High MAPE = 82.0% | Overall R² = 0.355 | NSE = 0.355 | Score = 0.380
-Norm_RollingPowDischarge14_x_DayOfYear: High Sal RMSE = 0.986 | High MAPE = 82.0% | Overall R² = 0.361 | NSE = 0.361 | Score = 0.381
-Norm_LagInflows48_x_Norm_RollingPowInflows2: High Sal RMSE = 0.993 | High MAPE = 82.6% | Overall R² = 0.350 | NSE = 0.350 | Score = 0.379
-Norm_LagInflows48_x_Norm_SimpleLatent: High Sal RMSE = 0.993 | High MAPE = 82.6% | Overall R² = 0.350 | NSE = 0.350 | Score = 0.379
-Norm_LagInflows48_x_IsHighStress: High Sal RMSE = 0.993 | High MAPE = 82.6% | Overall R² = 0.350 | NSE = 0.350 | Score = 0.379
-Norm_LagInflows48_x_Norm_StressHours_30day_Marietta: High Sal RMSE = 0.991 | High MAPE = 82.4% | Overall R² = 0.354 | NSE = 0.354 | Score = 0.380
-Norm_LagInflows48_x_DayOfYear: High Sal RMSE = 0.993 | High MAPE = 82.5% | Overall R² = 0.352 | NSE = 0.352 | Score = 0.379
-Norm_RollingPowInflows2_x_Norm_SimpleLatent: High Sal RMSE = 0.993 | High MAPE = 82.6% | Overall R² = 0.350 | NSE = 0.350 | Score = 0.379
-Norm_RollingPowInflows2_x_IsHighStress: High Sal RMSE = 0.993 | High MAPE = 82.6% | Overall R² = 0.350 | NSE = 0.350 | Score = 0.379
-Norm_RollingPowInflows2_x_Norm_StressHours_30day_Marietta: High Sal RMSE = 0.989 | High MAPE = 82.2% | Overall R² = 0.353 | NSE = 0.353 | Score = 0.380
-Norm_RollingPowInflows2_x_DayOfYear: High Sal RMSE = 0.986 | High MAPE = 82.0% | Overall R² = 0.358 | NSE = 0.358 | Score = 0.381
-Norm_SimpleLatent_x_IsHighStress: High Sal RMSE = 0.993 | High MAPE = 82.6% | Overall R² = 0.350 | NSE = 0.350 | Score = 0.379
-Norm_SimpleLatent_x_Norm_StressHours_30day_Marietta: High Sal RMSE = 0.990 | High MAPE = 82.3% | Overall R² = 0.353 | NSE = 0.353 | Score = 0.379
-Norm_SimpleLatent_x_DayOfYear: High Sal RMSE = 0.989 | High MAPE = 82.2% | Overall R² = 0.356 | NSE = 0.356 | Score = 0.380
-IsHighStress_x_Norm_StressHours_30day_Marietta: High Sal RMSE = 0.985 | High MAPE = 81.9% | Overall R² = 0.354 | NSE = 0.354 | Score = 0.380
-IsHighStress_x_DayOfYear: High Sal RMSE = 0.976 | High MAPE = 81.1% | Overall R² = 0.363 | NSE = 0.363 | Score = 0.382
-Norm_StressHours_30day_Marietta_x_DayOfYear: High Sal RMSE = 0.973 | High MAPE = 80.8% | Overall R² = 0.375 | NSE = 0.375 | Score = 0.384
+Norm_WeightedTideRange12_x_Norm_PowLagDischarge72: High Sal RMSE = 0.406 | High MAPE = 58.1% | Overall R² = 0.350 | NSE = 0.350 | Score = 0.126
+Norm_WeightedTideRange12_x_Norm_RollingPowDischarge14: High Sal RMSE = 0.405 | High MAPE = 57.8% | Overall R² = 0.351 | NSE = 0.351 | Score = 0.127
+Norm_WeightedTideRange12_x_Norm_LagInflows48: High Sal RMSE = 0.406 | High MAPE = 58.1% | Overall R² = 0.350 | NSE = 0.350 | Score = 0.126
+Norm_WeightedTideRange12_x_Norm_RollingPowInflows2: High Sal RMSE = 0.406 | High MAPE = 58.1% | Overall R² = 0.350 | NSE = 0.350 | Score = 0.127
+Norm_WeightedTideRange12_x_Norm_SimpleLatent: High Sal RMSE = 0.406 | High MAPE = 58.2% | Overall R² = 0.350 | NSE = 0.350 | Score = 0.126
+Norm_WeightedTideRange12_x_IsHighStress: High Sal RMSE = 0.406 | High MAPE = 58.2% | Overall R² = 0.350 | NSE = 0.350 | Score = 0.126
+Norm_WeightedTideRange12_x_Norm_StressHours_30day_Marietta: High Sal RMSE = 0.403 | High MAPE = 57.9% | Overall R² = 0.353 | NSE = 0.353 | Score = 0.127
+Norm_WeightedTideRange12_x_DayOfYear: High Sal RMSE = 0.400 | High MAPE = 56.7% | Overall R² = 0.358 | NSE = 0.358 | Score = 0.129
+Norm_PowLagDischarge72_x_Norm_RollingPowDischarge14: High Sal RMSE = 0.406 | High MAPE = 57.9% | Overall R² = 0.351 | NSE = 0.351 | Score = 0.127
+Norm_PowLagDischarge72_x_Norm_LagInflows48: High Sal RMSE = 0.406 | High MAPE = 58.1% | Overall R² = 0.350 | NSE = 0.350 | Score = 0.126
+Norm_PowLagDischarge72_x_Norm_RollingPowInflows2: High Sal RMSE = 0.406 | High MAPE = 58.1% | Overall R² = 0.350 | NSE = 0.350 | Score = 0.126
+Norm_PowLagDischarge72_x_Norm_SimpleLatent: High Sal RMSE = 0.406 | High MAPE = 58.1% | Overall R² = 0.350 | NSE = 0.350 | Score = 0.126
+Norm_PowLagDischarge72_x_IsHighStress: High Sal RMSE = 0.406 | High MAPE = 58.1% | Overall R² = 0.350 | NSE = 0.350 | Score = 0.127
+Norm_PowLagDischarge72_x_Norm_StressHours_30day_Marietta: High Sal RMSE = 0.404 | High MAPE = 57.8% | Overall R² = 0.353 | NSE = 0.353 | Score = 0.127
+Norm_PowLagDischarge72_x_DayOfYear: High Sal RMSE = 0.403 | High MAPE = 57.2% | Overall R² = 0.354 | NSE = 0.354 | Score = 0.128
+Norm_RollingPowDischarge14_x_Norm_LagInflows48: High Sal RMSE = 0.406 | High MAPE = 57.8% | Overall R² = 0.353 | NSE = 0.353 | Score = 0.127
+Norm_RollingPowDischarge14_x_Norm_RollingPowInflows2: High Sal RMSE = 0.405 | High MAPE = 57.7% | Overall R² = 0.352 | NSE = 0.352 | Score = 0.127
+Norm_RollingPowDischarge14_x_Norm_SimpleLatent: High Sal RMSE = 0.405 | High MAPE = 57.7% | Overall R² = 0.351 | NSE = 0.351 | Score = 0.127
+Norm_RollingPowDischarge14_x_IsHighStress: High Sal RMSE = 0.404 | High MAPE = 57.8% | Overall R² = 0.352 | NSE = 0.352 | Score = 0.127
+Norm_RollingPowDischarge14_x_Norm_StressHours_30day_Marietta: High Sal RMSE = 0.402 | High MAPE = 57.4% | Overall R² = 0.355 | NSE = 0.355 | Score = 0.128
+Norm_RollingPowDischarge14_x_DayOfYear: High Sal RMSE = 0.400 | High MAPE = 56.1% | Overall R² = 0.361 | NSE = 0.361 | Score = 0.129
+Norm_LagInflows48_x_Norm_RollingPowInflows2: High Sal RMSE = 0.406 | High MAPE = 58.2% | Overall R² = 0.350 | NSE = 0.350 | Score = 0.126
+Norm_LagInflows48_x_Norm_SimpleLatent: High Sal RMSE = 0.406 | High MAPE = 58.2% | Overall R² = 0.350 | NSE = 0.350 | Score = 0.126
+Norm_LagInflows48_x_IsHighStress: High Sal RMSE = 0.406 | High MAPE = 58.2% | Overall R² = 0.350 | NSE = 0.350 | Score = 0.126
+Norm_LagInflows48_x_Norm_StressHours_30day_Marietta: High Sal RMSE = 0.405 | High MAPE = 57.8% | Overall R² = 0.354 | NSE = 0.354 | Score = 0.127
+Norm_LagInflows48_x_DayOfYear: High Sal RMSE = 0.405 | High MAPE = 57.8% | Overall R² = 0.352 | NSE = 0.352 | Score = 0.127
+Norm_RollingPowInflows2_x_Norm_SimpleLatent: High Sal RMSE = 0.406 | High MAPE = 58.2% | Overall R² = 0.350 | NSE = 0.350 | Score = 0.126
+Norm_RollingPowInflows2_x_IsHighStress: High Sal RMSE = 0.406 | High MAPE = 58.2% | Overall R² = 0.350 | NSE = 0.350 | Score = 0.126
+Norm_RollingPowInflows2_x_Norm_StressHours_30day_Marietta: High Sal RMSE = 0.403 | High MAPE = 57.8% | Overall R² = 0.353 | NSE = 0.353 | Score = 0.127
+Norm_RollingPowInflows2_x_DayOfYear: High Sal RMSE = 0.401 | High MAPE = 56.6% | Overall R² = 0.358 | NSE = 0.358 | Score = 0.129
+Norm_SimpleLatent_x_IsHighStress: High Sal RMSE = 0.406 | High MAPE = 58.1% | Overall R² = 0.350 | NSE = 0.350 | Score = 0.126
+Norm_SimpleLatent_x_Norm_StressHours_30day_Marietta: High Sal RMSE = 0.404 | High MAPE = 57.8% | Overall R² = 0.353 | NSE = 0.353 | Score = 0.127
+Norm_SimpleLatent_x_DayOfYear: High Sal RMSE = 0.402 | High MAPE = 56.9% | Overall R² = 0.356 | NSE = 0.356 | Score = 0.128
+IsHighStress_x_Norm_StressHours_30day_Marietta: High Sal RMSE = 0.402 | High MAPE = 57.8% | Overall R² = 0.354 | NSE = 0.354 | Score = 0.127
+IsHighStress_x_DayOfYear: High Sal RMSE = 0.396 | High MAPE = 56.2% | Overall R² = 0.363 | NSE = 0.363 | Score = 0.130
+Norm_StressHours_30day_Marietta_x_DayOfYear: High Sal RMSE = 0.393 | High MAPE = 55.6% | Overall R² = 0.375 | NSE = 0.375 | Score = 0.133
 Testing three-way interactions...
-Norm_WeightedTideRange12_x_Norm_PowLagDischarge72_x_Norm_RollingPowDischarge14: High Sal RMSE = 0.993 | High MAPE = 82.6% | Overall R² = 0.350 | NSE = 0.350 | Score = 0.379
-Norm_WeightedTideRange12_x_Norm_PowLagDischarge72_x_Norm_LagInflows48: High Sal RMSE = 0.993 | High MAPE = 82.6% | Overall R² = 0.350 | NSE = 0.350 | Score = 0.379
-Norm_WeightedTideRange12_x_Norm_PowLagDischarge72_x_Norm_RollingPowInflows2: High Sal RMSE = 0.993 | High MAPE = 82.6% | Overall R² = 0.350 | NSE = 0.350 | Score = 0.379
-Norm_WeightedTideRange12_x_Norm_PowLagDischarge72_x_Norm_SimpleLatent: High Sal RMSE = 0.993 | High MAPE = 82.6% | Overall R² = 0.350 | NSE = 0.350 | Score = 0.379
-Norm_WeightedTideRange12_x_Norm_PowLagDischarge72_x_IsHighStress: High Sal RMSE = 0.993 | High MAPE = 82.5% | Overall R² = 0.350 | NSE = 0.350 | Score = 0.377
-Norm_WeightedTideRange12_x_Norm_PowLagDischarge72_x_Norm_StressHours_30day_Marietta: High Sal RMSE = 0.991 | High MAPE = 82.4% | Overall R² = 0.351 | NSE = 0.351 | Score = 0.379
-Norm_WeightedTideRange12_x_Norm_PowLagDischarge72_x_DayOfYear: High Sal RMSE = 0.993 | High MAPE = 82.5% | Overall R² = 0.350 | NSE = 0.350 | Score = 0.379
-Norm_WeightedTideRange12_x_Norm_RollingPowDischarge14_x_Norm_LagInflows48: High Sal RMSE = 0.994 | High MAPE = 82.6% | Overall R² = 0.350 | NSE = 0.350 | Score = 0.379
-Norm_WeightedTideRange12_x_Norm_RollingPowDischarge14_x_Norm_RollingPowInflows2: High Sal RMSE = 0.994 | High MAPE = 82.6% | Overall R² = 0.350 | NSE = 0.350 | Score = 0.379
-Norm_WeightedTideRange12_x_Norm_RollingPowDischarge14_x_Norm_SimpleLatent: High Sal RMSE = 0.994 | High MAPE = 82.6% | Overall R² = 0.350 | NSE = 0.350 | Score = 0.379
-Norm_WeightedTideRange12_x_Norm_RollingPowDischarge14_x_IsHighStress: High Sal RMSE = 0.992 | High MAPE = 82.4% | Overall R² = 0.351 | NSE = 0.351 | Score = 0.378
-Norm_WeightedTideRange12_x_Norm_RollingPowDischarge14_x_Norm_StressHours_30day_Marietta: High Sal RMSE = 0.990 | High MAPE = 82.3% | Overall R² = 0.351 | NSE = 0.351 | Score = 0.379
-Norm_WeightedTideRange12_x_Norm_RollingPowDischarge14_x_DayOfYear: High Sal RMSE = 0.991 | High MAPE = 82.4% | Overall R² = 0.351 | NSE = 0.351 | Score = 0.379
-Norm_WeightedTideRange12_x_Norm_LagInflows48_x_Norm_RollingPowInflows2: High Sal RMSE = 0.993 | High MAPE = 82.6% | Overall R² = 0.350 | NSE = 0.350 | Score = 0.379
-Norm_WeightedTideRange12_x_Norm_LagInflows48_x_Norm_SimpleLatent: High Sal RMSE = 0.994 | High MAPE = 82.6% | Overall R² = 0.350 | NSE = 0.350 | Score = 0.379
-Norm_WeightedTideRange12_x_Norm_LagInflows48_x_IsHighStress: High Sal RMSE = 0.993 | High MAPE = 82.6% | Overall R² = 0.350 | NSE = 0.350 | Score = 0.377
-Norm_WeightedTideRange12_x_Norm_LagInflows48_x_Norm_StressHours_30day_Marietta: High Sal RMSE = 0.992 | High MAPE = 82.5% | Overall R² = 0.350 | NSE = 0.350 | Score = 0.379
-Norm_WeightedTideRange12_x_Norm_LagInflows48_x_DayOfYear: High Sal RMSE = 0.993 | High MAPE = 82.6% | Overall R² = 0.350 | NSE = 0.350 | Score = 0.379
-Norm_WeightedTideRange12_x_Norm_RollingPowInflows2_x_Norm_SimpleLatent: High Sal RMSE = 0.993 | High MAPE = 82.6% | Overall R² = 0.350 | NSE = 0.350 | Score = 0.379
-Norm_WeightedTideRange12_x_Norm_RollingPowInflows2_x_IsHighStress: High Sal RMSE = 0.993 | High MAPE = 82.6% | Overall R² = 0.350 | NSE = 0.350 | Score = 0.377
-Norm_WeightedTideRange12_x_Norm_RollingPowInflows2_x_Norm_StressHours_30day_Marietta: High Sal RMSE = 0.993 | High MAPE = 82.5% | Overall R² = 0.350 | NSE = 0.350 | Score = 0.379
-Norm_WeightedTideRange12_x_Norm_RollingPowInflows2_x_DayOfYear: High Sal RMSE = 0.993 | High MAPE = 82.6% | Overall R² = 0.350 | NSE = 0.350 | Score = 0.379
-Norm_WeightedTideRange12_x_Norm_SimpleLatent_x_IsHighStress: High Sal RMSE = 0.993 | High MAPE = 82.6% | Overall R² = 0.350 | NSE = 0.350 | Score = 0.377
-Norm_WeightedTideRange12_x_Norm_SimpleLatent_x_Norm_StressHours_30day_Marietta: High Sal RMSE = 0.992 | High MAPE = 82.5% | Overall R² = 0.350 | NSE = 0.350 | Score = 0.379
-Norm_WeightedTideRange12_x_Norm_SimpleLatent_x_DayOfYear: High Sal RMSE = 0.993 | High MAPE = 82.6% | Overall R² = 0.350 | NSE = 0.350 | Score = 0.379
-Norm_WeightedTideRange12_x_IsHighStress_x_Norm_StressHours_30day_Marietta: High Sal RMSE = 0.989 | High MAPE = 82.2% | Overall R² = 0.353 | NSE = 0.353 | Score = 0.378
-Norm_WeightedTideRange12_x_IsHighStress_x_DayOfYear: High Sal RMSE = 0.985 | High MAPE = 81.8% | Overall R² = 0.358 | NSE = 0.358 | Score = 0.379
-Norm_WeightedTideRange12_x_Norm_StressHours_30day_Marietta_x_DayOfYear: High Sal RMSE = 0.987 | High MAPE = 82.0% | Overall R² = 0.354 | NSE = 0.354 | Score = 0.380
-Norm_PowLagDischarge72_x_Norm_RollingPowDischarge14_x_Norm_LagInflows48: High Sal RMSE = 0.994 | High MAPE = 82.6% | Overall R² = 0.351 | NSE = 0.351 | Score = 0.379
-Norm_PowLagDischarge72_x_Norm_RollingPowDischarge14_x_Norm_RollingPowInflows2: High Sal RMSE = 0.994 | High MAPE = 82.6% | Overall R² = 0.350 | NSE = 0.350 | Score = 0.379
-Norm_PowLagDischarge72_x_Norm_RollingPowDischarge14_x_Norm_SimpleLatent: High Sal RMSE = 0.994 | High MAPE = 82.6% | Overall R² = 0.350 | NSE = 0.350 | Score = 0.379
-Norm_PowLagDischarge72_x_Norm_RollingPowDischarge14_x_IsHighStress: High Sal RMSE = 0.992 | High MAPE = 82.4% | Overall R² = 0.351 | NSE = 0.351 | Score = 0.378
-Norm_PowLagDischarge72_x_Norm_RollingPowDischarge14_x_Norm_StressHours_30day_Marietta: High Sal RMSE = 0.990 | High MAPE = 82.3% | Overall R² = 0.351 | NSE = 0.351 | Score = 0.379
-Norm_PowLagDischarge72_x_Norm_RollingPowDischarge14_x_DayOfYear: High Sal RMSE = 0.992 | High MAPE = 82.5% | Overall R² = 0.351 | NSE = 0.351 | Score = 0.379
-Norm_PowLagDischarge72_x_Norm_LagInflows48_x_Norm_RollingPowInflows2: High Sal RMSE = 0.994 | High MAPE = 82.6% | Overall R² = 0.350 | NSE = 0.350 | Score = 0.379
-Norm_PowLagDischarge72_x_Norm_LagInflows48_x_Norm_SimpleLatent: High Sal RMSE = 0.994 | High MAPE = 82.6% | Overall R² = 0.350 | NSE = 0.350 | Score = 0.379
-Norm_PowLagDischarge72_x_Norm_LagInflows48_x_IsHighStress: High Sal RMSE = 0.992 | High MAPE = 82.5% | Overall R² = 0.350 | NSE = 0.350 | Score = 0.377
-Norm_PowLagDischarge72_x_Norm_LagInflows48_x_Norm_StressHours_30day_Marietta: High Sal RMSE = 0.993 | High MAPE = 82.6% | Overall R² = 0.350 | NSE = 0.350 | Score = 0.379
-Norm_PowLagDischarge72_x_Norm_LagInflows48_x_DayOfYear: High Sal RMSE = 0.993 | High MAPE = 82.6% | Overall R² = 0.350 | NSE = 0.350 | Score = 0.379
-Norm_PowLagDischarge72_x_Norm_RollingPowInflows2_x_Norm_SimpleLatent: High Sal RMSE = 0.993 | High MAPE = 82.6% | Overall R² = 0.350 | NSE = 0.350 | Score = 0.379
-Norm_PowLagDischarge72_x_Norm_RollingPowInflows2_x_IsHighStress: High Sal RMSE = 0.993 | High MAPE = 82.5% | Overall R² = 0.350 | NSE = 0.350 | Score = 0.377
-Norm_PowLagDischarge72_x_Norm_RollingPowInflows2_x_Norm_StressHours_30day_Marietta: High Sal RMSE = 0.991 | High MAPE = 82.4% | Overall R² = 0.351 | NSE = 0.351 | Score = 0.379
-Norm_PowLagDischarge72_x_Norm_RollingPowInflows2_x_DayOfYear: High Sal RMSE = 0.993 | High MAPE = 82.6% | Overall R² = 0.350 | NSE = 0.350 | Score = 0.379
-Norm_PowLagDischarge72_x_Norm_SimpleLatent_x_IsHighStress: High Sal RMSE = 0.993 | High MAPE = 82.5% | Overall R² = 0.350 | NSE = 0.350 | Score = 0.377
-Norm_PowLagDischarge72_x_Norm_SimpleLatent_x_Norm_StressHours_30day_Marietta: High Sal RMSE = 0.992 | High MAPE = 82.5% | Overall R² = 0.350 | NSE = 0.350 | Score = 0.379
-Norm_PowLagDischarge72_x_Norm_SimpleLatent_x_DayOfYear: High Sal RMSE = 0.993 | High MAPE = 82.6% | Overall R² = 0.350 | NSE = 0.350 | Score = 0.379
-Norm_PowLagDischarge72_x_IsHighStress_x_Norm_StressHours_30day_Marietta: High Sal RMSE = 0.987 | High MAPE = 82.0% | Overall R² = 0.353 | NSE = 0.353 | Score = 0.378
-Norm_PowLagDischarge72_x_IsHighStress_x_DayOfYear: High Sal RMSE = 0.988 | High MAPE = 82.2% | Overall R² = 0.355 | NSE = 0.355 | Score = 0.379
-Norm_PowLagDischarge72_x_Norm_StressHours_30day_Marietta_x_DayOfYear: High Sal RMSE = 0.988 | High MAPE = 82.1% | Overall R² = 0.354 | NSE = 0.354 | Score = 0.380
-Norm_RollingPowDischarge14_x_Norm_LagInflows48_x_Norm_RollingPowInflows2: High Sal RMSE = 0.994 | High MAPE = 82.6% | Overall R² = 0.351 | NSE = 0.351 | Score = 0.379
-Norm_RollingPowDischarge14_x_Norm_LagInflows48_x_Norm_SimpleLatent: High Sal RMSE = 0.994 | High MAPE = 82.6% | Overall R² = 0.351 | NSE = 0.351 | Score = 0.379
-Norm_RollingPowDischarge14_x_Norm_LagInflows48_x_IsHighStress: High Sal RMSE = 0.989 | High MAPE = 82.2% | Overall R² = 0.354 | NSE = 0.354 | Score = 0.378
-Norm_RollingPowDischarge14_x_Norm_LagInflows48_x_Norm_StressHours_30day_Marietta: High Sal RMSE = 0.992 | High MAPE = 82.5% | Overall R² = 0.350 | NSE = 0.350 | Score = 0.379
-Norm_RollingPowDischarge14_x_Norm_LagInflows48_x_DayOfYear: High Sal RMSE = 0.992 | High MAPE = 82.5% | Overall R² = 0.353 | NSE = 0.353 | Score = 0.379
-Norm_RollingPowDischarge14_x_Norm_RollingPowInflows2_x_Norm_SimpleLatent: High Sal RMSE = 0.994 | High MAPE = 82.6% | Overall R² = 0.350 | NSE = 0.350 | Score = 0.379
-Norm_RollingPowDischarge14_x_Norm_RollingPowInflows2_x_IsHighStress: High Sal RMSE = 0.992 | High MAPE = 82.5% | Overall R² = 0.352 | NSE = 0.352 | Score = 0.378
-Norm_RollingPowDischarge14_x_Norm_RollingPowInflows2_x_Norm_StressHours_30day_Marietta: High Sal RMSE = 0.990 | High MAPE = 82.3% | Overall R² = 0.351 | NSE = 0.351 | Score = 0.379
-Norm_RollingPowDischarge14_x_Norm_RollingPowInflows2_x_DayOfYear: High Sal RMSE = 0.991 | High MAPE = 82.4% | Overall R² = 0.352 | NSE = 0.352 | Score = 0.379
-Norm_RollingPowDischarge14_x_Norm_SimpleLatent_x_IsHighStress: High Sal RMSE = 0.993 | High MAPE = 82.5% | Overall R² = 0.351 | NSE = 0.351 | Score = 0.378
-Norm_RollingPowDischarge14_x_Norm_SimpleLatent_x_Norm_StressHours_30day_Marietta: High Sal RMSE = 0.991 | High MAPE = 82.4% | Overall R² = 0.351 | NSE = 0.351 | Score = 0.379
-Norm_RollingPowDischarge14_x_Norm_SimpleLatent_x_DayOfYear: High Sal RMSE = 0.992 | High MAPE = 82.5% | Overall R² = 0.351 | NSE = 0.351 | Score = 0.379
-Norm_RollingPowDischarge14_x_IsHighStress_x_Norm_StressHours_30day_Marietta: High Sal RMSE = 0.983 | High MAPE = 81.7% | Overall R² = 0.356 | NSE = 0.356 | Score = 0.379
-Norm_RollingPowDischarge14_x_IsHighStress_x_DayOfYear: High Sal RMSE = 0.982 | High MAPE = 81.6% | Overall R² = 0.362 | NSE = 0.362 | Score = 0.380
-Norm_RollingPowDischarge14_x_Norm_StressHours_30day_Marietta_x_DayOfYear: High Sal RMSE = 0.982 | High MAPE = 81.6% | Overall R² = 0.359 | NSE = 0.359 | Score = 0.381
-Norm_LagInflows48_x_Norm_RollingPowInflows2_x_Norm_SimpleLatent: High Sal RMSE = 0.993 | High MAPE = 82.6% | Overall R² = 0.350 | NSE = 0.350 | Score = 0.379
-Norm_LagInflows48_x_Norm_RollingPowInflows2_x_IsHighStress: High Sal RMSE = 0.993 | High MAPE = 82.6% | Overall R² = 0.350 | NSE = 0.350 | Score = 0.377
-Norm_LagInflows48_x_Norm_RollingPowInflows2_x_Norm_StressHours_30day_Marietta: High Sal RMSE = 0.993 | High MAPE = 82.6% | Overall R² = 0.350 | NSE = 0.350 | Score = 0.379
-Norm_LagInflows48_x_Norm_RollingPowInflows2_x_DayOfYear: High Sal RMSE = 0.993 | High MAPE = 82.6% | Overall R² = 0.350 | NSE = 0.350 | Score = 0.379
-Norm_LagInflows48_x_Norm_SimpleLatent_x_IsHighStress: High Sal RMSE = 0.993 | High MAPE = 82.6% | Overall R² = 0.350 | NSE = 0.350 | Score = 0.377
-Norm_LagInflows48_x_Norm_SimpleLatent_x_Norm_StressHours_30day_Marietta: High Sal RMSE = 0.994 | High MAPE = 82.6% | Overall R² = 0.350 | NSE = 0.350 | Score = 0.379
-Norm_LagInflows48_x_Norm_SimpleLatent_x_DayOfYear: High Sal RMSE = 0.993 | High MAPE = 82.6% | Overall R² = 0.350 | NSE = 0.350 | Score = 0.379
-Norm_LagInflows48_x_IsHighStress_x_Norm_StressHours_30day_Marietta: High Sal RMSE = 0.986 | High MAPE = 81.9% | Overall R² = 0.356 | NSE = 0.356 | Score = 0.379
-Norm_LagInflows48_x_IsHighStress_x_DayOfYear: High Sal RMSE = 0.979 | High MAPE = 81.4% | Overall R² = 0.360 | NSE = 0.360 | Score = 0.380
-Norm_LagInflows48_x_Norm_StressHours_30day_Marietta_x_DayOfYear: High Sal RMSE = 0.988 | High MAPE = 82.1% | Overall R² = 0.356 | NSE = 0.356 | Score = 0.380
-Norm_RollingPowInflows2_x_Norm_SimpleLatent_x_IsHighStress: High Sal RMSE = 0.993 | High MAPE = 82.6% | Overall R² = 0.350 | NSE = 0.350 | Score = 0.377
-Norm_RollingPowInflows2_x_Norm_SimpleLatent_x_Norm_StressHours_30day_Marietta: High Sal RMSE = 0.993 | High MAPE = 82.5% | Overall R² = 0.350 | NSE = 0.350 | Score = 0.379
-Norm_RollingPowInflows2_x_Norm_SimpleLatent_x_DayOfYear: High Sal RMSE = 0.994 | High MAPE = 82.6% | Overall R² = 0.350 | NSE = 0.350 | Score = 0.379
-Norm_RollingPowInflows2_x_IsHighStress_x_Norm_StressHours_30day_Marietta: High Sal RMSE = 0.988 | High MAPE = 82.2% | Overall R² = 0.353 | NSE = 0.353 | Score = 0.378
-Norm_RollingPowInflows2_x_IsHighStress_x_DayOfYear: High Sal RMSE = 0.985 | High MAPE = 81.9% | Overall R² = 0.358 | NSE = 0.358 | Score = 0.379
-Norm_RollingPowInflows2_x_Norm_StressHours_30day_Marietta_x_DayOfYear: High Sal RMSE = 0.985 | High MAPE = 81.9% | Overall R² = 0.355 | NSE = 0.355 | Score = 0.380
-Norm_SimpleLatent_x_IsHighStress_x_Norm_StressHours_30day_Marietta: High Sal RMSE = 0.989 | High MAPE = 82.2% | Overall R² = 0.353 | NSE = 0.353 | Score = 0.378
-Norm_SimpleLatent_x_IsHighStress_x_DayOfYear: High Sal RMSE = 0.988 | High MAPE = 82.1% | Overall R² = 0.356 | NSE = 0.356 | Score = 0.379
-Norm_SimpleLatent_x_Norm_StressHours_30day_Marietta_x_DayOfYear: High Sal RMSE = 0.988 | High MAPE = 82.1% | Overall R² = 0.354 | NSE = 0.354 | Score = 0.380
-IsHighStress_x_Norm_StressHours_30day_Marietta_x_DayOfYear: High Sal RMSE = 0.967 | High MAPE = 80.3% | Overall R² = 0.376 | NSE = 0.376 | Score = 0.384
-Best interaction: Norm_StressHours_30day_Marietta_x_DayOfYear (Score: 0.384)
+Norm_WeightedTideRange12_x_Norm_PowLagDischarge72_x_Norm_RollingPowDischarge14: High Sal RMSE = 0.406 | High MAPE = 58.1% | Overall R² = 0.350 | NSE = 0.350 | Score = 0.126
+Norm_WeightedTideRange12_x_Norm_PowLagDischarge72_x_Norm_LagInflows48: High Sal RMSE = 0.406 | High MAPE = 58.1% | Overall R² = 0.350 | NSE = 0.350 | Score = 0.126
+Norm_WeightedTideRange12_x_Norm_PowLagDischarge72_x_Norm_RollingPowInflows2: High Sal RMSE = 0.406 | High MAPE = 58.2% | Overall R² = 0.350 | NSE = 0.350 | Score = 0.126
+Norm_WeightedTideRange12_x_Norm_PowLagDischarge72_x_Norm_SimpleLatent: High Sal RMSE = 0.406 | High MAPE = 58.1% | Overall R² = 0.350 | NSE = 0.350 | Score = 0.126
+Norm_WeightedTideRange12_x_Norm_PowLagDischarge72_x_IsHighStress: High Sal RMSE = 0.406 | High MAPE = 58.1% | Overall R² = 0.350 | NSE = 0.350 | Score = 0.126
+Norm_WeightedTideRange12_x_Norm_PowLagDischarge72_x_Norm_StressHours_30day_Marietta: High Sal RMSE = 0.405 | High MAPE = 58.0% | Overall R² = 0.351 | NSE = 0.351 | Score = 0.127
+Norm_WeightedTideRange12_x_Norm_PowLagDischarge72_x_DayOfYear: High Sal RMSE = 0.406 | High MAPE = 58.1% | Overall R² = 0.350 | NSE = 0.350 | Score = 0.127
+Norm_WeightedTideRange12_x_Norm_RollingPowDischarge14_x_Norm_LagInflows48: High Sal RMSE = 0.407 | High MAPE = 58.1% | Overall R² = 0.350 | NSE = 0.350 | Score = 0.127
+Norm_WeightedTideRange12_x_Norm_RollingPowDischarge14_x_Norm_RollingPowInflows2: High Sal RMSE = 0.407 | High MAPE = 58.1% | Overall R² = 0.350 | NSE = 0.350 | Score = 0.127
+Norm_WeightedTideRange12_x_Norm_RollingPowDischarge14_x_Norm_SimpleLatent: High Sal RMSE = 0.407 | High MAPE = 58.1% | Overall R² = 0.350 | NSE = 0.350 | Score = 0.126
+Norm_WeightedTideRange12_x_Norm_RollingPowDischarge14_x_IsHighStress: High Sal RMSE = 0.405 | High MAPE = 57.8% | Overall R² = 0.351 | NSE = 0.351 | Score = 0.126
+Norm_WeightedTideRange12_x_Norm_RollingPowDischarge14_x_Norm_StressHours_30day_Marietta: High Sal RMSE = 0.404 | High MAPE = 58.0% | Overall R² = 0.351 | NSE = 0.351 | Score = 0.127
+Norm_WeightedTideRange12_x_Norm_RollingPowDischarge14_x_DayOfYear: High Sal RMSE = 0.404 | High MAPE = 57.8% | Overall R² = 0.351 | NSE = 0.351 | Score = 0.127
+Norm_WeightedTideRange12_x_Norm_LagInflows48_x_Norm_RollingPowInflows2: High Sal RMSE = 0.406 | High MAPE = 58.1% | Overall R² = 0.350 | NSE = 0.350 | Score = 0.126
+Norm_WeightedTideRange12_x_Norm_LagInflows48_x_Norm_SimpleLatent: High Sal RMSE = 0.406 | High MAPE = 58.2% | Overall R² = 0.350 | NSE = 0.350 | Score = 0.126
+Norm_WeightedTideRange12_x_Norm_LagInflows48_x_IsHighStress: High Sal RMSE = 0.406 | High MAPE = 58.1% | Overall R² = 0.350 | NSE = 0.350 | Score = 0.126
+Norm_WeightedTideRange12_x_Norm_LagInflows48_x_Norm_StressHours_30day_Marietta: High Sal RMSE = 0.405 | High MAPE = 58.1% | Overall R² = 0.350 | NSE = 0.350 | Score = 0.127
+Norm_WeightedTideRange12_x_Norm_LagInflows48_x_DayOfYear: High Sal RMSE = 0.406 | High MAPE = 58.1% | Overall R² = 0.350 | NSE = 0.350 | Score = 0.126
+Norm_WeightedTideRange12_x_Norm_RollingPowInflows2_x_Norm_SimpleLatent: High Sal RMSE = 0.406 | High MAPE = 58.1% | Overall R² = 0.350 | NSE = 0.350 | Score = 0.127
+Norm_WeightedTideRange12_x_Norm_RollingPowInflows2_x_IsHighStress: High Sal RMSE = 0.406 | High MAPE = 58.1% | Overall R² = 0.350 | NSE = 0.350 | Score = 0.126
+Norm_WeightedTideRange12_x_Norm_RollingPowInflows2_x_Norm_StressHours_30day_Marietta: High Sal RMSE = 0.406 | High MAPE = 58.1% | Overall R² = 0.350 | NSE = 0.350 | Score = 0.127
+Norm_WeightedTideRange12_x_Norm_RollingPowInflows2_x_DayOfYear: High Sal RMSE = 0.406 | High MAPE = 58.2% | Overall R² = 0.350 | NSE = 0.350 | Score = 0.126
+Norm_WeightedTideRange12_x_Norm_SimpleLatent_x_IsHighStress: High Sal RMSE = 0.406 | High MAPE = 58.2% | Overall R² = 0.350 | NSE = 0.350 | Score = 0.126
+Norm_WeightedTideRange12_x_Norm_SimpleLatent_x_Norm_StressHours_30day_Marietta: High Sal RMSE = 0.406 | High MAPE = 58.1% | Overall R² = 0.350 | NSE = 0.350 | Score = 0.127
+Norm_WeightedTideRange12_x_Norm_SimpleLatent_x_DayOfYear: High Sal RMSE = 0.406 | High MAPE = 58.1% | Overall R² = 0.350 | NSE = 0.350 | Score = 0.126
+Norm_WeightedTideRange12_x_IsHighStress_x_Norm_StressHours_30day_Marietta: High Sal RMSE = 0.403 | High MAPE = 57.9% | Overall R² = 0.353 | NSE = 0.353 | Score = 0.126
+Norm_WeightedTideRange12_x_IsHighStress_x_DayOfYear: High Sal RMSE = 0.400 | High MAPE = 56.7% | Overall R² = 0.358 | NSE = 0.358 | Score = 0.128
+Norm_WeightedTideRange12_x_Norm_StressHours_30day_Marietta_x_DayOfYear: High Sal RMSE = 0.402 | High MAPE = 57.8% | Overall R² = 0.354 | NSE = 0.354 | Score = 0.128
+Norm_PowLagDischarge72_x_Norm_RollingPowDischarge14_x_Norm_LagInflows48: High Sal RMSE = 0.407 | High MAPE = 58.2% | Overall R² = 0.351 | NSE = 0.351 | Score = 0.127
+Norm_PowLagDischarge72_x_Norm_RollingPowDischarge14_x_Norm_RollingPowInflows2: High Sal RMSE = 0.407 | High MAPE = 58.2% | Overall R² = 0.350 | NSE = 0.350 | Score = 0.126
+Norm_PowLagDischarge72_x_Norm_RollingPowDischarge14_x_Norm_SimpleLatent: High Sal RMSE = 0.406 | High MAPE = 58.2% | Overall R² = 0.350 | NSE = 0.350 | Score = 0.126
+Norm_PowLagDischarge72_x_Norm_RollingPowDischarge14_x_IsHighStress: High Sal RMSE = 0.405 | High MAPE = 57.9% | Overall R² = 0.351 | NSE = 0.351 | Score = 0.126
+Norm_PowLagDischarge72_x_Norm_RollingPowDischarge14_x_Norm_StressHours_30day_Marietta: High Sal RMSE = 0.404 | High MAPE = 58.0% | Overall R² = 0.351 | NSE = 0.351 | Score = 0.127
+Norm_PowLagDischarge72_x_Norm_RollingPowDischarge14_x_DayOfYear: High Sal RMSE = 0.405 | High MAPE = 57.8% | Overall R² = 0.351 | NSE = 0.351 | Score = 0.127
+Norm_PowLagDischarge72_x_Norm_LagInflows48_x_Norm_RollingPowInflows2: High Sal RMSE = 0.406 | High MAPE = 58.2% | Overall R² = 0.350 | NSE = 0.350 | Score = 0.126
+Norm_PowLagDischarge72_x_Norm_LagInflows48_x_Norm_SimpleLatent: High Sal RMSE = 0.406 | High MAPE = 58.2% | Overall R² = 0.350 | NSE = 0.350 | Score = 0.126
+Norm_PowLagDischarge72_x_Norm_LagInflows48_x_IsHighStress: High Sal RMSE = 0.406 | High MAPE = 58.1% | Overall R² = 0.350 | NSE = 0.350 | Score = 0.126
+Norm_PowLagDischarge72_x_Norm_LagInflows48_x_Norm_StressHours_30day_Marietta: High Sal RMSE = 0.406 | High MAPE = 58.1% | Overall R² = 0.350 | NSE = 0.350 | Score = 0.126
+Norm_PowLagDischarge72_x_Norm_LagInflows48_x_DayOfYear: High Sal RMSE = 0.406 | High MAPE = 58.1% | Overall R² = 0.350 | NSE = 0.350 | Score = 0.126
+Norm_PowLagDischarge72_x_Norm_RollingPowInflows2_x_Norm_SimpleLatent: High Sal RMSE = 0.406 | High MAPE = 58.1% | Overall R² = 0.350 | NSE = 0.350 | Score = 0.126
+Norm_PowLagDischarge72_x_Norm_RollingPowInflows2_x_IsHighStress: High Sal RMSE = 0.406 | High MAPE = 58.1% | Overall R² = 0.350 | NSE = 0.350 | Score = 0.126
+Norm_PowLagDischarge72_x_Norm_RollingPowInflows2_x_Norm_StressHours_30day_Marietta: High Sal RMSE = 0.405 | High MAPE = 58.0% | Overall R² = 0.351 | NSE = 0.351 | Score = 0.127
+Norm_PowLagDischarge72_x_Norm_RollingPowInflows2_x_DayOfYear: High Sal RMSE = 0.406 | High MAPE = 58.1% | Overall R² = 0.350 | NSE = 0.350 | Score = 0.126
+Norm_PowLagDischarge72_x_Norm_SimpleLatent_x_IsHighStress: High Sal RMSE = 0.406 | High MAPE = 58.1% | Overall R² = 0.350 | NSE = 0.350 | Score = 0.126
+Norm_PowLagDischarge72_x_Norm_SimpleLatent_x_Norm_StressHours_30day_Marietta: High Sal RMSE = 0.405 | High MAPE = 58.1% | Overall R² = 0.350 | NSE = 0.350 | Score = 0.127
+Norm_PowLagDischarge72_x_Norm_SimpleLatent_x_DayOfYear: High Sal RMSE = 0.406 | High MAPE = 58.1% | Overall R² = 0.350 | NSE = 0.350 | Score = 0.126
+Norm_PowLagDischarge72_x_IsHighStress_x_Norm_StressHours_30day_Marietta: High Sal RMSE = 0.403 | High MAPE = 57.7% | Overall R² = 0.353 | NSE = 0.353 | Score = 0.126
+Norm_PowLagDischarge72_x_IsHighStress_x_DayOfYear: High Sal RMSE = 0.403 | High MAPE = 57.2% | Overall R² = 0.355 | NSE = 0.355 | Score = 0.127
+Norm_PowLagDischarge72_x_Norm_StressHours_30day_Marietta_x_DayOfYear: High Sal RMSE = 0.403 | High MAPE = 57.6% | Overall R² = 0.354 | NSE = 0.354 | Score = 0.127
+Norm_RollingPowDischarge14_x_Norm_LagInflows48_x_Norm_RollingPowInflows2: High Sal RMSE = 0.407 | High MAPE = 58.2% | Overall R² = 0.351 | NSE = 0.351 | Score = 0.127
+Norm_RollingPowDischarge14_x_Norm_LagInflows48_x_Norm_SimpleLatent: High Sal RMSE = 0.407 | High MAPE = 58.2% | Overall R² = 0.351 | NSE = 0.351 | Score = 0.127
+Norm_RollingPowDischarge14_x_Norm_LagInflows48_x_IsHighStress: High Sal RMSE = 0.404 | High MAPE = 57.5% | Overall R² = 0.354 | NSE = 0.354 | Score = 0.126
+Norm_RollingPowDischarge14_x_Norm_LagInflows48_x_Norm_StressHours_30day_Marietta: High Sal RMSE = 0.406 | High MAPE = 58.1% | Overall R² = 0.350 | NSE = 0.350 | Score = 0.126
+Norm_RollingPowDischarge14_x_Norm_LagInflows48_x_DayOfYear: High Sal RMSE = 0.405 | High MAPE = 57.8% | Overall R² = 0.353 | NSE = 0.353 | Score = 0.127
+Norm_RollingPowDischarge14_x_Norm_RollingPowInflows2_x_Norm_SimpleLatent: High Sal RMSE = 0.407 | High MAPE = 58.2% | Overall R² = 0.350 | NSE = 0.350 | Score = 0.127
+Norm_RollingPowDischarge14_x_Norm_RollingPowInflows2_x_IsHighStress: High Sal RMSE = 0.405 | High MAPE = 57.7% | Overall R² = 0.352 | NSE = 0.352 | Score = 0.126
+Norm_RollingPowDischarge14_x_Norm_RollingPowInflows2_x_Norm_StressHours_30day_Marietta: High Sal RMSE = 0.404 | High MAPE = 57.9% | Overall R² = 0.351 | NSE = 0.351 | Score = 0.127
+Norm_RollingPowDischarge14_x_Norm_RollingPowInflows2_x_DayOfYear: High Sal RMSE = 0.404 | High MAPE = 57.6% | Overall R² = 0.352 | NSE = 0.352 | Score = 0.127
+Norm_RollingPowDischarge14_x_Norm_SimpleLatent_x_IsHighStress: High Sal RMSE = 0.405 | High MAPE = 57.7% | Overall R² = 0.351 | NSE = 0.351 | Score = 0.126
+Norm_RollingPowDischarge14_x_Norm_SimpleLatent_x_Norm_StressHours_30day_Marietta: High Sal RMSE = 0.405 | High MAPE = 58.0% | Overall R² = 0.351 | NSE = 0.351 | Score = 0.127
+Norm_RollingPowDischarge14_x_Norm_SimpleLatent_x_DayOfYear: High Sal RMSE = 0.405 | High MAPE = 57.7% | Overall R² = 0.351 | NSE = 0.351 | Score = 0.127
+Norm_RollingPowDischarge14_x_IsHighStress_x_Norm_StressHours_30day_Marietta: High Sal RMSE = 0.400 | High MAPE = 57.3% | Overall R² = 0.356 | NSE = 0.356 | Score = 0.127
+Norm_RollingPowDischarge14_x_IsHighStress_x_DayOfYear: High Sal RMSE = 0.398 | High MAPE = 55.9% | Overall R² = 0.362 | NSE = 0.362 | Score = 0.129
+Norm_RollingPowDischarge14_x_Norm_StressHours_30day_Marietta_x_DayOfYear: High Sal RMSE = 0.399 | High MAPE = 57.0% | Overall R² = 0.359 | NSE = 0.359 | Score = 0.129
+Norm_LagInflows48_x_Norm_RollingPowInflows2_x_Norm_SimpleLatent: High Sal RMSE = 0.406 | High MAPE = 58.2% | Overall R² = 0.350 | NSE = 0.350 | Score = 0.126
+Norm_LagInflows48_x_Norm_RollingPowInflows2_x_IsHighStress: High Sal RMSE = 0.406 | High MAPE = 58.2% | Overall R² = 0.350 | NSE = 0.350 | Score = 0.125
+Norm_LagInflows48_x_Norm_RollingPowInflows2_x_Norm_StressHours_30day_Marietta: High Sal RMSE = 0.406 | High MAPE = 58.1% | Overall R² = 0.350 | NSE = 0.350 | Score = 0.126
+Norm_LagInflows48_x_Norm_RollingPowInflows2_x_DayOfYear: High Sal RMSE = 0.406 | High MAPE = 58.1% | Overall R² = 0.350 | NSE = 0.350 | Score = 0.126
+Norm_LagInflows48_x_Norm_SimpleLatent_x_IsHighStress: High Sal RMSE = 0.406 | High MAPE = 58.1% | Overall R² = 0.350 | NSE = 0.350 | Score = 0.125
+Norm_LagInflows48_x_Norm_SimpleLatent_x_Norm_StressHours_30day_Marietta: High Sal RMSE = 0.406 | High MAPE = 58.2% | Overall R² = 0.350 | NSE = 0.350 | Score = 0.126
+Norm_LagInflows48_x_Norm_SimpleLatent_x_DayOfYear: High Sal RMSE = 0.406 | High MAPE = 58.1% | Overall R² = 0.350 | NSE = 0.350 | Score = 0.126
+Norm_LagInflows48_x_IsHighStress_x_Norm_StressHours_30day_Marietta: High Sal RMSE = 0.402 | High MAPE = 57.6% | Overall R² = 0.356 | NSE = 0.356 | Score = 0.127
+Norm_LagInflows48_x_IsHighStress_x_DayOfYear: High Sal RMSE = 0.398 | High MAPE = 56.6% | Overall R² = 0.360 | NSE = 0.360 | Score = 0.128
+Norm_LagInflows48_x_Norm_StressHours_30day_Marietta_x_DayOfYear: High Sal RMSE = 0.403 | High MAPE = 57.6% | Overall R² = 0.356 | NSE = 0.356 | Score = 0.128
+Norm_RollingPowInflows2_x_Norm_SimpleLatent_x_IsHighStress: High Sal RMSE = 0.406 | High MAPE = 58.2% | Overall R² = 0.350 | NSE = 0.350 | Score = 0.125
+Norm_RollingPowInflows2_x_Norm_SimpleLatent_x_Norm_StressHours_30day_Marietta: High Sal RMSE = 0.406 | High MAPE = 58.1% | Overall R² = 0.350 | NSE = 0.350 | Score = 0.126
+Norm_RollingPowInflows2_x_Norm_SimpleLatent_x_DayOfYear: High Sal RMSE = 0.406 | High MAPE = 58.2% | Overall R² = 0.350 | NSE = 0.350 | Score = 0.126
+Norm_RollingPowInflows2_x_IsHighStress_x_Norm_StressHours_30day_Marietta: High Sal RMSE = 0.403 | High MAPE = 57.8% | Overall R² = 0.353 | NSE = 0.353 | Score = 0.126
+Norm_RollingPowInflows2_x_IsHighStress_x_DayOfYear: High Sal RMSE = 0.400 | High MAPE = 56.6% | Overall R² = 0.358 | NSE = 0.358 | Score = 0.128
+Norm_RollingPowInflows2_x_Norm_StressHours_30day_Marietta_x_DayOfYear: High Sal RMSE = 0.401 | High MAPE = 57.5% | Overall R² = 0.355 | NSE = 0.355 | Score = 0.128
+Norm_SimpleLatent_x_IsHighStress_x_Norm_StressHours_30day_Marietta: High Sal RMSE = 0.403 | High MAPE = 57.8% | Overall R² = 0.353 | NSE = 0.353 | Score = 0.126
+Norm_SimpleLatent_x_IsHighStress_x_DayOfYear: High Sal RMSE = 0.402 | High MAPE = 56.9% | Overall R² = 0.356 | NSE = 0.356 | Score = 0.127
+Norm_SimpleLatent_x_Norm_StressHours_30day_Marietta_x_DayOfYear: High Sal RMSE = 0.402 | High MAPE = 57.6% | Overall R² = 0.354 | NSE = 0.354 | Score = 0.127
+IsHighStress_x_Norm_StressHours_30day_Marietta_x_DayOfYear: High Sal RMSE = 0.390 | High MAPE = 55.4% | Overall R² = 0.376 | NSE = 0.376 | Score = 0.132
+Best interaction: Norm_StressHours_30day_Marietta_x_DayOfYear (Score: 0.133)
 Added: Norm_StressHours_30day_Marietta_x_DayOfYear
 
 Best flow formula after sequential addition: Salinity ~ Norm_WeightedTideRange12 + Norm_PowLagDischarge72 + Norm_RollingPowDischarge14 + Norm_LagInflows48 + Norm_RollingPowInflows2 + Norm_SimpleLatent + IsHighStress + Norm_StressHours_30day_Marietta + DayOfYear + Norm_StressHours_30day_Marietta_x_DayOfYear
 
 === TESTING PREDICTOR COMBINATIONS ===
-Norm_WeightedTideRange12 + Norm_PowLagDischarge72: High Sal RMSE = 1.014 | High MAPE = 84.4% | Overall R² = 0.250 | NSE = 0.250 | Score = 0.375
-Norm_WeightedTideRange12 + Norm_RollingPowDischarge14: High Sal RMSE = 1.008 | High MAPE = 83.8% | Overall R² = 0.324 | NSE = 0.324 | Score = 0.390
-Norm_WeightedTideRange12 + Norm_LagInflows48: High Sal RMSE = 1.020 | High MAPE = 84.8% | Overall R² = 0.245 | NSE = 0.245 | Score = 0.373
-Norm_WeightedTideRange12 + Norm_RollingPowInflows2: High Sal RMSE = 1.011 | High MAPE = 84.1% | Overall R² = 0.285 | NSE = 0.285 | Score = 0.382
-Norm_WeightedTideRange12 + Norm_SimpleLatent: High Sal RMSE = 1.017 | High MAPE = 84.6% | Overall R² = 0.263 | NSE = 0.263 | Score = 0.377
-Norm_WeightedTideRange12 + IsHighStress: High Sal RMSE = 1.012 | High MAPE = 84.1% | Overall R² = 0.217 | NSE = 0.217 | Score = 0.368
-Norm_WeightedTideRange12 + Norm_StressHours_30day_Marietta: High Sal RMSE = 0.991 | High MAPE = 82.3% | Overall R² = 0.284 | NSE = 0.284 | Score = 0.383
-Norm_WeightedTideRange12 + DayOfYear: High Sal RMSE = 1.010 | High MAPE = 84.0% | Overall R² = 0.250 | NSE = 0.250 | Score = 0.375
-Norm_WeightedTideRange12 + Norm_StressHours_30day_Marietta_x_DayOfYear: High Sal RMSE = 0.969 | High MAPE = 80.5% | Overall R² = 0.324 | NSE = 0.324 | Score = 0.386
-Norm_PowLagDischarge72 + Norm_RollingPowDischarge14: High Sal RMSE = 1.010 | High MAPE = 84.0% | Overall R² = 0.323 | NSE = 0.323 | Score = 0.390
-Norm_PowLagDischarge72 + Norm_LagInflows48: High Sal RMSE = 1.031 | High MAPE = 85.9% | Overall R² = 0.219 | NSE = 0.219 | Score = 0.368
-Norm_PowLagDischarge72 + Norm_RollingPowInflows2: High Sal RMSE = 1.011 | High MAPE = 84.1% | Overall R² = 0.291 | NSE = 0.291 | Score = 0.383
-Norm_PowLagDischarge72 + Norm_SimpleLatent: High Sal RMSE = 1.021 | High MAPE = 85.0% | Overall R² = 0.255 | NSE = 0.255 | Score = 0.376
-Norm_PowLagDischarge72 + IsHighStress: High Sal RMSE = 1.010 | High MAPE = 84.0% | Overall R² = 0.233 | NSE = 0.233 | Score = 0.371
-Norm_PowLagDischarge72 + Norm_StressHours_30day_Marietta: High Sal RMSE = 0.993 | High MAPE = 82.6% | Overall R² = 0.295 | NSE = 0.295 | Score = 0.385
-Norm_PowLagDischarge72 + DayOfYear: High Sal RMSE = 1.020 | High MAPE = 84.9% | Overall R² = 0.234 | NSE = 0.234 | Score = 0.371
-Norm_PowLagDischarge72 + Norm_StressHours_30day_Marietta_x_DayOfYear: High Sal RMSE = 0.971 | High MAPE = 80.6% | Overall R² = 0.333 | NSE = 0.333 | Score = 0.387
-Norm_RollingPowDischarge14 + Norm_LagInflows48: High Sal RMSE = 1.011 | High MAPE = 84.1% | Overall R² = 0.325 | NSE = 0.325 | Score = 0.390
-Norm_RollingPowDischarge14 + Norm_RollingPowInflows2: High Sal RMSE = 1.008 | High MAPE = 83.8% | Overall R² = 0.329 | NSE = 0.329 | Score = 0.391
-Norm_RollingPowDischarge14 + Norm_SimpleLatent: High Sal RMSE = 1.010 | High MAPE = 84.0% | Overall R² = 0.324 | NSE = 0.324 | Score = 0.390
-Norm_RollingPowDischarge14 + IsHighStress: High Sal RMSE = 1.004 | High MAPE = 83.5% | Overall R² = 0.329 | NSE = 0.329 | Score = 0.391
-Norm_RollingPowDischarge14 + Norm_StressHours_30day_Marietta: High Sal RMSE = 0.996 | High MAPE = 82.8% | Overall R² = 0.341 | NSE = 0.341 | Score = 0.394
-Norm_RollingPowDischarge14 + DayOfYear: High Sal RMSE = 1.008 | High MAPE = 83.8% | Overall R² = 0.329 | NSE = 0.329 | Score = 0.391
-Norm_RollingPowDischarge14 + Norm_StressHours_30day_Marietta_x_DayOfYear: High Sal RMSE = 0.974 | High MAPE = 80.9% | Overall R² = 0.370 | NSE = 0.370 | Score = 0.395
-Norm_LagInflows48 + Norm_RollingPowInflows2: High Sal RMSE = 1.012 | High MAPE = 84.2% | Overall R² = 0.287 | NSE = 0.287 | Score = 0.382
-Norm_LagInflows48 + Norm_SimpleLatent: High Sal RMSE = 1.023 | High MAPE = 85.2% | Overall R² = 0.259 | NSE = 0.259 | Score = 0.376
-Norm_LagInflows48 + IsHighStress: High Sal RMSE = 1.015 | High MAPE = 84.4% | Overall R² = 0.231 | NSE = 0.231 | Score = 0.371
-Norm_LagInflows48 + Norm_StressHours_30day_Marietta: High Sal RMSE = 0.995 | High MAPE = 82.7% | Overall R² = 0.308 | NSE = 0.308 | Score = 0.387
-Norm_LagInflows48 + DayOfYear: High Sal RMSE = 1.028 | High MAPE = 85.6% | Overall R² = 0.226 | NSE = 0.226 | Score = 0.369
-Norm_LagInflows48 + Norm_StressHours_30day_Marietta_x_DayOfYear: High Sal RMSE = 0.971 | High MAPE = 80.7% | Overall R² = 0.350 | NSE = 0.350 | Score = 0.391
-Norm_RollingPowInflows2 + Norm_SimpleLatent: High Sal RMSE = 1.012 | High MAPE = 84.2% | Overall R² = 0.287 | NSE = 0.287 | Score = 0.382
-Norm_RollingPowInflows2 + IsHighStress: High Sal RMSE = 1.011 | High MAPE = 84.1% | Overall R² = 0.287 | NSE = 0.287 | Score = 0.382
-Norm_RollingPowInflows2 + Norm_StressHours_30day_Marietta: High Sal RMSE = 0.992 | High MAPE = 82.5% | Overall R² = 0.322 | NSE = 0.322 | Score = 0.390
-Norm_RollingPowInflows2 + DayOfYear: High Sal RMSE = 1.007 | High MAPE = 83.8% | Overall R² = 0.303 | NSE = 0.303 | Score = 0.386
-Norm_RollingPowInflows2 + Norm_StressHours_30day_Marietta_x_DayOfYear: High Sal RMSE = 0.971 | High MAPE = 80.6% | Overall R² = 0.354 | NSE = 0.354 | Score = 0.392
-Norm_SimpleLatent + IsHighStress: High Sal RMSE = 1.012 | High MAPE = 84.2% | Overall R² = 0.265 | NSE = 0.265 | Score = 0.378
-Norm_SimpleLatent + Norm_StressHours_30day_Marietta: High Sal RMSE = 0.994 | High MAPE = 82.6% | Overall R² = 0.315 | NSE = 0.315 | Score = 0.389
-Norm_SimpleLatent + DayOfYear: High Sal RMSE = 1.016 | High MAPE = 84.5% | Overall R² = 0.276 | NSE = 0.276 | Score = 0.380
-Norm_SimpleLatent + Norm_StressHours_30day_Marietta_x_DayOfYear: High Sal RMSE = 0.972 | High MAPE = 80.8% | Overall R² = 0.347 | NSE = 0.347 | Score = 0.390
-IsHighStress + Norm_StressHours_30day_Marietta: High Sal RMSE = 0.990 | High MAPE = 82.3% | Overall R² = 0.256 | NSE = 0.256 | Score = 0.377
-IsHighStress + DayOfYear: High Sal RMSE = 1.005 | High MAPE = 83.6% | Overall R² = 0.216 | NSE = 0.216 | Score = 0.368
-IsHighStress + Norm_StressHours_30day_Marietta_x_DayOfYear: High Sal RMSE = 0.967 | High MAPE = 80.3% | Overall R² = 0.307 | NSE = 0.307 | Score = 0.382
-Norm_StressHours_30day_Marietta + DayOfYear: High Sal RMSE = 0.990 | High MAPE = 82.3% | Overall R² = 0.278 | NSE = 0.278 | Score = 0.381
-Norm_StressHours_30day_Marietta + Norm_StressHours_30day_Marietta_x_DayOfYear: High Sal RMSE = 0.970 | High MAPE = 80.5% | Overall R² = 0.303 | NSE = 0.303 | Score = 0.384
-DayOfYear + Norm_StressHours_30day_Marietta_x_DayOfYear: High Sal RMSE = 0.970 | High MAPE = 80.5% | Overall R² = 0.303 | NSE = 0.303 | Score = 0.384
-Norm_RollingPowDischarge14 + Norm_StressHours_30day_Marietta_x_DayOfYear + Norm_WeightedTideRange12: High Sal RMSE = 0.973 | High MAPE = 80.8% | Overall R² = 0.369 | NSE = 0.369 | Score = 0.392
-Norm_RollingPowDischarge14 + Norm_StressHours_30day_Marietta_x_DayOfYear + Norm_PowLagDischarge72: High Sal RMSE = 0.974 | High MAPE = 80.9% | Overall R² = 0.370 | NSE = 0.370 | Score = 0.392
-Norm_RollingPowDischarge14 + Norm_StressHours_30day_Marietta_x_DayOfYear + Norm_LagInflows48: High Sal RMSE = 0.973 | High MAPE = 80.9% | Overall R² = 0.377 | NSE = 0.377 | Score = 0.394
-Norm_RollingPowDischarge14 + Norm_StressHours_30day_Marietta_x_DayOfYear + Norm_RollingPowInflows2: High Sal RMSE = 0.973 | High MAPE = 80.8% | Overall R² = 0.373 | NSE = 0.373 | Score = 0.393
-Norm_RollingPowDischarge14 + Norm_StressHours_30day_Marietta_x_DayOfYear + Norm_SimpleLatent: High Sal RMSE = 0.973 | High MAPE = 80.9% | Overall R² = 0.371 | NSE = 0.371 | Score = 0.392
-Norm_RollingPowDischarge14 + Norm_StressHours_30day_Marietta_x_DayOfYear + IsHighStress: High Sal RMSE = 0.973 | High MAPE = 80.8% | Overall R² = 0.371 | NSE = 0.371 | Score = 0.392
-Norm_RollingPowDischarge14 + Norm_StressHours_30day_Marietta + Norm_WeightedTideRange12: High Sal RMSE = 0.995 | High MAPE = 82.8% | Overall R² = 0.340 | NSE = 0.340 | Score = 0.390
-Norm_RollingPowDischarge14 + Norm_StressHours_30day_Marietta + Norm_PowLagDischarge72: High Sal RMSE = 0.996 | High MAPE = 82.8% | Overall R² = 0.341 | NSE = 0.341 | Score = 0.391
-Norm_RollingPowDischarge14 + Norm_StressHours_30day_Marietta + Norm_LagInflows48: High Sal RMSE = 0.996 | High MAPE = 82.8% | Overall R² = 0.347 | NSE = 0.347 | Score = 0.392
-Norm_RollingPowDischarge14 + Norm_StressHours_30day_Marietta + Norm_RollingPowInflows2: High Sal RMSE = 0.995 | High MAPE = 82.7% | Overall R² = 0.345 | NSE = 0.345 | Score = 0.392
-Norm_RollingPowDischarge14 + Norm_StressHours_30day_Marietta + Norm_SimpleLatent: High Sal RMSE = 0.995 | High MAPE = 82.8% | Overall R² = 0.343 | NSE = 0.343 | Score = 0.391
-Norm_RollingPowDischarge14 + Norm_StressHours_30day_Marietta + IsHighStress: High Sal RMSE = 0.995 | High MAPE = 82.7% | Overall R² = 0.341 | NSE = 0.341 | Score = 0.391
-Norm_RollingPowDischarge14 + Norm_StressHours_30day_Marietta + DayOfYear: High Sal RMSE = 0.995 | High MAPE = 82.7% | Overall R² = 0.345 | NSE = 0.345 | Score = 0.392
-Norm_RollingPowDischarge14 + Norm_StressHours_30day_Marietta + Norm_StressHours_30day_Marietta_x_DayOfYear: High Sal RMSE = 0.974 | High MAPE = 80.9% | Overall R² = 0.370 | NSE = 0.370 | Score = 0.395
-Norm_RollingPowInflows2 + Norm_StressHours_30day_Marietta_x_DayOfYear + Norm_WeightedTideRange12: High Sal RMSE = 0.971 | High MAPE = 80.6% | Overall R² = 0.353 | NSE = 0.353 | Score = 0.389
-Norm_RollingPowInflows2 + Norm_StressHours_30day_Marietta_x_DayOfYear + Norm_PowLagDischarge72: High Sal RMSE = 0.971 | High MAPE = 80.6% | Overall R² = 0.356 | NSE = 0.356 | Score = 0.390
-Norm_RollingPowInflows2 + Norm_StressHours_30day_Marietta_x_DayOfYear + Norm_RollingPowDischarge14: High Sal RMSE = 0.973 | High MAPE = 80.8% | Overall R² = 0.373 | NSE = 0.373 | Score = 0.393
-Norm_RollingPowInflows2 + Norm_StressHours_30day_Marietta_x_DayOfYear + Norm_LagInflows48: High Sal RMSE = 0.971 | High MAPE = 80.6% | Overall R² = 0.362 | NSE = 0.362 | Score = 0.391
-Norm_RollingPowInflows2 + Norm_StressHours_30day_Marietta_x_DayOfYear + Norm_SimpleLatent: High Sal RMSE = 0.971 | High MAPE = 80.7% | Overall R² = 0.355 | NSE = 0.355 | Score = 0.389
-Norm_RollingPowInflows2 + Norm_StressHours_30day_Marietta_x_DayOfYear + IsHighStress: High Sal RMSE = 0.973 | High MAPE = 80.8% | Overall R² = 0.357 | NSE = 0.357 | Score = 0.390
-Sequential score: 0.384, Combination score: 0.395
-Combination model is better! Final formula: Salinity ~ Norm_RollingPowDischarge14 + Norm_StressHours_30day_Marietta * DayOfYear
+Norm_WeightedTideRange12 + Norm_PowLagDischarge72: High Sal RMSE = 0.422 | High MAPE = 62.2% | Overall R² = 0.250 | NSE = 0.250 | Score = 0.110
+Norm_WeightedTideRange12 + Norm_RollingPowDischarge14: High Sal RMSE = 0.415 | High MAPE = 59.4% | Overall R² = 0.324 | NSE = 0.324 | Score = 0.128
+Norm_WeightedTideRange12 + Norm_LagInflows48: High Sal RMSE = 0.426 | High MAPE = 63.2% | Overall R² = 0.245 | NSE = 0.245 | Score = 0.108
+Norm_WeightedTideRange12 + Norm_RollingPowInflows2: High Sal RMSE = 0.420 | High MAPE = 61.6% | Overall R² = 0.285 | NSE = 0.285 | Score = 0.118
+Norm_WeightedTideRange12 + Norm_SimpleLatent: High Sal RMSE = 0.423 | High MAPE = 62.0% | Overall R² = 0.263 | NSE = 0.263 | Score = 0.113
+Norm_WeightedTideRange12 + IsHighStress: High Sal RMSE = 0.423 | High MAPE = 63.3% | Overall R² = 0.217 | NSE = 0.217 | Score = 0.101
+Norm_WeightedTideRange12 + Norm_StressHours_30day_Marietta: High Sal RMSE = 0.408 | High MAPE = 60.6% | Overall R² = 0.284 | NSE = 0.284 | Score = 0.118
+Norm_WeightedTideRange12 + DayOfYear: High Sal RMSE = 0.418 | High MAPE = 61.1% | Overall R² = 0.250 | NSE = 0.250 | Score = 0.110
+Norm_WeightedTideRange12 + Norm_StressHours_30day_Marietta_x_DayOfYear: High Sal RMSE = 0.392 | High MAPE = 56.9% | Overall R² = 0.324 | NSE = 0.324 | Score = 0.126
+Norm_PowLagDischarge72 + Norm_RollingPowDischarge14: High Sal RMSE = 0.416 | High MAPE = 59.2% | Overall R² = 0.323 | NSE = 0.323 | Score = 0.128
+Norm_PowLagDischarge72 + Norm_LagInflows48: High Sal RMSE = 0.432 | High MAPE = 63.2% | Overall R² = 0.219 | NSE = 0.219 | Score = 0.102
+Norm_PowLagDischarge72 + Norm_RollingPowInflows2: High Sal RMSE = 0.419 | High MAPE = 61.3% | Overall R² = 0.291 | NSE = 0.291 | Score = 0.120
+Norm_PowLagDischarge72 + Norm_SimpleLatent: High Sal RMSE = 0.425 | High MAPE = 61.9% | Overall R² = 0.255 | NSE = 0.255 | Score = 0.111
+Norm_PowLagDischarge72 + IsHighStress: High Sal RMSE = 0.421 | High MAPE = 62.0% | Overall R² = 0.233 | NSE = 0.233 | Score = 0.105
+Norm_PowLagDischarge72 + Norm_StressHours_30day_Marietta: High Sal RMSE = 0.408 | High MAPE = 59.8% | Overall R² = 0.295 | NSE = 0.295 | Score = 0.121
+Norm_PowLagDischarge72 + DayOfYear: High Sal RMSE = 0.423 | High MAPE = 60.7% | Overall R² = 0.234 | NSE = 0.234 | Score = 0.105
+Norm_PowLagDischarge72 + Norm_StressHours_30day_Marietta_x_DayOfYear: High Sal RMSE = 0.393 | High MAPE = 56.3% | Overall R² = 0.333 | NSE = 0.333 | Score = 0.128
+Norm_RollingPowDischarge14 + Norm_LagInflows48: High Sal RMSE = 0.417 | High MAPE = 59.4% | Overall R² = 0.325 | NSE = 0.325 | Score = 0.128
+Norm_RollingPowDischarge14 + Norm_RollingPowInflows2: High Sal RMSE = 0.415 | High MAPE = 59.4% | Overall R² = 0.329 | NSE = 0.329 | Score = 0.129
+Norm_RollingPowDischarge14 + Norm_SimpleLatent: High Sal RMSE = 0.416 | High MAPE = 59.3% | Overall R² = 0.324 | NSE = 0.324 | Score = 0.128
+Norm_RollingPowDischarge14 + IsHighStress: High Sal RMSE = 0.413 | High MAPE = 59.1% | Overall R² = 0.329 | NSE = 0.329 | Score = 0.129
+Norm_RollingPowDischarge14 + Norm_StressHours_30day_Marietta: High Sal RMSE = 0.408 | High MAPE = 58.5% | Overall R² = 0.341 | NSE = 0.341 | Score = 0.132
+Norm_RollingPowDischarge14 + DayOfYear: High Sal RMSE = 0.414 | High MAPE = 58.6% | Overall R² = 0.329 | NSE = 0.329 | Score = 0.129
+Norm_RollingPowDischarge14 + Norm_StressHours_30day_Marietta_x_DayOfYear: High Sal RMSE = 0.393 | High MAPE = 55.5% | Overall R² = 0.370 | NSE = 0.370 | Score = 0.138
+Norm_LagInflows48 + Norm_RollingPowInflows2: High Sal RMSE = 0.420 | High MAPE = 61.6% | Overall R² = 0.287 | NSE = 0.287 | Score = 0.119
+Norm_LagInflows48 + Norm_SimpleLatent: High Sal RMSE = 0.426 | High MAPE = 62.1% | Overall R² = 0.259 | NSE = 0.259 | Score = 0.112
+Norm_LagInflows48 + IsHighStress: High Sal RMSE = 0.425 | High MAPE = 63.1% | Overall R² = 0.231 | NSE = 0.231 | Score = 0.105
+Norm_LagInflows48 + Norm_StressHours_30day_Marietta: High Sal RMSE = 0.410 | High MAPE = 60.3% | Overall R² = 0.308 | NSE = 0.308 | Score = 0.124
+Norm_LagInflows48 + DayOfYear: High Sal RMSE = 0.428 | High MAPE = 61.8% | Overall R² = 0.226 | NSE = 0.226 | Score = 0.103
+Norm_LagInflows48 + Norm_StressHours_30day_Marietta_x_DayOfYear: High Sal RMSE = 0.393 | High MAPE = 56.4% | Overall R² = 0.350 | NSE = 0.350 | Score = 0.132
+Norm_RollingPowInflows2 + Norm_SimpleLatent: High Sal RMSE = 0.420 | High MAPE = 61.5% | Overall R² = 0.287 | NSE = 0.287 | Score = 0.119
+Norm_RollingPowInflows2 + IsHighStress: High Sal RMSE = 0.420 | High MAPE = 61.6% | Overall R² = 0.287 | NSE = 0.287 | Score = 0.119
+Norm_RollingPowInflows2 + Norm_StressHours_30day_Marietta: High Sal RMSE = 0.408 | High MAPE = 59.9% | Overall R² = 0.322 | NSE = 0.322 | Score = 0.128
+Norm_RollingPowInflows2 + DayOfYear: High Sal RMSE = 0.416 | High MAPE = 60.2% | Overall R² = 0.303 | NSE = 0.303 | Score = 0.123
+Norm_RollingPowInflows2 + Norm_StressHours_30day_Marietta_x_DayOfYear: High Sal RMSE = 0.393 | High MAPE = 56.5% | Overall R² = 0.354 | NSE = 0.354 | Score = 0.134
+Norm_SimpleLatent + IsHighStress: High Sal RMSE = 0.421 | High MAPE = 61.6% | Overall R² = 0.265 | NSE = 0.265 | Score = 0.113
+Norm_SimpleLatent + Norm_StressHours_30day_Marietta: High Sal RMSE = 0.408 | High MAPE = 59.6% | Overall R² = 0.315 | NSE = 0.315 | Score = 0.126
+Norm_SimpleLatent + DayOfYear: High Sal RMSE = 0.420 | High MAPE = 60.3% | Overall R² = 0.276 | NSE = 0.276 | Score = 0.116
+Norm_SimpleLatent + Norm_StressHours_30day_Marietta_x_DayOfYear: High Sal RMSE = 0.393 | High MAPE = 56.3% | Overall R² = 0.347 | NSE = 0.347 | Score = 0.132
+IsHighStress + Norm_StressHours_30day_Marietta: High Sal RMSE = 0.409 | High MAPE = 60.8% | Overall R² = 0.256 | NSE = 0.256 | Score = 0.111
+IsHighStress + DayOfYear: High Sal RMSE = 0.417 | High MAPE = 60.9% | Overall R² = 0.216 | NSE = 0.216 | Score = 0.101
+IsHighStress + Norm_StressHours_30day_Marietta_x_DayOfYear: High Sal RMSE = 0.392 | High MAPE = 56.6% | Overall R² = 0.307 | NSE = 0.307 | Score = 0.122
+Norm_StressHours_30day_Marietta + DayOfYear: High Sal RMSE = 0.406 | High MAPE = 59.1% | Overall R² = 0.278 | NSE = 0.278 | Score = 0.116
+Norm_StressHours_30day_Marietta + Norm_StressHours_30day_Marietta_x_DayOfYear: High Sal RMSE = 0.393 | High MAPE = 56.7% | Overall R² = 0.303 | NSE = 0.303 | Score = 0.122
+DayOfYear + Norm_StressHours_30day_Marietta_x_DayOfYear: High Sal RMSE = 0.393 | High MAPE = 56.7% | Overall R² = 0.303 | NSE = 0.303 | Score = 0.122
+Norm_RollingPowDischarge14 + Norm_StressHours_30day_Marietta_x_DayOfYear + Norm_WeightedTideRange12: High Sal RMSE = 0.393 | High MAPE = 55.6% | Overall R² = 0.369 | NSE = 0.369 | Score = 0.136
+Norm_RollingPowDischarge14 + Norm_StressHours_30day_Marietta_x_DayOfYear + Norm_PowLagDischarge72: High Sal RMSE = 0.393 | High MAPE = 55.5% | Overall R² = 0.370 | NSE = 0.370 | Score = 0.137
+Norm_RollingPowDischarge14 + Norm_StressHours_30day_Marietta_x_DayOfYear + Norm_LagInflows48: High Sal RMSE = 0.393 | High MAPE = 55.6% | Overall R² = 0.377 | NSE = 0.377 | Score = 0.138
+Norm_RollingPowDischarge14 + Norm_StressHours_30day_Marietta_x_DayOfYear + Norm_RollingPowInflows2: High Sal RMSE = 0.393 | High MAPE = 55.7% | Overall R² = 0.373 | NSE = 0.373 | Score = 0.137
+Norm_RollingPowDischarge14 + Norm_StressHours_30day_Marietta_x_DayOfYear + Norm_SimpleLatent: High Sal RMSE = 0.393 | High MAPE = 55.5% | Overall R² = 0.371 | NSE = 0.371 | Score = 0.137
+Norm_RollingPowDischarge14 + Norm_StressHours_30day_Marietta_x_DayOfYear + IsHighStress: High Sal RMSE = 0.393 | High MAPE = 55.5% | Overall R² = 0.371 | NSE = 0.371 | Score = 0.137
+Norm_RollingPowInflows2 + Norm_StressHours_30day_Marietta_x_DayOfYear + Norm_WeightedTideRange12: High Sal RMSE = 0.393 | High MAPE = 56.4% | Overall R² = 0.353 | NSE = 0.353 | Score = 0.132
+Norm_RollingPowInflows2 + Norm_StressHours_30day_Marietta_x_DayOfYear + Norm_PowLagDischarge72: High Sal RMSE = 0.393 | High MAPE = 56.4% | Overall R² = 0.356 | NSE = 0.356 | Score = 0.133
+Norm_RollingPowInflows2 + Norm_StressHours_30day_Marietta_x_DayOfYear + Norm_RollingPowDischarge14: High Sal RMSE = 0.393 | High MAPE = 55.7% | Overall R² = 0.373 | NSE = 0.373 | Score = 0.137
+Norm_RollingPowInflows2 + Norm_StressHours_30day_Marietta_x_DayOfYear + Norm_LagInflows48: High Sal RMSE = 0.393 | High MAPE = 56.4% | Overall R² = 0.362 | NSE = 0.362 | Score = 0.134
+Norm_RollingPowInflows2 + Norm_StressHours_30day_Marietta_x_DayOfYear + Norm_SimpleLatent: High Sal RMSE = 0.393 | High MAPE = 56.4% | Overall R² = 0.355 | NSE = 0.355 | Score = 0.133
+Norm_RollingPowInflows2 + Norm_StressHours_30day_Marietta_x_DayOfYear + IsHighStress: High Sal RMSE = 0.394 | High MAPE = 56.6% | Overall R² = 0.357 | NSE = 0.357 | Score = 0.133
+Norm_LagInflows48 + Norm_StressHours_30day_Marietta_x_DayOfYear + Norm_WeightedTideRange12: High Sal RMSE = 0.392 | High MAPE = 56.5% | Overall R² = 0.353 | NSE = 0.353 | Score = 0.132
+Norm_LagInflows48 + Norm_StressHours_30day_Marietta_x_DayOfYear + Norm_PowLagDischarge72: High Sal RMSE = 0.393 | High MAPE = 56.2% | Overall R² = 0.355 | NSE = 0.355 | Score = 0.133
+Norm_LagInflows48 + Norm_StressHours_30day_Marietta_x_DayOfYear + Norm_RollingPowDischarge14: High Sal RMSE = 0.393 | High MAPE = 55.6% | Overall R² = 0.377 | NSE = 0.377 | Score = 0.138
+Norm_LagInflows48 + Norm_StressHours_30day_Marietta_x_DayOfYear + Norm_RollingPowInflows2: High Sal RMSE = 0.393 | High MAPE = 56.4% | Overall R² = 0.362 | NSE = 0.362 | Score = 0.134
+Norm_LagInflows48 + Norm_StressHours_30day_Marietta_x_DayOfYear + Norm_SimpleLatent: High Sal RMSE = 0.393 | High MAPE = 56.3% | Overall R² = 0.358 | NSE = 0.358 | Score = 0.133
+Norm_LagInflows48 + Norm_StressHours_30day_Marietta_x_DayOfYear + IsHighStress: High Sal RMSE = 0.392 | High MAPE = 56.4% | Overall R² = 0.351 | NSE = 0.351 | Score = 0.132
+Sequential score: 0.133, Combination score: 0.138
+Combination model is better! Final formula: Salinity ~ Norm_LagInflows48 + Norm_StressHours_30day_Marietta * DayOfYear + Norm_RollingPowDischarge14
 
-Final formula: Salinity ~ Norm_RollingPowDischarge14 + Norm_StressHours_30day_Marietta * DayOfYear
+Final formula: Salinity ~ Norm_LagInflows48 + Norm_StressHours_30day_Marietta * DayOfYear + Norm_RollingPowDischarge14
 
 ==========================================
 MODEL BUILDING PROCESS COMPLETED
-Final score: 0.395
-Total predictors: 2
+Final score: 0.138
+Total predictors: 3
 ==========================================
-                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                        [1] "Experiments/experiment_row$experiment_id"

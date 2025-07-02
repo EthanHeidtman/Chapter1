@@ -31,10 +31,15 @@ test_interactions <- function(current_formula, best_predictors, data) {
       tryCatch({
          model <- lm(as.formula(test_formula), data = data)
          
-         eval_result <- evaluate_model(model, data, salinity_threshold, "linear")
+         # Evaluate model
+         eval_result <- evaluate_model(model, data, threshold = salinity_threshold, performance_weights = performance_criteria$weights, model_type = "linear")
          eval_result$model <- model
          eval_result$formula <- test_formula
-         eval_result$score <- performance_score(eval_result)
+         
+         if (!eval_result$model_validity) {
+            cat(sprintf("Skipping %s due to invalid model results\n", predictor))
+            next
+         }
          
          results[[interaction_name]] <- list(
             formula = test_formula,
@@ -46,11 +51,11 @@ test_interactions <- function(current_formula, best_predictors, data) {
          cat(sprintf(
             "%s: High Sal RMSE = %.3f | High MAPE = %.1f%% | Overall R² = %.3f | NSE = %.3f | Score = %.3f\n",
             interaction_name,
-            eval_result$high_salinity_rmse,
-            eval_result$high_salinity_mape,
+            eval_result$high_sal_rmse,
+            eval_result$high_sal_mape,
             eval_result$overall_r2,
-            eval_result$skill_metrics$nash_sutcliffe,
-            eval_result$score
+            eval_result$overall_nse,
+            eval_result$composite_score
          ))
          
       }, error = function(e) {
@@ -77,10 +82,15 @@ test_interactions <- function(current_formula, best_predictors, data) {
          tryCatch({
             model <- lm(as.formula(test_formula), data = data)
             
-            eval_result <- evaluate_model(model, data, salinity_threshold, "linear")
+            # Evaluate model
+            eval_result <- evaluate_model(model, data, threshold = salinity_threshold, performance_weights = performance_criteria$weights, model_type = "linear")
             eval_result$model <- model
             eval_result$formula <- test_formula
-            eval_result$score <- performance_score(eval_result)
+            
+            if (!eval_result$model_validity) {
+               cat(sprintf("Skipping %s due to invalid model results\n", predictor))
+               next
+            }
             
             results[[interaction_name]] <- list(
                formula = test_formula,
@@ -92,11 +102,11 @@ test_interactions <- function(current_formula, best_predictors, data) {
             cat(sprintf(
                "%s: High Sal RMSE = %.3f | High MAPE = %.1f%% | Overall R² = %.3f | NSE = %.3f | Score = %.3f\n",
                interaction_name,
-               eval_result$high_salinity_rmse,
-               eval_result$high_salinity_mape,
+               eval_result$high_sal_rmse,
+               eval_result$high_sal_mape,
                eval_result$overall_r2,
-               eval_result$skill_metrics$nash_sutcliffe,
-               eval_result$score
+               eval_result$overall_nse,
+               eval_result$composite_score
             ))
             
          }, error = function(e) {
@@ -110,7 +120,7 @@ test_interactions <- function(current_formula, best_predictors, data) {
    best_score <- -Inf
    
    if (length(results) > 0) {
-      scores <- sapply(results, function(x) x$metrics$score)
+      scores <- sapply(results, function(x) x$metrics$composite_score)
       best_idx <- which.max(scores)
       best_interaction <- names(results)[best_idx]
       best_score <- scores[best_idx]

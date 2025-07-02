@@ -27,25 +27,25 @@ test_predictor_group <- function(current_formula, predictor_group, data, group_n
          models[[predictor]] <- model
          
          # Evaluate model
-         eval_result <- evaluate_model(model, data, salinity_threshold, "linear")
+         eval_result <- evaluate_model(model, data, threshold = salinity_threshold, performance_weights = performance_criteria$weights, model_type = "linear")
+         eval_result$model <- model
+         eval_result$formula <- formula_str
+         
          if (!eval_result$model_validity) {
             cat(sprintf("Skipping %s due to invalid model results\n", predictor))
             next
          }
-         eval_result$model <- model
-         eval_result$formula <- formula_str
-         eval_result$score <- performance_score(eval_result)
          
          results_list[[predictor]] <- eval_result
          
          cat(sprintf(
             "%s: High Sal RMSE = %.3f | High MAPE = %.1f%% | Overall R² = %.3f | NSE = %.3f | Score = %.3f\n",
             predictor,
-            eval_result$high_salinity_rmse,
-            eval_result$high_salinity_mape,
+            eval_result$high_sal_rmse,
+            eval_result$high_sal_mape,
             eval_result$overall_r2,
-            eval_result$skill_metrics$nash_sutcliffe,
-            eval_result$score
+            eval_result$overall_nse,
+            eval_result$composite_score
          ))
          
          
@@ -69,7 +69,7 @@ test_predictor_group <- function(current_formula, predictor_group, data, group_n
    }
    
    # Rank results by performance score
-   scores <- sapply(results_list, function(x) x$score)
+   scores <- sapply(results_list, function(x) x$composite_score)
    ranked_indices <- order(scores, decreasing = TRUE)
    
    # Return results
@@ -83,10 +83,10 @@ test_predictor_group <- function(current_formula, predictor_group, data, group_n
       summary_table = data.frame(
          Predictor = ranked_indices,
          Score = scores[ranked_indices],
-         High_Sal_RMSE = sapply(results_list[ranked_indices], function(x) x$high_salinity_rmse),
-         High_Sal_MAPE = sapply(results_list[ranked_indices], function(x) x$high_salinity_mape),
+         High_Sal_RMSE = sapply(results_list[ranked_indices], function(x) x$high_sal_rmse),
+         High_Sal_MAPE = sapply(results_list[ranked_indices], function(x) x$high_sal_mape),
          Overall_R2 = sapply(results_list[ranked_indices], function(x) x$overall_r2),
-         NSE = sapply(results_list[ranked_indices], function(x) x$skill_metrics$nash_sutcliffe),
+         NSE = sapply(results_list[ranked_indices], function(x) x$overall_nse),
          stringsAsFactors = FALSE
       )
    ))
