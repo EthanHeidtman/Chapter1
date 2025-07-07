@@ -25,12 +25,17 @@ data <- data %>%
    dplyr::select(-c(9, 10)) %>%                              # Remove extra columns
    mutate(DateTime = as_datetime(DateTime)) %>%              # Make dates class datetime
    rename(Tide = Fitted_HdG) %>%
-   filter(DateTime < as_datetime('2024-11-01 00:00:00'))     # Keep only dates before 
+   filter(DateTime < as_datetime('2024-11-01 00:00:00')) %>% # Keep only dates before 
+   mutate(Season = case_when(
+      Month %in% c(12, 1, 2) ~ 'Winter',
+      Month %in% c(3, 4, 5) ~ 'Spring',
+      Month %in% c(6, 7, 8) ~ 'Summer',
+      Month %in% c(9, 10, 11) ~ 'Fall'
+   )) %>%
+   mutate_if(is.character, as.factor) %>%
+   relocate(Season, .after = DayOfYear)
 
 ####################### MODEL DATA PREPARATION PIPELINE ##########################
-
-# Salinity threshold
-salinity_threshold = 1.0                                     # practical salt units (PSU), equivalent to parts per thousand
 
 # Create the model data
 model_data <- data %>%
@@ -46,23 +51,17 @@ mutate(
    LagTide2 = lag(Tide, 2),
    LagTide4 = lag(Tide, 4),
    
-   # Tide Rate Features
-   TideRate = c(NA, diff(Tide) / as.numeric(diff(DateTime), units = "hours")),
-   TideRate = zoo::rollmean(TideRate, k = 3, fill = NA, align = "center"),   # Smooth the tidal rate
+   # Basic tidal velocity (rate of change) - key for salt transport
+   TideVelocity = c(NA, diff(Tide) / 0.25), # 15-min intervals, units: m/hr
+   TideVelocity = zoo::rollmean(TideVelocity, k = 3, fill = NA, align = "center"), # Smooth
    
-   # Flood vs Ebb Tide
-   # Positive velocity = flood tide (incoming, brings salt)
-   # Negative velocity = ebb tide (outgoing, flushes salt)
-   TidePhase = case_when(
-      TideRate > 0.01 ~ 'Flood',
-      TideRate < - 0.01 ~ 'Ebb',
-      TRUE ~ 'Slack'
-   ),
+   # Flood vs Ebb tide based on velocity
+   IsFloodTide = TideVelocity > 0.01,  # Positive = incoming tide (brings salt)
+   IsEbbTide = TideVelocity < -0.01,   # Negative = outgoing tide (flushes salt)
+   IsSlackTide = abs(TideVelocity) <= 0.01,
    
-   # Tidal Duration Metrics (consecutive hours of flood tide)
-   FloodIndicator = ifelse(TidePhase == 'Flood', 1, 0),
-   ConsecFloodHours = ave(FloodIndicator, cumsum(FloodIndicator == 0), FUN = cumsum),
-   ConsecFloodHours = ifelse(FloodIndicator == 0, 0, ConsecFloodHours),
+   # Tidal acceleration (change in velocity) - indicates tidal strength
+   TideAcceleration = c(NA, diff(TideVelocity) / 0.25),
    
    # Tidal Range Metrics
    TideRange6 = rollapply(Tide, width = 6, 
@@ -73,20 +72,8 @@ mutate(
                            fill = NA, align = "right"),
    TideRange24 = rollapply(Tide, width = 24,
                            FUN = function(x) max(x, na.rm = TRUE) - min(x, na.rm = TRUE),
-                           fill = NA, align = "right"),
-   
-   # Tide-Flow Interactions
-   discharge24 = zoo::rollmean(Discharge, k = 24, fill = NA, align = "right"),
-   low_flow_threshold = quantile(discharge24, 0.25, na.rm = TRUE),
-   is_low_flow = discharge24 < low_flow_threshold,
-   LowFlowTideRange = ifelse(is_low_flow, TideRange12, 0),
-   
-   # Weighted Tidal Range Metric
-   flow_weight = 1 / (discharge24 / median(discharge24, na.rm = TRUE)),
-   WeightedTideRange12 = TideRange12 * pmin(flow_weight, 5), # cap at 5x weight
+                           fill = NA, align = "right")
 ) %>%
-   
-   select(-flow_weight, -is_low_flow, -low_flow_threshold, -discharge24, -FloodIndicator) %>% # Remove unnecessary variables
    
 # =======================================================================================
 # PART 1: BASIC DISCHARGE FEATURES
@@ -142,189 +129,90 @@ mutate(
 ) %>% 
    
 # =======================================================================================
-# PART 2: BASIC FLOW-REGIME FEATURES (MARIETTA ≈ NATURAL FLOW CONDITIONS)
+# PART 2: STRESS METRICS (Inflow based)
 # =======================================================================================
-
+   
 arrange(DateTime) %>%
-   mutate(
-      # Define the natural flow regime
-      InflowsPercentile = percent_rank(Inflows),
-      BasicRegime = case_when(
-         InflowsPercentile < 0.2 ~ "Low",     # True hydrologic stress
-         InflowsPercentile > 0.8 ~ "High",    # High natural flows
-         TRUE ~ "Normal"),
-   ) %>%
-   
-# =======================================================================================
-# PART 3: COMPREHENSIVE STRESS-CLASSIFICATION SYSTEM
-# =======================================================================================
-
 mutate(
-   # Define stress-thresholds
-   MariettaStressThreshold = quantile(Inflows, 0.2, na.rm = TRUE),
-   ConowingoStressThreshold = quantile(Discharge, 0.2, na.rm = TRUE),
    
-   # Binary Stress Indicators
-   MariettaStressed = Inflows < MariettaStressThreshold,
-   ConowingoStressed = Discharge < ConowingoStressThreshold,
-   BelowFERC = Discharge < FERC,
+   # Define vulnerability thresholds based on natural inflows
+   LowInflowThreshold = quantile(Inflows, 0.50, na.rm = TRUE),     # 50th percentile
+   VeryLowInflowThreshold = quantile(Inflows, 0.25, na.rm = TRUE), # 15th percentile
+   FlushingThreshold = quantile(Inflows, 0.75, na.rm = TRUE),      # 75th percentile
    
-   # Stress Intensity
-   MariettaStressIntensity = pmax(0, (MariettaStressThreshold - Inflows) / MariettaStressThreshold),
-   ConowingoStressIntensity = pmax(0, (ConowingoStressThreshold - Discharge) / ConowingoStressThreshold),
-   FERCStressIntensity = pmax(0, (FERC - Discharge) / FERC)
+   # Sustained low inflow conditions (key vulnerability indicator)
+   IsLowInflow = Inflows < LowInflowThreshold,
+   IsVeryLowInflow = Inflows < VeryLowInflowThreshold,
+   IsFlushingFlow = Inflows > FlushingThreshold,
+   
+   # Duration of sustained low inflows (system vulnerability builds over time)
+   ConsecutiveLowInflowHours = sequence(rle(IsLowInflow)$lengths) * IsLowInflow,
+   ConsecutiveVeryLowInflowHours = sequence(rle(IsVeryLowInflow)$lengths) * IsVeryLowInflow,
+   
+   # Cumulative inflow deficit (how much flow is missing)
+   InflowDeficit = pmax(0, LowInflowThreshold - Inflows, na.rm = TRUE),
+   InflowDeficit = ifelse(is.na(Inflows), 0, InflowDeficit),  # Set deficit to 0 when inflows are missing
+   # VeryLowInflowDeficit = pmax(0, VeryLowInflowThreshold - Inflows, na.rm = TRUE),
+   # VeryLowInflowDeficit = ifelse(is.na(Inflows), 0, VeryLowInflowDeficit), # Set deficit to 0 when inflows are missing
+   
+   # Cumulative stress over multiple time windows
+   CumulativeInflowDeficit3 = zoo::rollsum(InflowDeficit, 24 * 3, fill = NA, align = "right", partial = TRUE, na.rm = TRUE),
+   CumulativeInflowDeficit7 = zoo::rollsum(InflowDeficit, 24 * 7, fill = NA, align = "right", partial = TRUE, na.rm = TRUE),
+   CumulativeInflowDeficit14 = zoo::rollsum(InflowDeficit, 24 * 14, fill = NA, align = "right", partial = TRUE, na.rm = TRUE),
+   CumulativeInflowDeficit30 = zoo::rollsum(InflowDeficit, 24 * 30, fill = NA, align = "right", partial = TRUE, na.rm = TRUE),
+   
+   # Rolling count of low flow hours (frequency of stress)
+   LowInflowHours7 = zoo::rollsum(as.numeric(IsLowInflow), 24 * 7, fill = NA, align = "right", na.rm = TRUE),
+   LowInflowHours14 = zoo::rollsum(as.numeric(IsLowInflow), 24 * 14, fill = NA, align = "right", na.rm = TRUE),
+   LowInflowHours30 = zoo::rollsum(as.numeric(IsLowInflow), 24 * 30, fill = NA, align = "right", na.rm = TRUE),
+   
+   # Time since last flushing flow (system memory)
+   HoursSinceFlush = NA_real_,
+   DaysSinceFlush = NA_real_
+   
 ) %>%
    
-   # Calculate running stress-accumulation metrics
+   # Calculate hours since flushing flow
+   group_by(1) %>%
    mutate(
-      # Consecutive hours of stress (reset when stress ends)
-      ConsecutiveStressHours_Marietta = sequence(rle(MariettaStressed)$lengths) * MariettaStressed,
-      ConsecutiveStressHours_Conowingo = sequence(rle(ConowingoStressed)$lengths) * ConowingoStressed,
-      ConsecutiveBelowFERC = sequence(rle(BelowFERC)$lengths) * BelowFERC,
-      
-      # Rolling sum of stress hours over different windows
-      StressHours_7day_Marietta = zoo::rollsum(as.numeric(MariettaStressed), 24 * 7, fill = NA, align = "right", na.rm = TRUE),
-      StressHours_14day_Marietta = zoo::rollsum(as.numeric(MariettaStressed), 24 * 14, fill = NA, align = "right", na.rm = TRUE),
-      StressHours_30day_Marietta = zoo::rollsum(as.numeric(MariettaStressed), 24 * 30, fill = NA, align = "right", na.rm = TRUE),
-      
-      StressHours_7day_Conowingo = zoo::rollsum(as.numeric(ConowingoStressed), 24 * 7, fill = NA, align = "right" , na.rm = TRUE),
-      StressHours_14day_Conowingo = zoo::rollsum(as.numeric(ConowingoStressed), 24 * 14, fill = NA, align = "right", na.rm = TRUE),
-      StressHours_30day_Conowingo = zoo::rollsum(as.numeric(ConowingoStressed), 24 * 30, fill = NA, align = "right", na.rm = TRUE),
-      
-      # Cumulative stress intensity over time windows
-      CumulativeStress_7day_Marietta = zoo::rollsum(MariettaStressIntensity, 24 * 7, fill = NA, align = "right", na.rm = TRUE),
-      CumulativeStress_14day_Marietta = zoo::rollsum(MariettaStressIntensity, 24 * 14, fill = NA, align = "right", na.rm = TRUE),
-      CumulativeStress_30day_Marietta = zoo::rollsum(MariettaStressIntensity, 24 * 30, fill = NA, align = "right", na.rm = TRUE),
-      
-      # Days since last major flow event (flow > 80th percentile)
-      HighFlowThreshold = quantile(Inflows, 0.8, na.rm = TRUE),
-      IsHighFlow = Inflows > HighFlowThreshold,
-      DaysSinceHighFlow = NA_real_
-   ) %>%
-   
-   # Calculate days since high flow (requires a loop-like operation)
-   group_by(1) %>%  # Dummy grouping to ensure proper ordering
-   mutate(
-      # This creates a counter that resets every time there's a high flow event
-      HighFlowGroupID = cumsum(IsHighFlow),
-      DaysSinceHighFlow = if_else(IsHighFlow, 0, 
-                                  (row_number() - max(row_number()[IsHighFlow & HighFlowGroupID == max(HighFlowGroupID[IsHighFlow])])) / 24)
+      FlushEvent = cumsum(IsFlushingFlow),
+      HoursSinceFlush = ifelse(IsFlushingFlow, 0, 
+                               row_number() - ifelse(any(IsFlushingFlow), 
+                                                     max(row_number()[IsFlushingFlow & FlushEvent == max(FlushEvent[IsFlushingFlow])]), 
+                                                     0)),
+      DaysSinceFlush = HoursSinceFlush / 24
    ) %>%
    ungroup() %>%
-   select(-HighFlowGroupID) %>%  # Remove temporary variable
+   select(-FlushEvent) %>%
    
 # =======================================================================================
-# STRESS-BASED FLOW REGIME CLASSIFICATION (COMPREHENSIVE, BASED ON MULTIPLE INDICATORS)
+# PART 3: DROUGHT-PERSISTENCE METRICS & INDICATORS
 # =======================================================================================
 
 mutate(
-   StressLevel = case_when(
-      # HIGH STRESS: Moderate cumulative stress and some duration
-      (CumulativeStress_7day_Marietta > quantile(CumulativeStress_7day_Marietta, 0.7, na.rm = TRUE)) &
-         (ConsecutiveStressHours_Marietta > 24 * 1) ~ "High", # 1+ day consecutive
-      
-      # MODERATE STRESS: Some stress indicators are present
-      (CumulativeStress_7day_Marietta > quantile(CumulativeStress_7day_Marietta, 0.5, na.rm = TRUE)) |
-         (ConsecutiveStressHours_Marietta > 6) |  # 6+ hours consecutive
-         (StressHours_7day_Marietta > 24 * 2) ~ "Moderate",  # 2+ days in past week
-      
-      # NO STRESS: Flush period, recent high flow
-      (DaysSinceHighFlow <= 2) | 
-         (BasicRegime == "High") ~ "Flush",
-      
-      # NORMAL CONDITIONS: Everything else
-      TRUE ~ 'Normal'
-   ),
+   # Maximum consecutive stress hours in recent periods
+   MaxConsecutiveStress7 = zoo::rollmax(ConsecutiveLowInflowHours, 24 * 7, fill = NA, align = "right", na.rm = TRUE),
+   MaxConsecutiveStress14 = zoo::rollmax(ConsecutiveLowInflowHours, 24 * 14, fill = NA, align = "right", na.rm = TRUE),
+   MaxConsecutiveStress30 = zoo::rollmax(ConsecutiveLowInflowHours, 24 * 30, fill = NA, align = "right", na.rm = TRUE),
    
-   # Binary indicators for model use
-   IsHighStress = StressLevel %in% c("Critical", "High"),
-   IsModerateStress = StressLevel %in% c("Critical", "High", "Moderate"),
-   IsFlush = StressLevel == "Flush",
-   IsStressed = StressLevel %in% c("Critical", "High", "Moderate")  # Any stress
+   # Stress frequency (what fraction of time is stressed?)
+   StressFrequency7 = LowInflowHours7 / (24 * 7),
+   StressFrequency14 = LowInflowHours14 / (24 * 14),
+   StressFrequency30 = LowInflowHours30 / (24 * 30),
 ) %>%
    
-# =======================================================================================
-# PART 4: LATENT FLOW FEATURES (CONOWINGO ≠ SUSTAINED FLOW AT MOUTH ON SHORT TIMESCALES)
-# =======================================================================================
-# Key Insight: when the natural (Marietta) flows are less than the FERC requirement, 
-# the dam operators are allowed to release less than FERC.
-# We need to estimate the true sustained flow at the mouth
+   # Clean up temporary variables
+   select(-`1`)
+ 
 
-mutate(
-   # First check what the flow discrepancies look like
-   FlowDiscrepancy = abs(Discharge - LagInflows48),
-   HighThreshold = quantile(FlowDiscrepancy, 0.8, na.rm = TRUE),
-   MedianThreshold = quantile(FlowDiscrepancy, 0.5, na.rm = TRUE),
-   
-   # ====== Simple Latent Flow (using the best lagged Marietta Inflows) ====== #
-   SimpleLatent = case_when(
-      # Large discrepancy, weight toward Marietta inflows
-      FlowDiscrepancy > HighThreshold ~ 0.3 * PowDischarge + 0.7 * PowLagInflows48, 
-      
-      # Median Discrepancy, weight more evenly
-      FlowDiscrepancy > MedianThreshold ~ 0.5 * PowDischarge + 0.5 * PowLagInflows48, 
-      
-      # Normal Operations
-      TRUE ~ 0.7 * PowDischarge + 0.3 * PowLagInflows48
-   ),
-   
-   # ====== Stress-Dependent Latent Flow (based on previous section) ======== #
-   StressLatent = case_when(
-      #  HIGH STRESS: moderately emphasize natural flows
-      StressLevel == "High" ~ 
-         0.3 * RollingPowDischarge14 + 0.7 * RollingPowInflows2,
-      
-      # MODERATE STRESS: slight preference for natural flows
-      StressLevel == "Moderate" ~ 
-         0.4 * PowLagDischarge72 + 0.6 * PowLagInflows48,
-      
-      # NO STRESS: flush period, operations are dominant
-      StressLevel == "Flush" ~ 
-         0.85 * PowLagDischarge72 + 0.15 * PowLagInflows48,
-      
-      # NORMAL: standard balanced weighting
-      TRUE ~ 0.6 * PowLagDischarge72 + 0.4 * PowLagInflows48
-   ),
-   
-   BestLatent = case_when(
-      IsHighStress ~ 0.3 * PowLagDischarge72 + 0.7 * RollingPowInflows2,  # Best lag + best rolling
-      IsFlush ~ 0.8 * PowLagDischarge72 + 0.2 * RollingPowInflows2,       # Operational emphasis
-      TRUE ~ 0.6 * PowLagDischarge72 + 0.4 * RollingPowDischarge14        # Best performers
-   )
-) 
-
-
-# Clean up the model data for normalization
 model_data <- model_data %>%
-   # Remove intermediate calculation variables to clean up
-   select(-FlowDiscrepancy, -FlowDiscrepancy, -HighThreshold, 
-          -MedianThreshold, -MariettaStressThreshold, -FlowDiscrepancy, -`1`,
-          -ConowingoStressThreshold, -HighFlowThreshold, -IsHighFlow, -InflowsPercentile) %>%
-   # na.omit() %>%                                            # Remove NAs that arose from calculations
-   mutate(SalinitySeason = case_when(
-      Month %in% c(3, 4, 12) ~ 'LowSeason',                 # Median salinity 0.10 - 0.11
-      Month %in% c(5, 6, 7) ~ 'RisingSeason',               # Median salinity 0.11 - 0.14
-      Month %in% c(8, 9, 10, 11) ~ 'HighSeason',            # Median salinity 0.14 - 0.16
-   )) %>%
-   mutate(SalinitySeason = as.factor(SalinitySeason)) %>%   # Make season factor variable
-   relocate(Discharge, 
-            contains('Tide'), 
-            starts_with(c('Lag', 
-                          'Pow', 
-                          'Rolling')),
-            contains(c('Threshold', 
-                       'Stress', 
-                       'Since', 
-                       'Consec', 
-                       'Latent', 
-                       'Is')),
-            .after = Salinity) %>%                          # Organize all of the columns
-   relocate(FERC, SalinitySeason, where(is.logical), 
-            where(is.character), contains('Threshold'), .after = Inflows) %>%
-   mutate_if(is.logical, as.factor) # Make logicals factors for GAM modeling
+   relocate(Discharge, .after = Salinity) %>%
+   relocate(FERC, where(is.logical), where(is.character), where(is.factor), 
+            contains('Hours'), contains('Days'), contains('Frequency'), .after = Inflows) %>%
+   mutate_if(is.logical, as.factor)
 
 # Normalize Predictors and Add to model_data
-preds_to_normalize <- colnames(model_data)[20 : ncol(model_data)] # Starting from the discharge column
+preds_to_normalize <- colnames(model_data)[which(colnames(model_data) == 'Discharge') : ncol(model_data)] # Starting from the discharge colum
 
 # Apply the normalization function
 normalized_predictors <- normalize_multiple_predictors(model_data, preds_to_normalize)

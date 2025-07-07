@@ -82,7 +82,7 @@ test_predictor_combinations <- function(base_formula, predictor_list, data, max_
                "%s: High Sal RMSE = %.3f | High MAPE = %.1f%% | Overall R² = %.3f | NSE = %.3f | Score = %.3f\n",
                combo_name,
                eval_result$high_sal_rmse,
-               eval_result$high_sal_mape,
+               eval_result$high_sal_mae,
                eval_result$overall_r2,
                eval_result$overall_nse,
                eval_result$composite_score
@@ -137,7 +137,7 @@ test_predictor_combinations <- function(base_formula, predictor_list, data, max_
                   "%s: High Sal RMSE = %.3f | High MAPE = %.1f%% | Overall R² = %.3f | NSE = %.3f | Score = %.3f\n",
                   triplet_name,
                   eval_result$high_sal_rmse,
-                  eval_result$high_sal_mape,
+                  eval_result$high_sal_mae,
                   eval_result$overall_r2,
                   eval_result$overall_nse,
                   eval_result$composite_score
@@ -177,9 +177,10 @@ test_predictor_combinations <- function(base_formula, predictor_list, data, max_
          Predictor = ranked_indices,
          Score = scores[ranked_indices],
          High_Sal_RMSE = sapply(results_list[ranked_indices], function(x) x$high_sal_rmse),
-         High_Sal_MAPE = sapply(results_list[ranked_indices], function(x) x$high_sal_mape),
+         High_Sal_MAE = sapply(results_list[ranked_indices], function(x) x$high_sal_mae),
          Overall_R2 = sapply(results_list[ranked_indices], function(x) x$overall_r2),
          NSE = sapply(results_list[ranked_indices], function(x) x$overall_nse),
+         KGE = sapply(results_list[ranked_indices], function(x) x$overall_kge),
          stringsAsFactors = FALSE
       )
    ))

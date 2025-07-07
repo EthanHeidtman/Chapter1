@@ -32,7 +32,7 @@ library(lubridate)
 model_data <- as.data.frame(read_qs_files('Data/Tidied/Final/FinalModelData.qs'))
 
 # Define salinity threshold
-salinity_threshold = 0.3
+salinity_threshold = 0.3 # measured in practical salt units (PSU), which is equivalent to parts per thousand
 
 ######################### SIMPLE LINEAR MODEL DEVELOPMENT ############################
 
@@ -40,9 +40,11 @@ salinity_threshold = 0.3
 predictor_config <- list(
 
    # Tide predictors (will always include the best one in subsequent models)
-   tide = c("Norm_Tide", "Norm_TideRate", 'Norm_LagTide1', 'Norm_LagTide2', 'Norm_LagTide4',
-            'Norm_TideRange6', 'Norm_TideRange12', 'Norm_TideRange24', 'Norm_LowFlowTideRange',
-            'Norm_WeightedTideRange12'),
+   # tide = c("Norm_Tide", "Norm_TideRate", 'Norm_LagTide1', 'Norm_LagTide2', 'Norm_LagTide4',
+   #          'Norm_TideRange6', 'Norm_TideRange12', 'Norm_TideRange24', 'Norm_LowFlowTideRange',
+   #          'Norm_WeightedTideRange12', 'ConsecFloodHours', 'TidePhase'),
+   tide = c('IsFloodTide', 'IsEbbTide', 'IsSlackTide', 'Norm_Tide', 'Norm_LagTide1', 'Norm_LagTide2', 'Norm_LagTide4',
+            'Norm_TideVelocity', 'Norm_TideAcceleration', 'Norm_TideRange6', 'Norm_TideRange12', 'Norm_TideRange24'),
 
    # Discharge predictors (test systematically)
    discharge_lag = c("Norm_PowLagDischarge1", "Norm_PowLagDischarge3", "Norm_PowLagDischarge6",
@@ -55,24 +57,28 @@ predictor_config <- list(
                          "Norm_RollingPowDischarge14"),
 
    # Inflow predictors
-   inflow_lag = c("Norm_LagInflows12", "Norm_LagInflows24", "Norm_LagInflows48", "Norm_LagInflows72"),
+   inflow_lag = c("Norm_LagInflows12", "Norm_LagInflows24", "Norm_LagInflows48", "Norm_LagInflows72",
+                  'Norm_PowInflows', "Norm_LagInflows12", "Norm_LagInflows24", "Norm_LagInflows48", "Norm_LagInflows72"),
 
    inflow_rolling = c("Norm_RollingPowInflows1", "Norm_RollingPowInflows2",
                       "Norm_RollingPowInflows7", "Norm_RollingPowInflows10"),
 
-   # Latent flow features
-   latent_flow = c("Norm_SimpleLatent", "Norm_StressLatent", "Norm_BestLatent"),
-
    # Stress indicators
-   stress_binary = c("IsModerateStress", "IsHighStress", "IsFlush", "IsStressed"),
-   stress_continuous = c("Norm_StressHours_7day_Marietta", "Norm_StressHours_14day_Marietta",
-                         "Norm_StressHours_30day_Marietta", "Norm_StressHours_7day_Conowingo",
-                         "Norm_StressHours_14day_Conowingo", "Norm_StressHours_30day_Conowingo",
-                         "Norm_CumulativeStress_7day_Marietta", "Norm_CumulativeStress_14day_Marietta",
-                         "Norm_CumulativeStress_30day_Marietta", "DaysSinceHighFlow"),
+   # stress_binary = c("IsModerateStress", "IsHighStress", "IsFlush", "IsStressed"),
+   # stress_continuous = c("Norm_StressHours_7day_Marietta", "Norm_StressHours_14day_Marietta",
+   #                       "Norm_StressHours_30day_Marietta", "Norm_StressHours_7day_Conowingo",
+   #                       "Norm_StressHours_14day_Conowingo", "Norm_StressHours_30day_Conowingo",
+   #                       "Norm_CumulativeStress_7day_Marietta", "Norm_CumulativeStress_14day_Marietta",
+   #                       "Norm_CumulativeStress_30day_Marietta", "DaysSinceHighFlow"),
+   stress_binary = c('IsLowInflow', 'IsVeryLowInflow', 'IsFlushingFlow'),
+   stress_continuous = c('ConsecutiveLowInflowHours', 'ConsecutiveVeryLowInflowHours', 'LowInflowHours7', 
+                         'LowInflowHours14', 'LowInflowHours30', 'HoursSinceFlush', 'DaysSinceFlush',
+                         'StressFrequency7', 'StressFrequency14', 'StressFrequency30', 'Norm_CumulativeInflowDeficit3',
+                         'Norm_CumulativeInflowDeficit7', 'Norm_CumulativeInflowDeficit30', 'Norm_MaxConsecutiveStress7',
+                         'Norm_MaxConsecutiveStress14', 'Norm_MaxConsecutiveStress30'),
 
    # Seasonal/temporal
-   temporal = c("SalinitySeason", "DayOfYear")
+   temporal = c("Season", "DayOfYear")
 
 )
 

@@ -52,7 +52,7 @@ test_interactions <- function(current_formula, best_predictors, data) {
             "%s: High Sal RMSE = %.3f | High MAPE = %.1f%% | Overall R² = %.3f | NSE = %.3f | Score = %.3f\n",
             interaction_name,
             eval_result$high_sal_rmse,
-            eval_result$high_sal_mape,
+            eval_result$high_sal_mae,
             eval_result$overall_r2,
             eval_result$overall_nse,
             eval_result$composite_score
@@ -103,7 +103,7 @@ test_interactions <- function(current_formula, best_predictors, data) {
                "%s: High Sal RMSE = %.3f | High MAPE = %.1f%% | Overall R² = %.3f | NSE = %.3f | Score = %.3f\n",
                interaction_name,
                eval_result$high_sal_rmse,
-               eval_result$high_sal_mape,
+               eval_result$high_sal_mae,
                eval_result$overall_r2,
                eval_result$overall_nse,
                eval_result$composite_score

@@ -60,16 +60,17 @@ evaluate_model <- function(model, data, threshold = salinity_threshold, performa
       high_sal_r2 = accuracy_results$r2,
       high_sal_rmse = accuracy_results$rmse,
       high_sal_mae = accuracy_results$mae,
-      high_sal_mape = accuracy_results$mape,
       high_sal_bias = accuracy_results$bias,
       high_sal_count = accuracy_results$count,
+      high_sal_kge = accuracy_results$kge,
+      high_sal_nse = accuracy_results$nse,
       
       # Overall error metrics
       overall_r2 = overall_results$r2,
       overall_rmse = overall_results$rmse,
       overall_mae = overall_results$mae,
-      overall_mape = overall_results$mape,
       overall_bias = overall_results$bias,
+      overall_kge = overall_results$kge,
       overall_nse = overall_results$nse,
       
       # Model complexity metrics
