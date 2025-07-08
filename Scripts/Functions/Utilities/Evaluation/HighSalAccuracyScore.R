@@ -13,8 +13,8 @@ calculate_high_sal_accuracy <- function(obs, pred, threshold, weights = c(r2 = 0
    mae <- mean(abs(obs_high - pred_high))
    bias <- mean(pred_high - obs_high)
    obs_mean <- mean(obs_high)
-   r2 <- 1 - sum((obs - pred)^2) / sum((obs - mean(obs))^2)
-   nse <- 1 - sum((obs - pred)^2) / sum((obs - mean(obs))^2)
+   r2 <-  1 - sum((obs_high - pred_high)^2) / sum((obs_high - mean(obs_high))^2)
+   nse <-  1 - sum((obs_high - pred_high)^2) / sum((obs_high - mean(obs_high))^2)
    
    # Kling-Gupta Efficiency (KGE)
    cc <- cor(pred_high, obs_high)
@@ -25,7 +25,9 @@ calculate_high_sal_accuracy <- function(obs, pred, threshold, weights = c(r2 = 0
    # Normalize RMSE and MAE (assuming salinity range is 0–2 PSU)
    rmse_norm <- 1 - min(rmse / 2, 1)
    mae_norm <- 1 - min(mae / 2, 1)
-   bias_penalty <- 1 - min(abs(bias) / 1, 1)  # assumes bias range ±1 is meaningful
+   bias_penalty <- ifelse(bias < 0, 
+                          1 - min(abs(bias) / 0.5, 1),  # Underestimation penalty
+                          1 - min(abs(bias) / 1.0, 1))  # Overestimation penalty
    
    # Cap R² at [0, 1]
    r2_adj <- max(0, min(r2, 1))

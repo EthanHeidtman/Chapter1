@@ -1,0 +1,227 @@
+
+> #linear_model_results <- linear_model_builder(model_data, salinity_threshold, predictor_config, performance_criteria)
+> linear_predictor_results <-  .... [TRUNCATED] 
+STARTING SYSTEMATIC PREDICTOR SELECTION PROCESS
+===============================================
+Stage 0: Testing tide predictors...
+
+=== TESTING TIDE PREDICTORS ===
+IsFloodTide: High Sal RMSE = 0.454 | High MAPE = 0.4% | Overall R² = 0.000 | NSE = 0.000 | Score = 0.287
+IsEbbTide: High Sal RMSE = 0.454 | High MAPE = 0.4% | Overall R² = 0.000 | NSE = 0.000 | Score = 0.287
+IsSlackTide: High Sal RMSE = 0.454 | High MAPE = 0.4% | Overall R² = 0.000 | NSE = 0.000 | Score = 0.287
+Norm_Tide: High Sal RMSE = 0.454 | High MAPE = 0.4% | Overall R² = 0.000 | NSE = 0.000 | Score = 0.287
+Norm_LagTide1: High Sal RMSE = 0.454 | High MAPE = 0.4% | Overall R² = 0.000 | NSE = 0.000 | Score = 0.287
+Norm_LagTide2: High Sal RMSE = 0.454 | High MAPE = 0.4% | Overall R² = 0.000 | NSE = 0.000 | Score = 0.287
+Norm_LagTide4: High Sal RMSE = 0.454 | High MAPE = 0.4% | Overall R² = 0.000 | NSE = 0.000 | Score = 0.287
+Norm_TideVelocity: High Sal RMSE = 0.454 | High MAPE = 0.4% | Overall R² = 0.000 | NSE = 0.000 | Score = 0.287
+Norm_TideAcceleration: High Sal RMSE = 0.454 | High MAPE = 0.4% | Overall R² = 0.000 | NSE = 0.000 | Score = 0.287
+Norm_TideRange6: High Sal RMSE = 0.454 | High MAPE = 0.4% | Overall R² = 0.001 | NSE = 0.001 | Score = 0.287
+Norm_TideRange12: High Sal RMSE = 0.454 | High MAPE = 0.4% | Overall R² = 0.004 | NSE = 0.004 | Score = 0.288
+Norm_TideRange24: High Sal RMSE = 0.453 | High MAPE = 0.4% | Overall R² = 0.006 | NSE = 0.006 | Score = 0.288
+Best tide predictor: Norm_TideRange24 (score: 0.288)
+
+Stage 1: Testing discharge lag predictors...
+
+=== TESTING DISCHARGE_LAG PREDICTORS ===
+Norm_PowLagDischarge1: High Sal RMSE = 0.436 | High MAPE = 0.4% | Overall R² = 0.170 | NSE = 0.170 | Score = 0.307
+Norm_PowLagDischarge3: High Sal RMSE = 0.435 | High MAPE = 0.4% | Overall R² = 0.172 | NSE = 0.172 | Score = 0.308
+Norm_PowLagDischarge6: High Sal RMSE = 0.435 | High MAPE = 0.4% | Overall R² = 0.171 | NSE = 0.171 | Score = 0.308
+Norm_PowLagDischarge10: High Sal RMSE = 0.435 | High MAPE = 0.4% | Overall R² = 0.172 | NSE = 0.172 | Score = 0.308
+Norm_PowLagDischarge12: High Sal RMSE = 0.434 | High MAPE = 0.4% | Overall R² = 0.173 | NSE = 0.173 | Score = 0.308
+Norm_PowLagDischarge24: High Sal RMSE = 0.434 | High MAPE = 0.4% | Overall R² = 0.178 | NSE = 0.178 | Score = 0.308
+Norm_PowLagDischarge36: High Sal RMSE = 0.433 | High MAPE = 0.4% | Overall R² = 0.180 | NSE = 0.180 | Score = 0.309
+Norm_PowLagDischarge48: High Sal RMSE = 0.432 | High MAPE = 0.4% | Overall R² = 0.184 | NSE = 0.184 | Score = 0.309
+Norm_PowLagDischarge72: High Sal RMSE = 0.432 | High MAPE = 0.4% | Overall R² = 0.189 | NSE = 0.189 | Score = 0.310
+Best discharge lag predictor: Norm_PowLagDischarge72 (score: 0.310)
+
+Stage 2: Testing discharge rolling predictors...
+
+=== TESTING DISCHARGE_ROLLING PREDICTORS ===
+Norm_RollingPowDischarge0.5: High Sal RMSE = 0.429 | High MAPE = 0.4% | Overall R² = 0.229 | NSE = 0.229 | Score = 0.314
+Norm_RollingPowDischarge1: High Sal RMSE = 0.424 | High MAPE = 0.3% | Overall R² = 0.269 | NSE = 0.269 | Score = 0.319
+Norm_RollingPowDischarge2: High Sal RMSE = 0.422 | High MAPE = 0.3% | Overall R² = 0.283 | NSE = 0.283 | Score = 0.321
+Norm_RollingPowDischarge4: High Sal RMSE = 0.419 | High MAPE = 0.3% | Overall R² = 0.302 | NSE = 0.302 | Score = 0.323
+Norm_RollingPowDischarge7: High Sal RMSE = 0.418 | High MAPE = 0.3% | Overall R² = 0.317 | NSE = 0.317 | Score = 0.325
+Norm_RollingPowDischarge10: High Sal RMSE = 0.417 | High MAPE = 0.3% | Overall R² = 0.323 | NSE = 0.323 | Score = 0.326
+Norm_RollingPowDischarge14: High Sal RMSE = 0.416 | High MAPE = 0.3% | Overall R² = 0.323 | NSE = 0.323 | Score = 0.326
+Best discharge rolling predictor: Norm_RollingPowDischarge14 (score: 0.326)
+
+Stage 3: Testing inflow lag predictors...
+
+=== TESTING INFLOW_LAG PREDICTORS ===
+Norm_LagInflows12: High Sal RMSE = 0.443 | High MAPE = 0.4% | Overall R² = 0.141 | NSE = 0.141 | Score = 0.303
+Norm_LagInflows24: High Sal RMSE = 0.443 | High MAPE = 0.4% | Overall R² = 0.147 | NSE = 0.147 | Score = 0.304
+Norm_LagInflows48: High Sal RMSE = 0.442 | High MAPE = 0.4% | Overall R² = 0.156 | NSE = 0.156 | Score = 0.305
+Norm_LagInflows72: High Sal RMSE = 0.442 | High MAPE = 0.4% | Overall R² = 0.158 | NSE = 0.158 | Score = 0.305
+Norm_PowInflows: High Sal RMSE = 0.424 | High MAPE = 0.3% | Overall R² = 0.269 | NSE = 0.269 | Score = 0.319
+Norm_LagInflows12: High Sal RMSE = 0.443 | High MAPE = 0.4% | Overall R² = 0.141 | NSE = 0.141 | Score = 0.303
+Norm_LagInflows24: High Sal RMSE = 0.443 | High MAPE = 0.4% | Overall R² = 0.147 | NSE = 0.147 | Score = 0.304
+Norm_LagInflows48: High Sal RMSE = 0.442 | High MAPE = 0.4% | Overall R² = 0.156 | NSE = 0.156 | Score = 0.305
+Norm_LagInflows72: High Sal RMSE = 0.442 | High MAPE = 0.4% | Overall R² = 0.158 | NSE = 0.158 | Score = 0.305
+Best inflow lag predictor: Norm_PowInflows (score: 0.319)
+
+Stage 4: Testing inflow rolling predictors...
+
+=== TESTING INFLOW_ROLLING PREDICTORS ===
+Norm_RollingPowInflows1: High Sal RMSE = 0.421 | High MAPE = 0.3% | Overall R² = 0.279 | NSE = 0.279 | Score = 0.320
+Norm_RollingPowInflows2: High Sal RMSE = 0.420 | High MAPE = 0.3% | Overall R² = 0.287 | NSE = 0.287 | Score = 0.321
+Norm_RollingPowInflows7: High Sal RMSE = 0.419 | High MAPE = 0.3% | Overall R² = 0.309 | NSE = 0.309 | Score = 0.324
+Norm_RollingPowInflows10: High Sal RMSE = 0.420 | High MAPE = 0.3% | Overall R² = 0.311 | NSE = 0.311 | Score = 0.324
+Best inflow rolling predictor: Norm_RollingPowInflows10 (score: 0.324)
+
+Stage 5: Testing latent flow predictors...
+
+=== TESTING LATENT_FLOW PREDICTORS ===
+No valid models fitted for latent_flow group
+No significant latent flow predictor found
+
+Stage 6: Testing binary stress predictors...
+
+=== TESTING STRESS_BINARY PREDICTORS ===
+IsLowInflow: High Sal RMSE = 0.438 | High MAPE = 0.4% | Overall R² = 0.192 | NSE = 0.192 | Score = 0.309
+IsVeryLowInflow: High Sal RMSE = 0.431 | High MAPE = 0.4% | Overall R² = 0.163 | NSE = 0.163 | Score = 0.307
+IsFlushingFlow: High Sal RMSE = 0.445 | High MAPE = 0.4% | Overall R² = 0.123 | NSE = 0.123 | Score = 0.301
+Best binary stress predictor: IsLowInflow (score: 0.309)
+
+Stage 7: Testing continuous stress predictors...
+
+=== TESTING STRESS_CONTINUOUS PREDICTORS ===
+ConsecutiveLowInflowHours: High Sal RMSE = 0.446 | High MAPE = 0.4% | Overall R² = 0.150 | NSE = 0.150 | Score = 0.303
+ConsecutiveVeryLowInflowHours: High Sal RMSE = 0.443 | High MAPE = 0.4% | Overall R² = 0.093 | NSE = 0.093 | Score = 0.298
+LowInflowHours7: High Sal RMSE = 0.432 | High MAPE = 0.4% | Overall R² = 0.235 | NSE = 0.235 | Score = 0.315
+LowInflowHours14: High Sal RMSE = 0.431 | High MAPE = 0.4% | Overall R² = 0.249 | NSE = 0.249 | Score = 0.316
+LowInflowHours30: High Sal RMSE = 0.428 | High MAPE = 0.3% | Overall R² = 0.238 | NSE = 0.238 | Score = 0.316
+HoursSinceFlush: High Sal RMSE = 0.482 | High MAPE = 0.4% | Overall R² = -0.371 | NSE = -0.371 | Score = 0.280
+DaysSinceFlush: High Sal RMSE = 0.482 | High MAPE = 0.4% | Overall R² = -0.371 | NSE = -0.371 | Score = 0.280
+StressFrequency7: High Sal RMSE = 0.432 | High MAPE = 0.4% | Overall R² = 0.235 | NSE = 0.235 | Score = 0.315
+StressFrequency14: High Sal RMSE = 0.431 | High MAPE = 0.4% | Overall R² = 0.249 | NSE = 0.249 | Score = 0.316
+StressFrequency30: High Sal RMSE = 0.428 | High MAPE = 0.3% | Overall R² = 0.238 | NSE = 0.238 | Score = 0.316
+Norm_CumulativeInflowDeficit3: High Sal RMSE = 0.421 | High MAPE = 0.3% | Overall R² = 0.254 | NSE = 0.254 | Score = 0.318
+Norm_CumulativeInflowDeficit7: High Sal RMSE = 0.420 | High MAPE = 0.3% | Overall R² = 0.270 | NSE = 0.270 | Score = 0.320
+Norm_CumulativeInflowDeficit30: High Sal RMSE = 0.416 | High MAPE = 0.3% | Overall R² = 0.273 | NSE = 0.273 | Score = 0.321
+Norm_MaxConsecutiveStress7: High Sal RMSE = 0.448 | High MAPE = 0.4% | Overall R² = 0.165 | NSE = 0.165 | Score = 0.304
+Norm_MaxConsecutiveStress14: High Sal RMSE = 0.500 | High MAPE = 0.4% | Overall R² = 0.159 | NSE = 0.159 | Score = 0.296
+Norm_MaxConsecutiveStress30: High Sal RMSE = 0.514 | High MAPE = 0.4% | Overall R² = 0.180 | NSE = 0.180 | Score = 0.295
+Best continuous stress predictor: Norm_CumulativeInflowDeficit30 (score: 0.321)
+
+Stage 8: Testing temporal predictors...
+
+=== TESTING TEMPORAL PREDICTORS ===
+Season: High Sal RMSE = 0.436 | High MAPE = 0.4% | Overall R² = 0.130 | NSE = 0.130 | Score = 0.301
+DayOfYear: High Sal RMSE = 0.432 | High MAPE = 0.4% | Overall R² = 0.136 | NSE = 0.136 | Score = 0.305
+Best temporal predictor: DayOfYear (score: 0.305)
+
+Stage 9: Testing interactions between best predictors...
+=== TESTING SYSTEMATIC INTERACTIONS ===
+Base formula: Salinity ~ Norm_TideRange24 + Norm_PowLagDischarge72 + Norm_RollingPowDischarge14 + Norm_PowInflows + Norm_RollingPowInflows10 + IsLowInflow + Norm_CumulativeInflowDeficit30 + DayOfYear
+Best predictors to test: Norm_TideRange24, Norm_PowLagDischarge72, Norm_RollingPowDischarge14, Norm_PowInflows, Norm_RollingPowInflows10, IsLowInflow, Norm_CumulativeInflowDeficit30, DayOfYear
+Testing pairwise interactions...
+Norm_TideRange24_x_Norm_PowLagDischarge72: High Sal RMSE = 0.410 | High MAPE = 0.3% | Overall R² = 0.338 | NSE = 0.338 | Score = 0.321
+Norm_TideRange24_x_Norm_RollingPowDischarge14: High Sal RMSE = 0.410 | High MAPE = 0.3% | Overall R² = 0.338 | NSE = 0.338 | Score = 0.321
+Norm_TideRange24_x_Norm_PowInflows: High Sal RMSE = 0.410 | High MAPE = 0.3% | Overall R² = 0.338 | NSE = 0.338 | Score = 0.321
+Norm_TideRange24_x_Norm_RollingPowInflows10: High Sal RMSE = 0.410 | High MAPE = 0.3% | Overall R² = 0.338 | NSE = 0.338 | Score = 0.321
+Norm_TideRange24_x_IsLowInflow: High Sal RMSE = 0.410 | High MAPE = 0.3% | Overall R² = 0.338 | NSE = 0.338 | Score = 0.321
+Norm_TideRange24_x_Norm_CumulativeInflowDeficit30: High Sal RMSE = 0.410 | High MAPE = 0.3% | Overall R² = 0.338 | NSE = 0.338 | Score = 0.321
+Norm_TideRange24_x_DayOfYear: High Sal RMSE = 0.410 | High MAPE = 0.3% | Overall R² = 0.338 | NSE = 0.338 | Score = 0.321
+Norm_PowLagDischarge72_x_Norm_RollingPowDischarge14: High Sal RMSE = 0.409 | High MAPE = 0.3% | Overall R² = 0.339 | NSE = 0.339 | Score = 0.321
+Norm_PowLagDischarge72_x_Norm_PowInflows: High Sal RMSE = 0.410 | High MAPE = 0.3% | Overall R² = 0.338 | NSE = 0.338 | Score = 0.321
+Norm_PowLagDischarge72_x_Norm_RollingPowInflows10: High Sal RMSE = 0.410 | High MAPE = 0.3% | Overall R² = 0.338 | NSE = 0.338 | Score = 0.321
+Norm_PowLagDischarge72_x_IsLowInflow: High Sal RMSE = 0.410 | High MAPE = 0.3% | Overall R² = 0.338 | NSE = 0.338 | Score = 0.321
+Norm_PowLagDischarge72_x_Norm_CumulativeInflowDeficit30: High Sal RMSE = 0.406 | High MAPE = 0.3% | Overall R² = 0.343 | NSE = 0.343 | Score = 0.322
+Norm_PowLagDischarge72_x_DayOfYear: High Sal RMSE = 0.407 | High MAPE = 0.3% | Overall R² = 0.343 | NSE = 0.343 | Score = 0.322
+Norm_RollingPowDischarge14_x_Norm_PowInflows: High Sal RMSE = 0.408 | High MAPE = 0.3% | Overall R² = 0.340 | NSE = 0.340 | Score = 0.321
+Norm_RollingPowDischarge14_x_Norm_RollingPowInflows10: High Sal RMSE = 0.408 | High MAPE = 0.3% | Overall R² = 0.340 | NSE = 0.340 | Score = 0.321
+Norm_RollingPowDischarge14_x_IsLowInflow: High Sal RMSE = 0.409 | High MAPE = 0.3% | Overall R² = 0.339 | NSE = 0.339 | Score = 0.321
+Norm_RollingPowDischarge14_x_Norm_CumulativeInflowDeficit30: High Sal RMSE = 0.401 | High MAPE = 0.3% | Overall R² = 0.353 | NSE = 0.353 | Score = 0.324
+Norm_RollingPowDischarge14_x_DayOfYear: High Sal RMSE = 0.402 | High MAPE = 0.3% | Overall R² = 0.352 | NSE = 0.352 | Score = 0.323
+Norm_PowInflows_x_Norm_RollingPowInflows10: High Sal RMSE = 0.410 | High MAPE = 0.3% | Overall R² = 0.338 | NSE = 0.338 | Score = 0.321
+Norm_PowInflows_x_IsLowInflow: High Sal RMSE = 0.410 | High MAPE = 0.3% | Overall R² = 0.338 | NSE = 0.338 | Score = 0.321
+Norm_PowInflows_x_Norm_CumulativeInflowDeficit30: High Sal RMSE = 0.405 | High MAPE = 0.3% | Overall R² = 0.346 | NSE = 0.346 | Score = 0.322
+Norm_PowInflows_x_DayOfYear: High Sal RMSE = 0.405 | High MAPE = 0.3% | Overall R² = 0.345 | NSE = 0.345 | Score = 0.322
+Norm_RollingPowInflows10_x_IsLowInflow: High Sal RMSE = 0.410 | High MAPE = 0.3% | Overall R² = 0.338 | NSE = 0.338 | Score = 0.321
+Norm_RollingPowInflows10_x_Norm_CumulativeInflowDeficit30: High Sal RMSE = 0.405 | High MAPE = 0.3% | Overall R² = 0.347 | NSE = 0.347 | Score = 0.322
+Norm_RollingPowInflows10_x_DayOfYear: High Sal RMSE = 0.403 | High MAPE = 0.3% | Overall R² = 0.350 | NSE = 0.350 | Score = 0.323
+IsLowInflow_x_Norm_CumulativeInflowDeficit30: High Sal RMSE = 0.409 | High MAPE = 0.3% | Overall R² = 0.343 | NSE = 0.343 | Score = 0.321
+IsLowInflow_x_DayOfYear: High Sal RMSE = 0.408 | High MAPE = 0.3% | Overall R² = 0.342 | NSE = 0.342 | Score = 0.321
+Norm_CumulativeInflowDeficit30_x_DayOfYear: High Sal RMSE = 0.399 | High MAPE = 0.3% | Overall R² = 0.361 | NSE = 0.361 | Score = 0.325
+Testing three-way interactions...
+Norm_TideRange24_x_Norm_PowLagDischarge72_x_Norm_RollingPowDischarge14: High Sal RMSE = 0.410 | High MAPE = 0.3% | Overall R² = 0.338 | NSE = 0.338 | Score = 0.321
+Norm_TideRange24_x_Norm_PowLagDischarge72_x_Norm_PowInflows: High Sal RMSE = 0.410 | High MAPE = 0.3% | Overall R² = 0.339 | NSE = 0.339 | Score = 0.321
+Norm_TideRange24_x_Norm_PowLagDischarge72_x_Norm_RollingPowInflows10: High Sal RMSE = 0.410 | High MAPE = 0.3% | Overall R² = 0.338 | NSE = 0.338 | Score = 0.321
+Norm_TideRange24_x_Norm_PowLagDischarge72_x_IsLowInflow: High Sal RMSE = 0.410 | High MAPE = 0.3% | Overall R² = 0.339 | NSE = 0.339 | Score = 0.320
+Norm_TideRange24_x_Norm_PowLagDischarge72_x_Norm_CumulativeInflowDeficit30: High Sal RMSE = 0.410 | High MAPE = 0.3% | Overall R² = 0.338 | NSE = 0.338 | Score = 0.321
+Norm_TideRange24_x_Norm_PowLagDischarge72_x_DayOfYear: High Sal RMSE = 0.410 | High MAPE = 0.3% | Overall R² = 0.338 | NSE = 0.338 | Score = 0.321
+Norm_TideRange24_x_Norm_RollingPowDischarge14_x_Norm_PowInflows: High Sal RMSE = 0.409 | High MAPE = 0.3% | Overall R² = 0.340 | NSE = 0.340 | Score = 0.321
+Norm_TideRange24_x_Norm_RollingPowDischarge14_x_Norm_RollingPowInflows10: High Sal RMSE = 0.410 | High MAPE = 0.3% | Overall R² = 0.338 | NSE = 0.338 | Score = 0.321
+Norm_TideRange24_x_Norm_RollingPowDischarge14_x_IsLowInflow: High Sal RMSE = 0.409 | High MAPE = 0.3% | Overall R² = 0.340 | NSE = 0.340 | Score = 0.320
+Norm_TideRange24_x_Norm_RollingPowDischarge14_x_Norm_CumulativeInflowDeficit30: High Sal RMSE = 0.410 | High MAPE = 0.3% | Overall R² = 0.338 | NSE = 0.338 | Score = 0.321
+Norm_TideRange24_x_Norm_RollingPowDischarge14_x_DayOfYear: High Sal RMSE = 0.410 | High MAPE = 0.3% | Overall R² = 0.338 | NSE = 0.338 | Score = 0.321
+Norm_TideRange24_x_Norm_PowInflows_x_Norm_RollingPowInflows10: High Sal RMSE = 0.409 | High MAPE = 0.3% | Overall R² = 0.341 | NSE = 0.341 | Score = 0.321
+Norm_TideRange24_x_Norm_PowInflows_x_IsLowInflow: High Sal RMSE = 0.410 | High MAPE = 0.3% | Overall R² = 0.339 | NSE = 0.339 | Score = 0.320
+Norm_TideRange24_x_Norm_PowInflows_x_Norm_CumulativeInflowDeficit30: High Sal RMSE = 0.409 | High MAPE = 0.3% | Overall R² = 0.340 | NSE = 0.340 | Score = 0.321
+Norm_TideRange24_x_Norm_PowInflows_x_DayOfYear: High Sal RMSE = 0.410 | High MAPE = 0.3% | Overall R² = 0.338 | NSE = 0.338 | Score = 0.321
+Norm_TideRange24_x_Norm_RollingPowInflows10_x_IsLowInflow: High Sal RMSE = 0.409 | High MAPE = 0.3% | Overall R² = 0.341 | NSE = 0.341 | Score = 0.320
+Norm_TideRange24_x_Norm_RollingPowInflows10_x_Norm_CumulativeInflowDeficit30: High Sal RMSE = 0.410 | High MAPE = 0.3% | Overall R² = 0.338 | NSE = 0.338 | Score = 0.321
+Norm_TideRange24_x_Norm_RollingPowInflows10_x_DayOfYear: High Sal RMSE = 0.410 | High MAPE = 0.3% | Overall R² = 0.338 | NSE = 0.338 | Score = 0.321
+Norm_TideRange24_x_IsLowInflow_x_Norm_CumulativeInflowDeficit30: High Sal RMSE = 0.409 | High MAPE = 0.3% | Overall R² = 0.340 | NSE = 0.340 | Score = 0.320
+Norm_TideRange24_x_IsLowInflow_x_DayOfYear: High Sal RMSE = 0.410 | High MAPE = 0.3% | Overall R² = 0.338 | NSE = 0.338 | Score = 0.320
+Norm_TideRange24_x_Norm_CumulativeInflowDeficit30_x_DayOfYear: High Sal RMSE = 0.410 | High MAPE = 0.3% | Overall R² = 0.338 | NSE = 0.338 | Score = 0.321
+Norm_PowLagDischarge72_x_Norm_RollingPowDischarge14_x_Norm_PowInflows: High Sal RMSE = 0.410 | High MAPE = 0.3% | Overall R² = 0.338 | NSE = 0.338 | Score = 0.321
+Norm_PowLagDischarge72_x_Norm_RollingPowDischarge14_x_Norm_RollingPowInflows10: High Sal RMSE = 0.410 | High MAPE = 0.3% | Overall R² = 0.338 | NSE = 0.338 | Score = 0.321
+Norm_PowLagDischarge72_x_Norm_RollingPowDischarge14_x_IsLowInflow: High Sal RMSE = 0.409 | High MAPE = 0.3% | Overall R² = 0.339 | NSE = 0.339 | Score = 0.320
+Norm_PowLagDischarge72_x_Norm_RollingPowDischarge14_x_Norm_CumulativeInflowDeficit30: High Sal RMSE = 0.407 | High MAPE = 0.3% | Overall R² = 0.340 | NSE = 0.340 | Score = 0.321
+Norm_PowLagDischarge72_x_Norm_RollingPowDischarge14_x_DayOfYear: High Sal RMSE = 0.408 | High MAPE = 0.3% | Overall R² = 0.339 | NSE = 0.339 | Score = 0.321
+Norm_PowLagDischarge72_x_Norm_PowInflows_x_Norm_RollingPowInflows10: High Sal RMSE = 0.410 | High MAPE = 0.3% | Overall R² = 0.338 | NSE = 0.338 | Score = 0.321
+Norm_PowLagDischarge72_x_Norm_PowInflows_x_IsLowInflow: High Sal RMSE = 0.410 | High MAPE = 0.3% | Overall R² = 0.339 | NSE = 0.339 | Score = 0.320
+Norm_PowLagDischarge72_x_Norm_PowInflows_x_Norm_CumulativeInflowDeficit30: High Sal RMSE = 0.409 | High MAPE = 0.3% | Overall R² = 0.339 | NSE = 0.339 | Score = 0.321
+Norm_PowLagDischarge72_x_Norm_PowInflows_x_DayOfYear: High Sal RMSE = 0.410 | High MAPE = 0.3% | Overall R² = 0.338 | NSE = 0.338 | Score = 0.321
+Norm_PowLagDischarge72_x_Norm_RollingPowInflows10_x_IsLowInflow: High Sal RMSE = 0.410 | High MAPE = 0.3% | Overall R² = 0.338 | NSE = 0.338 | Score = 0.320
+Norm_PowLagDischarge72_x_Norm_RollingPowInflows10_x_Norm_CumulativeInflowDeficit30: High Sal RMSE = 0.409 | High MAPE = 0.3% | Overall R² = 0.339 | NSE = 0.339 | Score = 0.321
+Norm_PowLagDischarge72_x_Norm_RollingPowInflows10_x_DayOfYear: High Sal RMSE = 0.410 | High MAPE = 0.3% | Overall R² = 0.338 | NSE = 0.338 | Score = 0.321
+Norm_PowLagDischarge72_x_IsLowInflow_x_Norm_CumulativeInflowDeficit30: High Sal RMSE = 0.406 | High MAPE = 0.3% | Overall R² = 0.343 | NSE = 0.343 | Score = 0.321
+Norm_PowLagDischarge72_x_IsLowInflow_x_DayOfYear: High Sal RMSE = 0.407 | High MAPE = 0.3% | Overall R² = 0.344 | NSE = 0.344 | Score = 0.321
+Norm_PowLagDischarge72_x_Norm_CumulativeInflowDeficit30_x_DayOfYear: High Sal RMSE = 0.405 | High MAPE = 0.3% | Overall R² = 0.344 | NSE = 0.344 | Score = 0.322
+Norm_RollingPowDischarge14_x_Norm_PowInflows_x_Norm_RollingPowInflows10: High Sal RMSE = 0.410 | High MAPE = 0.3% | Overall R² = 0.338 | NSE = 0.338 | Score = 0.321
+Norm_RollingPowDischarge14_x_Norm_PowInflows_x_IsLowInflow: High Sal RMSE = 0.408 | High MAPE = 0.3% | Overall R² = 0.340 | NSE = 0.340 | Score = 0.320
+Norm_RollingPowDischarge14_x_Norm_PowInflows_x_Norm_CumulativeInflowDeficit30: High Sal RMSE = 0.408 | High MAPE = 0.3% | Overall R² = 0.340 | NSE = 0.340 | Score = 0.321
+Norm_RollingPowDischarge14_x_Norm_PowInflows_x_DayOfYear: High Sal RMSE = 0.408 | High MAPE = 0.3% | Overall R² = 0.340 | NSE = 0.340 | Score = 0.321
+Norm_RollingPowDischarge14_x_Norm_RollingPowInflows10_x_IsLowInflow: High Sal RMSE = 0.408 | High MAPE = 0.3% | Overall R² = 0.340 | NSE = 0.340 | Score = 0.320
+Norm_RollingPowDischarge14_x_Norm_RollingPowInflows10_x_Norm_CumulativeInflowDeficit30: High Sal RMSE = 0.408 | High MAPE = 0.3% | Overall R² = 0.340 | NSE = 0.340 | Score = 0.321
+Norm_RollingPowDischarge14_x_Norm_RollingPowInflows10_x_DayOfYear: High Sal RMSE = 0.407 | High MAPE = 0.3% | Overall R² = 0.340 | NSE = 0.340 | Score = 0.321
+Norm_RollingPowDischarge14_x_IsLowInflow_x_Norm_CumulativeInflowDeficit30: High Sal RMSE = 0.401 | High MAPE = 0.3% | Overall R² = 0.353 | NSE = 0.353 | Score = 0.323
+Norm_RollingPowDischarge14_x_IsLowInflow_x_DayOfYear: High Sal RMSE = 0.402 | High MAPE = 0.3% | Overall R² = 0.352 | NSE = 0.352 | Score = 0.322
+Norm_RollingPowDischarge14_x_Norm_CumulativeInflowDeficit30_x_DayOfYear: High Sal RMSE = 0.398 | High MAPE = 0.3% | Overall R² = 0.356 | NSE = 0.356 | Score = 0.324
+Norm_PowInflows_x_Norm_RollingPowInflows10_x_IsLowInflow: High Sal RMSE = 0.410 | High MAPE = 0.3% | Overall R² = 0.338 | NSE = 0.338 | Score = 0.320
+Norm_PowInflows_x_Norm_RollingPowInflows10_x_Norm_CumulativeInflowDeficit30: High Sal RMSE = 0.410 | High MAPE = 0.3% | Overall R² = 0.338 | NSE = 0.338 | Score = 0.321
+Norm_PowInflows_x_Norm_RollingPowInflows10_x_DayOfYear: High Sal RMSE = 0.410 | High MAPE = 0.3% | Overall R² = 0.338 | NSE = 0.338 | Score = 0.321
+Norm_PowInflows_x_IsLowInflow_x_Norm_CumulativeInflowDeficit30: High Sal RMSE = 0.405 | High MAPE = 0.3% | Overall R² = 0.346 | NSE = 0.346 | Score = 0.321
+Norm_PowInflows_x_IsLowInflow_x_DayOfYear: High Sal RMSE = 0.405 | High MAPE = 0.3% | Overall R² = 0.345 | NSE = 0.345 | Score = 0.321
+Norm_PowInflows_x_Norm_CumulativeInflowDeficit30_x_DayOfYear: High Sal RMSE = 0.404 | High MAPE = 0.3% | Overall R² = 0.346 | NSE = 0.346 | Score = 0.322
+Norm_RollingPowInflows10_x_IsLowInflow_x_Norm_CumulativeInflowDeficit30: High Sal RMSE = 0.405 | High MAPE = 0.3% | Overall R² = 0.348 | NSE = 0.348 | Score = 0.321
+Norm_RollingPowInflows10_x_IsLowInflow_x_DayOfYear: High Sal RMSE = 0.403 | High MAPE = 0.3% | Overall R² = 0.352 | NSE = 0.352 | Score = 0.322
+Norm_RollingPowInflows10_x_Norm_CumulativeInflowDeficit30_x_DayOfYear: High Sal RMSE = 0.403 | High MAPE = 0.3% | Overall R² = 0.348 | NSE = 0.348 | Score = 0.323
+IsLowInflow_x_Norm_CumulativeInflowDeficit30_x_DayOfYear: High Sal RMSE = 0.398 | High MAPE = 0.3% | Overall R² = 0.363 | NSE = 0.363 | Score = 0.324
+Best interaction: Norm_CumulativeInflowDeficit30_x_DayOfYear (Score: 0.325)
+Best interaction: Norm_CumulativeInflowDeficit30_x_DayOfYear (score: 0.325)
+
+===============================================
+PREDICTOR SELECTION PROCESS COMPLETED
+===============================================
+SELECTED PREDICTORS BY CATEGORY:
+  tide: Norm_TideRange24
+  discharge_lag: Norm_PowLagDischarge72
+  discharge_rolling: Norm_RollingPowDischarge14
+  inflow_lag: Norm_PowInflows
+  inflow_rolling: Norm_RollingPowInflows10
+  stress_binary: IsLowInflow
+  stress_continuous: Norm_CumulativeInflowDeficit30
+  temporal: DayOfYear
+SELECTED INTERACTIONS:
+  main: Norm_CumulativeInflowDeficit30_x_DayOfYear
+
+Total selected predictors: 8
+Total selected interactions: 1
+===============================================
+
+> # Stop redirecting output and return to console
+> sink()

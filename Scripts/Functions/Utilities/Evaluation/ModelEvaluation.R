@@ -1,108 +1,86 @@
 # Function to perform model evaluation
-evaluate_model1.0 <- function(model, data, threshold = performance_criteria$thresholds$high_salinity_threshold, 
-                           model_type = "linear") {
+evaluate_model <- function(model, data, threshold = salinity_threshold, performance_weights = performance_criteria$weights, model_type = "gam") {
    
    # Get predictions based on model type
    predicted <- get_predictions(model, data, model_type)
    observed <- data$Salinity
    
-   # Remove rows where either observed or predicted is NA
+   # Clean data
    valid_idx <- !is.na(observed) & !is.na(predicted$Predicted)
    obs_clean <- observed[valid_idx]
    pred_clean <- predicted[valid_idx, which(colnames(predicted) == 'Predicted')]
    
    if (length(obs_clean) == 0) {
-      return(list(
-         overall_rmse = NA, overall_r2 = NA,
-         high_salinity_rmse = NA, high_salinity_mae = NA, high_salinity_bias = NA,
-         high_salinity_r2 = NA, high_salinity_count = 0,
-         hit_rate = 0, false_alarm_rate = 0.5, critical_success_index = 0,
-         volume_error = 0, skill_metrics = list(nash_sutcliffe = 0, skill_score = 0),
-         total_observations = 0, model_validity = FALSE
-      ))
+      return(NULL)
    }
    
-   # Overall performance metrics
-   overall_rmse <- sqrt(mean((obs_clean - pred_clean)^2))
+   # Calculate component scores
+   detection_results <- calculate_high_sal_detection(obs_clean, pred_clean, threshold)
+   accuracy_results <- calculate_high_sal_accuracy(obs_clean, pred_clean, threshold)
+   reliability_results <- calculate_high_sal_reliability(obs_clean, pred_clean, threshold)
+   overall_results <- calculate_overall_performance(obs_clean, pred_clean)
+   complexity_results <- calculate_complexity(model, model_type)
    
-   # Overall R-squared
-   tss <- sum((obs_clean - mean(obs_clean))^2)
-   rss <- sum((obs_clean - pred_clean)^2)
-   overall_r2 <- ifelse(tss == 0, 0, 1 - rss/tss)
-   
-   # High salinity event metrics
-   high_metrics <- extreme_event_metrics(obs_clean, pred_clean, threshold)
-   
-   # R-squared for high salinity events
-   high_idx <- obs_clean > threshold
-   if (sum(high_idx) > 1) {
-      obs_high <- obs_clean[high_idx]
-      pred_high <- pred_clean[high_idx]
-      tss_high <- sum((obs_high - mean(obs_high))^2)
-      rss_high <- sum((obs_high - pred_high)^2)
-      high_r2 <- ifelse(tss_high == 0, 0, 1 - rss_high/tss_high)
-   } else {
-      high_r2 <- NA
-   }
-   
-   # Skill metrics using your existing function
-   skill_metrics <- calculate_skill_metrics(obs_clean, pred_clean)
-   
-   # Model complexity metrics (important for GAMs)
-   complexity_metrics <- calculate_model_complexity(model, model_type)
-   
-   # Model validity check
-   min_high_sal_count <- if (exists("performance_criteria") && 
-                             !is.null(performance_criteria$thresholds$min_high_sal_count)) {
-      performance_criteria$thresholds$min_high_sal_count
-   } else {
-      5  # Default minimum
-   }
-   
-   model_validity <- (
-      !is.na(high_metrics$count) &&
-         high_metrics$count >= min_high_sal_count &&
-         !is.na(overall_r2) &&
-         is.finite(overall_rmse)
+   # Calculate weighted composite score
+   composite_score <- (
+      performance_weights['high_sal_detection'] * detection_results$score +
+      performance_weights['high_sal_accuracy'] * accuracy_results$score +
+      performance_weights['high_sal_reliability'] * reliability_results$score +
+      performance_weights['overall_performance'] * overall_results$score +
+      performance_weights['complexity'] * complexity_results$score
    )
    
-   # Residual analysis for GAMs
-   residual_metrics <- if (model_type == "gam") {
-      calculate_gam_residual_metrics(model, obs_clean, pred_clean)
-   } else {
-      list()
-   }
+   # Model validity check
+   model_validity <- (
+      accuracy_results$count >= 5 &&
+         !is.na(overall_results$r2) &&
+         is.finite(overall_results$rmse)
+   )
    
+   # Return comprehensive but interpretable evaluation
    return(list(
-      # Overall metrics
-      overall_rmse = overall_rmse,
-      overall_r2 = overall_r2,
-      overall_mae = mean(abs(obs_clean - pred_clean)), 
+      # THE MAIN SCORE
+      composite_score = as.numeric(composite_score),
       
-      # High salinity metrics
-      high_salinity_rmse = high_metrics$rmse,
-      high_salinity_mae = high_metrics$mae,
-      high_salinity_bias = high_metrics$bias,
-      high_salinity_r2 = high_r2,
-      high_salinity_count = high_metrics$count,
-      high_salinity_mape = high_metrics$mape,
-      hit_rate = high_metrics$hit_rate,
-      false_alarm_rate = high_metrics$false_alarm_rate,
-      critical_success_index = high_metrics$critical_success_index,
-      volume_error = high_metrics$volume_error,
+      # Component scores (all 0-1, higher is better)
+      high_sal_detection_score = detection_results$score,
+      high_sal_accuracy_score = accuracy_results$score,
+      high_sal_reliability_score = reliability_results$score,
+      overall_performance_score = overall_results$score,
+      complexity_score = complexity_results$score,
       
-      # Skill metrics
-      skill_metrics = skill_metrics,
+      # High salinity confusion matrix metrics
+      hit_rate = detection_results$hit_rate,
+      miss_rate = detection_results$miss_rate,
+      false_alarm_rate = reliability_results$false_alarm_rate,
+      precision = reliability_results$precision,
+      csi = reliability_results$csi,
       
-      # Model complexity (important for GAMs)
-      complexity_metrics = complexity_metrics,
+      # High salinity error metrics
+      high_sal_r2 = accuracy_results$r2,
+      high_sal_rmse = accuracy_results$rmse,
+      high_sal_mae = accuracy_results$mae,
+      high_sal_bias = accuracy_results$bias,
+      high_sal_count = accuracy_results$count,
+      high_sal_kge = accuracy_results$kge,
+      high_sal_nse = accuracy_results$nse,
       
-      # GAM-specific residual metrics
-      residual_metrics = residual_metrics, 
+      # Overall error metrics
+      overall_r2 = overall_results$r2,
+      overall_rmse = overall_results$rmse,
+      overall_mae = overall_results$mae,
+      overall_bias = overall_results$bias,
+      overall_kge = overall_results$kge,
+      overall_nse = overall_results$nse,
+      
+      # Model complexity metrics
+      model_edf = complexity_results$edf,
+      model_n_smooths = complexity_results$n_smooths,
       
       # Meta information
       total_observations = length(obs_clean),
-      high_salinity_fraction = high_metrics$count / length(obs_clean),
-      model_validity = model_validity
+      high_salinity_fraction = accuracy_results$count / length(obs_clean),
+      model_validity = model_validity,
+      threshold_used = threshold
    ))
 }

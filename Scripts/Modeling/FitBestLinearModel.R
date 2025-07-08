@@ -112,20 +112,24 @@ performance_criteria <- list(
 )
 
 # Save model building output as a text file
-sink("Outputs/Experiments/LinearModeling/LinearModelBuilderLog.txt")
+#sink("Outputs/Experiments/LinearModeling/LinearModelBuilderLog.txt")
+sink("Outputs/Experiments/LinearModeling/LinearPredictorSelectionLog.txt")
 
-linear_model_results <- linear_model_builder(model_data, salinity_threshold, predictor_config, performance_criteria)
+#linear_model_results <- linear_model_builder(model_data, salinity_threshold, predictor_config, performance_criteria)
+linear_predictor_results <- linear_predictor_selector(model_data, salinity_threshold, predictor_config, performance_criteria)
 
 # Stop redirecting output and return to console
 sink()
 
 # Strip stage results before writing (huge, take time to save and not really needed)
-linear_model_results$stage_results <- NULL
-environment(linear_model_results) <- new.env()
+linear_predictor_results$stage_results <- NULL
+environment(linear_predictor_results) <- new.env()
 
 # Write output files
-outputs <- list(linear_model_results)
-file_names <- c('LinearModelResults')
+outputs <- list(linear_predictor_results)
+#file_names <- c('LinearModelResults')
+file_names <- c('LinearPredictors')
+#write_qs_files(outputs, 'Outputs/Experiments/LinearModeling', file_names, preset = 'archive')
 write_qs_files(outputs, 'Outputs/Experiments/LinearModeling', file_names, preset = 'archive')
 
 # Clear environment

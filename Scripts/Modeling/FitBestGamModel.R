@@ -18,25 +18,18 @@ library(dplyr)
 library(lubridate)
 
 # Read in linear modeling results
-linear_model_results <- func_env$read_qs_files('Outputs/LinearModeling/LinearModelResults.qs')
+linear_predictor_results <- func_env$read_qs_files('Outputs/Experiments/LinearModeling/LinearPredictors.qs')
 
 # Read in model data 
 model_data <- as.data.frame(func_env$read_qs_files('Data/Tidied/Final/FinalModelData.qs'))
 
 # Set salinity threshold
-salinity_threshold = 1.0
+salinity_threshold = 0.3
 
 ###################################### GAM Model Building #############################
 
-# Clean up results from linear modeling
-linear_model <- linear_model_results$model
-linear_formula <- formula(linear_model)
-linear_predictors <- all.vars(linear_formula)[-1]
-rm(linear_model_results, linear_model)
-environment(linear_formula) <- baseenv() # strip the environment to save ram when parallelizing
-
 # Create minimal data object - only necessary columns to save space
-required_cols <- unique(c('DateTime', 'Year', 'Salinity', linear_predictors))
+required_cols <- unique(c('DateTime', 'Year', 'Salinity', linear_predictor_results$predictors$all_predictors))
 required_cols <- required_cols[required_cols %in% names(model_data)]
 gam_data <- model_data[, required_cols, drop = FALSE]
 
