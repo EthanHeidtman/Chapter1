@@ -35,6 +35,7 @@ data <- data %>%
    mutate_if(is.character, as.factor) %>%
    relocate(Season, .after = DayOfYear)
 
+
 ####################### MODEL DATA PREPARATION PIPELINE ##########################
 
 # Create the model data
@@ -199,6 +200,11 @@ mutate(
    StressFrequency7 = LowInflowHours7 / (24 * 7),
    StressFrequency14 = LowInflowHours14 / (24 * 14),
    StressFrequency30 = LowInflowHours30 / (24 * 30),
+   
+   # Standardized Streamflow Index (fit using gamma distribution). Negative = drought, positive = flood
+   SSI7 = compute_ssi(Inflows, datetime = DateTime, window_hours = 24 * 7, distribution = 'gamma'),
+   SSI14 = compute_ssi(Inflows, datetime = DateTime, window_hours = 24 * 14, distribution = 'gamma'),
+   SSI30 = compute_ssi(Inflows, datetime = DateTime, window_hours = 24 * 30, distribution = 'gamma')
 ) %>%
    
    # Clean up temporary variables
@@ -208,7 +214,7 @@ mutate(
 model_data <- model_data %>%
    relocate(Discharge, .after = Salinity) %>%
    relocate(FERC, where(is.logical), where(is.character), where(is.factor), 
-            contains('Hours'), contains('Days'), contains('Frequency'), .after = Inflows) %>%
+            contains('Hours'), contains('Days'), contains('Frequency'), contains('SSI'), .after = Inflows) %>%
    mutate_if(is.logical, as.factor)
 
 # Normalize Predictors and Add to model_data

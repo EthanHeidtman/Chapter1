@@ -102,6 +102,9 @@ Norm_CumulativeInflowDeficit30: High Sal RMSE = 0.416 | High MAPE = 0.3% | Overa
 Norm_MaxConsecutiveStress7: High Sal RMSE = 0.448 | High MAPE = 0.4% | Overall R² = 0.165 | NSE = 0.165 | Score = 0.304
 Norm_MaxConsecutiveStress14: High Sal RMSE = 0.500 | High MAPE = 0.4% | Overall R² = 0.159 | NSE = 0.159 | Score = 0.296
 Norm_MaxConsecutiveStress30: High Sal RMSE = 0.514 | High MAPE = 0.4% | Overall R² = 0.180 | NSE = 0.180 | Score = 0.295
+SSI7: High Sal RMSE = 0.430 | High MAPE = 0.4% | Overall R² = 0.267 | NSE = 0.267 | Score = 0.318
+SSI14: High Sal RMSE = 0.478 | High MAPE = 0.4% | Overall R² = 0.272 | NSE = 0.272 | Score = 0.311
+SSI30: High Sal RMSE = 0.491 | High MAPE = 0.4% | Overall R² = 0.306 | NSE = 0.306 | Score = 0.311
 Best continuous stress predictor: Norm_CumulativeInflowDeficit30 (score: 0.321)
 
 Stage 8: Testing temporal predictors...

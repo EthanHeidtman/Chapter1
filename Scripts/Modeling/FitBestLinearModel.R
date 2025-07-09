@@ -75,7 +75,7 @@ predictor_config <- list(
                          'LowInflowHours14', 'LowInflowHours30', 'HoursSinceFlush', 'DaysSinceFlush',
                          'StressFrequency7', 'StressFrequency14', 'StressFrequency30', 'Norm_CumulativeInflowDeficit3',
                          'Norm_CumulativeInflowDeficit7', 'Norm_CumulativeInflowDeficit30', 'Norm_MaxConsecutiveStress7',
-                         'Norm_MaxConsecutiveStress14', 'Norm_MaxConsecutiveStress30'),
+                         'Norm_MaxConsecutiveStress14', 'Norm_MaxConsecutiveStress30', 'SSI7', 'SSI14', 'SSI30'),
 
    # Seasonal/temporal
    temporal = c("Season", "DayOfYear")
@@ -101,9 +101,9 @@ predictor_config <- list(
 performance_criteria <- list(
    weights = c(
       # High salinity event metrics (70% of total weight)
-      high_sal_detection = 0.25,     # Confusion matrix metrics (hit rate, etc.)
-      high_sal_accuracy = 0.25,      # Error metrics (RMSE, MAE, bias) for high sal events
-      high_sal_reliability = 0.20,   # False alarms and precision
+      #high_sal_detection = 0.25,     # Confusion matrix metrics (hit rate, etc.)
+      high_sal_accuracy = 0.35,      # Error metrics (RMSE, MAE, bias) for high sal events
+      high_sal_reliability = 0.35,   # Does the model detect events and can I trust the predictions?
       
       # Model characteristics (30% of total weight)
       overall_performance = 0.25,    # Overall error metrics

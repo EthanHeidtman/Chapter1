@@ -15,7 +15,7 @@ evaluate_model <- function(model, data, threshold = salinity_threshold, performa
    }
    
    # Calculate component scores
-   detection_results <- calculate_high_sal_detection(obs_clean, pred_clean, threshold)
+   #detection_results <- calculate_high_sal_detection(obs_clean, pred_clean, threshold)
    accuracy_results <- calculate_high_sal_accuracy(obs_clean, pred_clean, threshold)
    reliability_results <- calculate_high_sal_reliability(obs_clean, pred_clean, threshold)
    overall_results <- calculate_overall_performance(obs_clean, pred_clean)
@@ -23,7 +23,7 @@ evaluate_model <- function(model, data, threshold = salinity_threshold, performa
    
    # Calculate weighted composite score
    composite_score <- (
-      performance_weights['high_sal_detection'] * detection_results$score +
+      #performance_weights['high_sal_detection'] * detection_results$score +
       performance_weights['high_sal_accuracy'] * accuracy_results$score +
       performance_weights['high_sal_reliability'] * reliability_results$score +
       performance_weights['overall_performance'] * overall_results$score +
@@ -43,18 +43,18 @@ evaluate_model <- function(model, data, threshold = salinity_threshold, performa
       composite_score = as.numeric(composite_score),
       
       # Component scores (all 0-1, higher is better)
-      high_sal_detection_score = detection_results$score,
+      #high_sal_detection_score = detection_results$score,
       high_sal_accuracy_score = accuracy_results$score,
       high_sal_reliability_score = reliability_results$score,
       overall_performance_score = overall_results$score,
       complexity_score = complexity_results$score,
       
       # High salinity confusion matrix metrics
-      hit_rate = detection_results$hit_rate,
-      miss_rate = detection_results$miss_rate,
+      hit_rate = reliability_results$sensitivity,
+      miss_rate = 1 - reliability_results$sensitivity,
       false_alarm_rate = reliability_results$false_alarm_rate,
       precision = reliability_results$precision,
-      csi = reliability_results$csi,
+      #csi = reliability_results$csi,
       
       # High salinity error metrics
       high_sal_r2 = accuracy_results$r2,

@@ -33,12 +33,6 @@ required_cols <- unique(c('DateTime', 'Year', 'Salinity', linear_predictor_resul
 required_cols <- required_cols[required_cols %in% names(model_data)]
 gam_data <- model_data[, required_cols, drop = FALSE]
 
-
-func_env <- new.env()
-lapply(list.files("Scripts/Functions", full.names = TRUE, pattern = "\\.R$", recursive = TRUE), function(f) {
-   sys.source(f, envir = func_env)
-})
-
 test_data <- gam_data %>%
    filter(Year == 2016)
 
