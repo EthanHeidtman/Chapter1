@@ -249,6 +249,43 @@
       "Maintainer": "Dirk Eddelbuettel <edd@debian.org>",
       "Repository": "RSPM"
     },
+    "RcppEigen": {
+      "Package": "RcppEigen",
+      "Version": "0.3.4.0.2",
+      "Source": "Repository",
+      "Type": "Package",
+      "Title": "'Rcpp' Integration for the 'Eigen' Templated Linear Algebra Library",
+      "Date": "2024-08-23",
+      "Authors@R": "c(person(\"Doug\", \"Bates\", role = \"aut\", comment = c(ORCID = \"0000-0001-8316-9503\")), person(\"Dirk\", \"Eddelbuettel\", role = c(\"aut\", \"cre\"), email = \"edd@debian.org\", comment = c(ORCID = \"0000-0001-6419-907X\")), person(\"Romain\", \"Francois\", role = \"aut\", comment = c(ORCID = \"0000-0002-2444-4226\")), person(\"Yixuan\", \"Qiu\", role = \"aut\", comment = c(ORCID = \"0000-0003-0109-6692\")), person(\"Authors of\", \"Eigen\", role = \"cph\", comment = \"Authorship and copyright in included Eigen library as detailed in inst/COPYRIGHTS\"))",
+      "Copyright": "See the file COPYRIGHTS for various Eigen copyright details",
+      "Description": "R and 'Eigen' integration using 'Rcpp'. 'Eigen' is a C++ template library for linear algebra: matrices, vectors, numerical solvers and related algorithms.  It supports dense and sparse matrices on integer, floating point and complex numbers, decompositions of such matrices, and solutions of linear systems. Its performance on many algorithms is comparable with some of the best implementations based on 'Lapack' and level-3 'BLAS'. The 'RcppEigen' package includes the header files from the 'Eigen' C++ template library. Thus users do not need to install 'Eigen' itself in order to use 'RcppEigen'. Since version 3.1.1, 'Eigen' is licensed under the Mozilla Public License (version 2); earlier version were licensed under the GNU LGPL version 3 or later. 'RcppEigen' (the 'Rcpp' bindings/bridge to 'Eigen') is licensed under the GNU GPL version 2 or later, as is the rest of 'Rcpp'.",
+      "License": "GPL (>= 2) | file LICENSE",
+      "LazyLoad": "yes",
+      "Depends": [
+        "R (>= 3.6.0)"
+      ],
+      "LinkingTo": [
+        "Rcpp"
+      ],
+      "Imports": [
+        "Rcpp (>= 0.11.0)",
+        "stats",
+        "utils"
+      ],
+      "Suggests": [
+        "Matrix",
+        "inline",
+        "tinytest",
+        "pkgKitten",
+        "microbenchmark"
+      ],
+      "URL": "https://github.com/RcppCore/RcppEigen, https://dirk.eddelbuettel.com/code/rcpp.eigen.html",
+      "BugReports": "https://github.com/RcppCore/RcppEigen/issues",
+      "NeedsCompilation": "yes",
+      "Author": "Doug Bates [aut] (<https://orcid.org/0000-0001-8316-9503>), Dirk Eddelbuettel [aut, cre] (<https://orcid.org/0000-0001-6419-907X>), Romain Francois [aut] (<https://orcid.org/0000-0002-2444-4226>), Yixuan Qiu [aut] (<https://orcid.org/0000-0003-0109-6692>), Authors of Eigen [cph] (Authorship and copyright in included Eigen library as detailed in inst/COPYRIGHTS)",
+      "Maintainer": "Dirk Eddelbuettel <edd@debian.org>",
+      "Repository": "CRAN"
+    },
     "RcppParallel": {
       "Package": "RcppParallel",
       "Version": "5.1.10",
@@ -2353,6 +2390,52 @@
       "Maintainer": "Thomas Lin Pedersen <thomas.pedersen@posit.co>",
       "Repository": "RSPM"
     },
+    "hardhat": {
+      "Package": "hardhat",
+      "Version": "1.4.1",
+      "Source": "Repository",
+      "Title": "Construct Modeling Packages",
+      "Authors@R": "c( person(\"Hannah\", \"Frick\", , \"hannah@posit.co\", role = c(\"aut\", \"cre\"), comment = c(ORCID = \"0000-0002-6049-5258\")), person(\"Davis\", \"Vaughan\", , \"davis@posit.co\", role = \"aut\"), person(\"Max\", \"Kuhn\", , \"max@posit.co\", role = \"aut\"), person(\"Posit Software, PBC\", role = c(\"cph\", \"fnd\")) )",
+      "Description": "Building modeling packages is hard. A large amount of effort generally goes into providing an implementation for a new method that is efficient, fast, and correct, but often less emphasis is put on the user interface. A good interface requires specialized knowledge about S3 methods and formulas, which the average package developer might not have. The goal of 'hardhat' is to reduce the burden around building new modeling packages by providing functionality for preprocessing, predicting, and validating input.",
+      "License": "MIT + file LICENSE",
+      "URL": "https://github.com/tidymodels/hardhat, https://hardhat.tidymodels.org",
+      "BugReports": "https://github.com/tidymodels/hardhat/issues",
+      "Depends": [
+        "R (>= 3.5.0)"
+      ],
+      "Imports": [
+        "cli (>= 3.6.0)",
+        "glue (>= 1.6.2)",
+        "rlang (>= 1.1.0)",
+        "sparsevctrs (>= 0.2.0)",
+        "tibble (>= 3.2.1)",
+        "vctrs (>= 0.6.0)"
+      ],
+      "Suggests": [
+        "covr",
+        "crayon",
+        "devtools",
+        "knitr",
+        "Matrix",
+        "modeldata (>= 0.0.2)",
+        "recipes (>= 1.0.5)",
+        "rmarkdown (>= 2.3)",
+        "roxygen2",
+        "testthat (>= 3.0.0)",
+        "usethis (>= 2.1.5)",
+        "withr (>= 3.0.0)"
+      ],
+      "VignetteBuilder": "knitr",
+      "Config/Needs/website": "tidyverse/tidytemplate",
+      "Config/testthat/edition": "3",
+      "Encoding": "UTF-8",
+      "LazyData": "true",
+      "RoxygenNote": "7.3.2",
+      "NeedsCompilation": "no",
+      "Author": "Hannah Frick [aut, cre] (<https://orcid.org/0000-0002-6049-5258>), Davis Vaughan [aut], Max Kuhn [aut], Posit Software, PBC [cph, fnd]",
+      "Maintainer": "Hannah Frick <hannah@posit.co>",
+      "Repository": "CRAN"
+    },
     "haven": {
       "Package": "haven",
       "Version": "2.5.4",
@@ -3372,50 +3455,6 @@
       "Maintainer": "Henrik Bengtsson <henrikb@braju.com>",
       "Repository": "CRAN"
     },
-    "patchwork": {
-      "Package": "patchwork",
-      "Version": "1.3.0",
-      "Source": "Repository",
-      "Type": "Package",
-      "Title": "The Composer of Plots",
-      "Authors@R": "person(given = \"Thomas Lin\", family = \"Pedersen\", role = c(\"cre\", \"aut\"), email = \"thomasp85@gmail.com\", comment = c(ORCID = \"0000-0002-5147-4711\"))",
-      "Maintainer": "Thomas Lin Pedersen <thomasp85@gmail.com>",
-      "Description": "The 'ggplot2' package provides a strong API for sequentially  building up a plot, but does not concern itself with composition of multiple plots. 'patchwork' is a package that expands the API to allow for  arbitrarily complex composition of plots by, among others, providing  mathematical operators for combining multiple plots. Other packages that try  to address this need (but with a different approach) are 'gridExtra' and  'cowplot'.",
-      "License": "MIT + file LICENSE",
-      "Encoding": "UTF-8",
-      "Imports": [
-        "ggplot2 (>= 3.0.0)",
-        "gtable",
-        "grid",
-        "stats",
-        "grDevices",
-        "utils",
-        "graphics",
-        "rlang (>= 1.0.0)",
-        "cli",
-        "farver"
-      ],
-      "RoxygenNote": "7.3.2",
-      "URL": "https://patchwork.data-imaginist.com, https://github.com/thomasp85/patchwork",
-      "BugReports": "https://github.com/thomasp85/patchwork/issues",
-      "Suggests": [
-        "knitr",
-        "rmarkdown",
-        "gridGraphics",
-        "gridExtra",
-        "ragg",
-        "testthat (>= 2.1.0)",
-        "vdiffr",
-        "covr",
-        "png",
-        "gt (>= 0.11.0)"
-      ],
-      "VignetteBuilder": "knitr",
-      "Config/Needs/website": "gifski",
-      "NeedsCompilation": "no",
-      "Author": "Thomas Lin Pedersen [cre, aut] (<https://orcid.org/0000-0002-5147-4711>)",
-      "Repository": "CRAN"
-    },
     "pillar": {
       "Package": "pillar",
       "Version": "1.10.2",
@@ -3928,6 +3967,40 @@
       "Author": "Thomas Lin Pedersen [cre, aut] (<https://orcid.org/0000-0002-5147-4711>), Maxim Shemanarev [aut, cph] (Author of AGG), Tony Juricic [ctb, cph] (Contributor to AGG), Milan Marusinec [ctb, cph] (Contributor to AGG), Spencer Garrett [ctb] (Contributor to AGG), Posit, PBC [cph, fnd]",
       "Repository": "RSPM"
     },
+    "ranger": {
+      "Package": "ranger",
+      "Version": "0.17.0",
+      "Source": "Repository",
+      "Type": "Package",
+      "Title": "A Fast Implementation of Random Forests",
+      "Date": "2024-11-08",
+      "Authors@R": "c( person(\"Marvin N.\", \"Wright\", email = \"cran@wrig.de\", role = c(\"aut\", \"cre\")), person(\"Stefan\", \"Wager\", role = \"ctb\"), person(\"Philipp\", \"Probst\", role = \"ctb\"))",
+      "Description": "A fast implementation of Random Forests, particularly suited for high dimensional data. Ensembles of classification, regression, survival and probability prediction trees are supported. Data from genome-wide association studies can be analyzed efficiently. In addition to data frames, datasets of class 'gwaa.data' (R package 'GenABEL') and 'dgCMatrix' (R package 'Matrix')  can be directly analyzed.",
+      "License": "GPL-3",
+      "Imports": [
+        "Rcpp (>= 0.11.2)",
+        "Matrix"
+      ],
+      "LinkingTo": [
+        "Rcpp",
+        "RcppEigen"
+      ],
+      "Depends": [
+        "R (>= 3.1)"
+      ],
+      "Suggests": [
+        "survival",
+        "testthat"
+      ],
+      "Encoding": "UTF-8",
+      "RoxygenNote": "7.3.2",
+      "URL": "https://imbs-hl.github.io/ranger/, https://github.com/imbs-hl/ranger",
+      "BugReports": "https://github.com/imbs-hl/ranger/issues",
+      "NeedsCompilation": "yes",
+      "Author": "Marvin N. Wright [aut, cre], Stefan Wager [ctb], Philipp Probst [ctb]",
+      "Maintainer": "Marvin N. Wright <cran@wrig.de>",
+      "Repository": "CRAN"
+    },
     "rappdirs": {
       "Package": "rappdirs",
       "Version": "0.3.3",
@@ -4343,6 +4416,55 @@
       "Maintainer": "Yihui Xie <xie@yihui.name>",
       "Repository": "RSPM"
     },
+    "rpart": {
+      "Package": "rpart",
+      "Version": "4.1.24",
+      "Source": "Repository",
+      "Priority": "recommended",
+      "Date": "2025-01-06",
+      "Authors@R": "c(person(\"Terry\", \"Therneau\", role = \"aut\", email = \"therneau@mayo.edu\"), person(\"Beth\", \"Atkinson\", role = c(\"aut\", \"cre\"), email = \"atkinson@mayo.edu\"), person(\"Brian\", \"Ripley\", role = \"trl\", email = \"ripley@stats.ox.ac.uk\", comment = \"producer of the initial R port, maintainer 1999-2017\"))",
+      "Description": "Recursive partitioning for classification,  regression and survival trees.  An implementation of most of the  functionality of the 1984 book by Breiman, Friedman, Olshen and Stone.",
+      "Title": "Recursive Partitioning and Regression Trees",
+      "Depends": [
+        "R (>= 2.15.0)",
+        "graphics",
+        "stats",
+        "grDevices"
+      ],
+      "Suggests": [
+        "survival"
+      ],
+      "License": "GPL-2 | GPL-3",
+      "LazyData": "yes",
+      "ByteCompile": "yes",
+      "NeedsCompilation": "yes",
+      "Author": "Terry Therneau [aut], Beth Atkinson [aut, cre], Brian Ripley [trl] (producer of the initial R port, maintainer 1999-2017)",
+      "Maintainer": "Beth Atkinson <atkinson@mayo.edu>",
+      "Repository": "CRAN",
+      "URL": "https://github.com/bethatkinson/rpart, https://cran.r-project.org/package=rpart",
+      "BugReports": "https://github.com/bethatkinson/rpart/issues"
+    },
+    "rpart.plot": {
+      "Package": "rpart.plot",
+      "Version": "3.1.2",
+      "Source": "Repository",
+      "Title": "Plot 'rpart' Models: An Enhanced Version of 'plot.rpart'",
+      "Author": "Stephen Milborrow",
+      "Maintainer": "Stephen Milborrow <milbo@sonic.net>",
+      "Depends": [
+        "R (>= 3.4.0)",
+        "rpart (>= 4.1-15)"
+      ],
+      "Suggests": [
+        "earth (>= 5.1.2)"
+      ],
+      "Description": "Plot 'rpart' models. Extends plot.rpart() and text.rpart() in the 'rpart' package.",
+      "License": "GPL-3",
+      "LazyData": "yes",
+      "URL": "http://www.milbo.org/rpart-plot/index.html",
+      "NeedsCompilation": "no",
+      "Repository": "CRAN"
+    },
     "rprojroot": {
       "Package": "rprojroot",
       "Version": "2.0.4",
@@ -4649,6 +4771,44 @@
       "BugReports": "https://github.com/kevinushey/sourcetools/issues",
       "Encoding": "UTF-8",
       "NeedsCompilation": "yes",
+      "Repository": "CRAN"
+    },
+    "sparsevctrs": {
+      "Package": "sparsevctrs",
+      "Version": "0.3.4",
+      "Source": "Repository",
+      "Title": "Sparse Vectors for Use in Data Frames",
+      "Authors@R": "c( person(\"Emil\", \"Hvitfeldt\", , \"emil.hvitfeldt@posit.co\", role = c(\"aut\", \"cre\"), comment = c(ORCID = \"0000-0002-0679-1945\")), person(\"Davis\", \"Vaughan\", , \"davis@posit.co\", role = \"ctb\"), person(\"Posit Software, PBC\", role = c(\"cph\", \"fnd\"), comment = c(ROR = \"03wc8by49\")) )",
+      "Description": "Provides sparse vectors powered by ALTREP (Alternative Representations for R Objects) that behave like regular vectors, and can thus be used in data frames. Also provides tools to convert between sparse matrices and data frames with sparse columns and functions to interact with sparse vectors.",
+      "License": "MIT + file LICENSE",
+      "URL": "https://github.com/r-lib/sparsevctrs, https://r-lib.github.io/sparsevctrs/",
+      "BugReports": "https://github.com/r-lib/sparsevctrs/issues",
+      "Depends": [
+        "R (>= 4.1)"
+      ],
+      "Imports": [
+        "cli (>= 3.4.0)",
+        "rlang (>= 1.1.0)",
+        "vctrs"
+      ],
+      "Suggests": [
+        "knitr",
+        "Matrix",
+        "methods",
+        "rmarkdown",
+        "testthat (>= 3.0.0)",
+        "tibble",
+        "withr"
+      ],
+      "VignetteBuilder": "knitr",
+      "Config/Needs/website": "tidyverse/tidytemplate, rmarkdown, lobstr, ggplot2, bench, tidyr, ggbeeswarm",
+      "Config/testthat/edition": "3",
+      "Encoding": "UTF-8",
+      "RoxygenNote": "7.3.2",
+      "Config/usethis/last-upkeep": "2025-05-25",
+      "NeedsCompilation": "yes",
+      "Author": "Emil Hvitfeldt [aut, cre] (ORCID: <https://orcid.org/0000-0002-0679-1945>), Davis Vaughan [ctb], Posit Software, PBC [cph, fnd] (ROR: <https://ror.org/03wc8by49>)",
+      "Maintainer": "Emil Hvitfeldt <emil.hvitfeldt@posit.co>",
       "Repository": "CRAN"
     },
     "stringfish": {
@@ -5667,6 +5827,57 @@
       "URL": "https://github.com/vubiostat/r-yaml/",
       "BugReports": "https://github.com/vubiostat/r-yaml/issues",
       "NeedsCompilation": "yes",
+      "Repository": "CRAN"
+    },
+    "yardstick": {
+      "Package": "yardstick",
+      "Version": "1.3.2",
+      "Source": "Repository",
+      "Type": "Package",
+      "Title": "Tidy Characterizations of Model Performance",
+      "Authors@R": "c( person(\"Max\", \"Kuhn\", , \"max@posit.co\", role = \"aut\"), person(\"Davis\", \"Vaughan\", , \"davis@posit.co\", role = \"aut\"), person(\"Emil\", \"Hvitfeldt\", , \"emil.hvitfeldt@posit.co\", role = c(\"aut\", \"cre\"), comment = c(ORCID = \"0000-0002-0679-1945\")), person(\"Posit Software, PBC\", role = c(\"cph\", \"fnd\")) )",
+      "Description": "Tidy tools for quantifying how well model fits to a data set such as confusion matrices, class probability curve summaries, and regression metrics (e.g., RMSE).",
+      "License": "MIT + file LICENSE",
+      "URL": "https://github.com/tidymodels/yardstick, https://yardstick.tidymodels.org",
+      "BugReports": "https://github.com/tidymodels/yardstick/issues",
+      "Depends": [
+        "R (>= 3.6.0)"
+      ],
+      "Imports": [
+        "cli",
+        "dplyr (>= 1.1.0)",
+        "generics (>= 0.1.2)",
+        "hardhat (>= 1.3.0)",
+        "lifecycle (>= 1.0.3)",
+        "rlang (>= 1.1.4)",
+        "tibble",
+        "tidyselect (>= 1.2.0)",
+        "utils",
+        "vctrs (>= 0.5.0)",
+        "withr"
+      ],
+      "Suggests": [
+        "covr",
+        "crayon",
+        "ggplot2",
+        "knitr",
+        "probably (>= 1.0.0)",
+        "rmarkdown",
+        "survival (>= 3.5-0)",
+        "testthat (>= 3.0.0)",
+        "tidyr"
+      ],
+      "VignetteBuilder": "knitr",
+      "Config/Needs/website": "tidyverse/tidytemplate",
+      "Config/testthat/edition": "3",
+      "Config/usethis/last-upkeep": "2024-10-24",
+      "Encoding": "UTF-8",
+      "LazyData": "true",
+      "RoxygenNote": "7.3.2",
+      "Collate": "'aaa-metrics.R' 'import-standalone-types-check.R' 'aaa-new.R' 'aaa.R' 'check-metric.R' 'class-accuracy.R' 'class-bal_accuracy.R' 'class-detection_prevalence.R' 'class-f_meas.R' 'class-j_index.R' 'class-kap.R' 'class-mcc.R' 'class-npv.R' 'class-ppv.R' 'class-precision.R' 'class-recall.R' 'class-sens.R' 'class-spec.R' 'conf_mat.R' 'data.R' 'deprecated-prob_helpers.R' 'deprecated-template.R' 'estimator-helpers.R' 'event-level.R' 'fair-aaa.R' 'fair-demographic_parity.R' 'fair-equal_opportunity.R' 'fair-equalized_odds.R' 'import-standalone-obj-type.R' 'import-standalone-survival.R' 'metric-tweak.R' 'misc.R' 'missings.R' 'num-ccc.R' 'num-huber_loss.R' 'num-iic.R' 'num-mae.R' 'num-mape.R' 'num-mase.R' 'num-mpe.R' 'num-msd.R' 'num-poisson_log_loss.R' 'num-pseudo_huber_loss.R' 'num-rmse.R' 'num-rpd.R' 'num-rpiq.R' 'num-rsq.R' 'num-rsq_trad.R' 'num-smape.R' 'prob-average_precision.R' 'prob-binary-thresholds.R' 'prob-brier_class.R' 'prob-classification_cost.R' 'prob-gain_capture.R' 'prob-gain_curve.R' 'prob-helpers.R' 'prob-lift_curve.R' 'prob-mn_log_loss.R' 'prob-pr_auc.R' 'prob-pr_curve.R' 'prob-roc_auc.R' 'prob-roc_aunp.R' 'prob-roc_aunu.R' 'prob-roc_curve.R' 'reexports.R' 'surv-brier_survival.R' 'surv-brier_survival_integrated.R' 'surv-concordance_survival.R' 'surv-roc_auc_survival.R' 'surv-roc_curve_survival.R' 'template.R' 'validation.R' 'yardstick-package.R'",
+      "NeedsCompilation": "yes",
+      "Author": "Max Kuhn [aut], Davis Vaughan [aut], Emil Hvitfeldt [aut, cre] (<https://orcid.org/0000-0002-0679-1945>), Posit Software, PBC [cph, fnd]",
+      "Maintainer": "Emil Hvitfeldt <emil.hvitfeldt@posit.co>",
       "Repository": "CRAN"
     },
     "zoo": {

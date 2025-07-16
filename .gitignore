@@ -42,3 +42,16 @@ cmdstan-*.tar.gz
 # QS files (very large)
 # ======================
 *.qs
+
+# ======================
+#  Python Artifacts
+# ======================
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+*.ipynb_checkpoints
+.env
+.envrc
+.conda/
+env/

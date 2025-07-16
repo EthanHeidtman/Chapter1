@@ -35,7 +35,6 @@ data <- data %>%
    mutate_if(is.character, as.factor) %>%
    relocate(Season, .after = DayOfYear)
 
-
 ####################### MODEL DATA PREPARATION PIPELINE ##########################
 
 # Create the model data
@@ -90,30 +89,34 @@ mutate(
    LagDischarge36 = lag(Discharge, 36),
    LagDischarge48 = lag(Discharge, 48),
    LagDischarge72 = lag(Discharge, 72),
+   LagDischarge96 = lag(Discharge, 96),
    
    # Lagged Marietta Inflows (account for residence time and travel)
    LagInflows12 = lag(Inflows, 12),
    LagInflows24 = lag(Inflows, 24),
    LagInflows48 = lag(Inflows, 48),
    LagInflows72 = lag(Inflows, 72),
+   LagInflows96 = lag(Inflows, 96),
    
-   # Power Law Transformations (-0.4 determined to be best)
-   # compared to -0.35 and a log transformation of discharge
-   PowDischarge = Discharge ^ (-0.4),
-   PowLagDischarge1 = LagDischarge1 ^ (-0.4),
-   PowLagDischarge3 = LagDischarge3 ^ (-0.4),
-   PowLagDischarge6 = LagDischarge6 ^ (-0.4),
-   PowLagDischarge10 = LagDischarge10 ^ (-0.4),
-   PowLagDischarge12 = LagDischarge12 ^ (-0.4),    
-   PowLagDischarge24 = LagDischarge24 ^ (-0.4),
-   PowLagDischarge36 = LagDischarge36 ^ (-0.4),
-   PowLagDischarge48 = LagDischarge48 ^ (-0.4),
-   PowLagDischarge72 = LagDischarge72 ^ (-0.4),
-   PowInflows = Inflows ^ (-0.4),
-   PowLagInflows12 = LagInflows12 ^ (-0.4),
-   PowLagInflows24 = LagInflows24 ^ (-0.4),
-   PowLagInflows48 = LagInflows48 ^ (-0.4),        
-   PowLagInflows72 = LagInflows72 ^ (-0.4),
+   # Power Law Transformations (-0.5 determined to be best)
+   # compared to -0.35 and -0.40 and a log transformation of discharge
+   PowDischarge = Discharge ^ (-0.5),
+   PowLagDischarge1 = LagDischarge1 ^ (-0.5),
+   PowLagDischarge3 = LagDischarge3 ^ (-0.5),
+   PowLagDischarge6 = LagDischarge6 ^ (-0.5),
+   PowLagDischarge10 = LagDischarge10 ^ (-0.5),
+   PowLagDischarge12 = LagDischarge12 ^ (-0.5),    
+   PowLagDischarge24 = LagDischarge24 ^ (-0.5),
+   PowLagDischarge36 = LagDischarge36 ^ (-0.5),
+   PowLagDischarge48 = LagDischarge48 ^ (-0.5),
+   PowLagDischarge72 = LagDischarge72 ^ (-0.5),
+   PowLagDischarge96 = LagDischarge96 ^ (-0.5),
+   PowInflows = Inflows ^ (-0.5),
+   PowLagInflows12 = LagInflows12 ^ (-0.5),
+   PowLagInflows24 = LagInflows24 ^ (-0.5),
+   PowLagInflows48 = LagInflows48 ^ (-0.5),        
+   PowLagInflows72 = LagInflows72 ^ (-0.5),
+   PowLagInflows96 = LagInflows96 ^ (-0.5),
    
    # Rolling Averages (by # of days)
    RollingPowDischarge0.5 = zoo::rollmean(PowDischarge, 24 * 0.5, fill = NA, align = "right", na.rm = TRUE),
