@@ -1,3 +1,15 @@
+# =============================================================================
+# Script Name:    EngineerModelData.R
+# Project:        Chapter1
+# Author:         Ethan Heidtman
+# Date Created:   2025-06-01
+# Last Updated:   2025-07-16
+# Description:    Loads raw hourly data, tidies columns, and then creates a 
+#                 large number of variables that I think might predict salinity.
+#                 Categories include tide, discharge, inflows, stress/drought. 
+#                 Continuous predictors are then normalized and data is written
+#                 to .qs format as 'FinalModelData.qs'
+# =============================================================================
 
 # Source necessary functions
 dirs <- c("Scripts/Functions/Utilities")

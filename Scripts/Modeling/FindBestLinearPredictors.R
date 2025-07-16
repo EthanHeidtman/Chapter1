@@ -1,17 +1,16 @@
-################################################################################
-# Written by Ethan Heidtman, April 2025
-
-# This script uses modeled tidal data, observed discharge data for the Conowingo 
-# Dam, and observed/modeled salinity data at Havre de Grace to first develop a 
-# predictive relationship for salinity near the Havre de Grace Drinking water
-# intake. This script, the first step, designs a best linear model given a set of 
-# pre-engineered predictor variables and interactions
-
-
-############################ LOAD FUNCTIONS, PACKAGES, AND DATA ############################
+# =============================================================================
+# Script Name:    FindBestLinearPredictors.R
+# Project:        Chapter1
+# Author:         Ethan Heidtman
+# Date Created:   2025-06-01
+# Last Updated:   2025-07-16
+# Description:    Loads engineered hourly model data, systematically identifies
+#                 the best predictor of saliniy from each group using linear
+#                 modeling. Then saves a smaller version of the model data and 
+#                 the linear predictor results to a .qs file.
+# =============================================================================
 
 # Source necessary functions
-#func_env <- new.env()
 dirs <- c("Scripts/Functions/LinearModeling", "Scripts/Functions/Utilities")
 invisible(
    lapply(dirs, function(dir) {
@@ -34,16 +33,14 @@ model_data <- as.data.frame(read_qs_files('Data/Tidied/Final/FinalModelData.qs')
 # Define salinity threshold
 salinity_threshold = 0.3 # measured in practical salt units (PSU), which is equivalent to parts per thousand
 
-######################### SIMPLE LINEAR MODEL DEVELOPMENT ############################
-
 # Define predictor categories and their candidates
 predictor_config <- list(
 
-   # Tide predictors (will always include the best one in subsequent models)
+   # Tide predictors
    tide = c('IsFloodTide', 'IsEbbTide', 'IsSlackTide', 'Norm_Tide', 'Norm_LagTide1', 'Norm_LagTide2', 'Norm_LagTide4',
             'Norm_TideVelocity', 'Norm_TideAcceleration', 'Norm_TideRange6', 'Norm_TideRange12', 'Norm_TideRange24'),
 
-   # Discharge predictors (test systematically)
+   # Discharge predictors
    discharge_lag = c("Norm_PowLagDischarge1", "Norm_PowLagDischarge3", "Norm_PowLagDischarge6",
                      "Norm_PowLagDischarge10", "Norm_PowLagDischarge12", "Norm_PowLagDischarge24",
                      "Norm_PowLagDischarge36", "Norm_PowLagDischarge48", "Norm_PowLagDischarge72", 'Norm_PowLagDischarge96'),
@@ -97,7 +94,6 @@ sink()
 linear_predictor_results$stage_results <- NULL
 environment(linear_predictor_results) <- new.env()
 
-# Filter data to only be the best identified linear predictors and salinity (with date data)
 # Create minimal data object - only necessary columns to save space
 required_cols <- unique(c('DateTime', 'Year', 'Salinity', linear_predictor_results$predictors$all_predictors))
 required_cols <- required_cols[required_cols %in% names(model_data)]
