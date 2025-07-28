@@ -1,3 +1,16 @@
+# =============================================================================
+# Script Name:    TestRandomForest.R
+# Project:        Chapter1
+# Author:         Ethan Heidtman
+# Date Created:   2025-06-01
+# Last Updated:   2025-07-17
+# Description:    Loads cleaned model data and the list of best linear predictors,
+#                 then rudimentary tests a CART model and RF model on the cleaned
+#                 data. Some basic plots are produced that show poor performance,
+#                 and justify moving to python for the gradient boosting.
+# =============================================================================
+
+
 # Source necessary functions
 func_env <- new.env()
 dirs <- c("Scripts/Functions/NonLinearModeling", "Scripts/Functions/Utilities")

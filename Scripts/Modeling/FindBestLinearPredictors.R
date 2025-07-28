@@ -7,7 +7,8 @@
 # Description:    Loads engineered hourly model data, systematically identifies
 #                 the best predictor of saliniy from each group using linear
 #                 modeling. Then saves a smaller version of the model data and 
-#                 the linear predictor results to a .qs file.
+#                 the linear predictor results to a .json file for next steps 
+#                 in Python.
 # =============================================================================
 
 # Source necessary functions
@@ -95,19 +96,19 @@ linear_predictor_results$stage_results <- NULL
 environment(linear_predictor_results) <- new.env()
 
 # Create minimal data object - only necessary columns to save space
-required_cols <- unique(c('DateTime', 'Year', 'Salinity', linear_predictor_results$predictors$all_predictors))
+required_cols <- unique(c('DateTime', 'Year', 'Month', 'Day', 'Salinity', linear_predictor_results$predictors$all_predictors))
 required_cols <- required_cols[required_cols %in% names(model_data)]
 clean_data <- model_data[, required_cols, drop = FALSE]
 
 # Write linear predictor output file
 outputs <- list(linear_predictor_results)
 file_names <- c('LinearPredictors')
-write_qs_files(outputs, 'Outputs/Experiments/LinearModeling', file_names, preset = 'archive')
+write_qs_files(outputs, 'Outputs/Experiments/LinearModeling', file_names, preset = 'archive', format = 'json')
 
 # Write final cleaned model data output file
 outputs <- list(clean_data)
 file_names <- c('CleanFinalModelData')
-write_qs_files(outputs, 'Data/Tidied/Final', file_names, preset = 'archive')
+write_qs_files(outputs, 'Data/Tidied/Final', file_names, preset = 'archive', format = 'csv')
 
 # Clear environment
 rm(list = ls())

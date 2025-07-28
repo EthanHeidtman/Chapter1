@@ -1,5 +1,3 @@
-
-> linear_predictor_results <- linear_predictor_selector(model_data, salinity_threshold, predictor_config, performance_criteria)
 STARTING SYSTEMATIC PREDICTOR SELECTION PROCESS
 ===============================================
 Stage 0: Testing tide predictors...
@@ -226,6 +224,3 @@ SELECTED INTERACTIONS:
 Total selected predictors: 8
 Total selected interactions: 1
 ===============================================
-
-> # Stop redirecting output and return to console
-> sink()
