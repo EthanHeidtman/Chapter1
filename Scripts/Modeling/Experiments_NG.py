@@ -46,7 +46,6 @@ def quick_experiment(n_estimators=500, learning_rate=0.01, distribution='normal'
     data = load_model_data()
     X, y, _ = prepare_modeling_data(data, SELECTED_PREDICTORS, TARGET_VARIABLE)
     
-    
     # Subset if requested
     if subset_size and len(X) > subset_size:
         X = X.head(subset_size)
@@ -100,18 +99,7 @@ def compare_distributions(n_estimators=250, learning_rate=0.01, n_splits=3):
     # Load and prepare data  
     data = load_model_data()
     X, y, _ = prepare_modeling_data(data, SELECTED_PREDICTORS, TARGET_VARIABLE)
-    # Add this right after prepare_modeling_data()
-    print(f"X index range: {X.index.min()} to {X.index.max()}")
-    print(f"X index is continuous: {X.index.equals(pd.RangeIndex(len(X)))}")
-    print(f"First few indices: {X.index[:10].tolist()}")
-    print(f"Last few indices: {X.index[-10:].tolist()}")
-    
     cv_splits = create_time_series_splits(X, n_splits=n_splits)
-    # Add this right after cv_splits creation
-    for i, (train_idx, test_idx) in enumerate(cv_splits):
-        print(f"Fold {i+1}: train indices {train_idx[:5]}...{train_idx[-5:]}")
-        print(f"Fold {i+1}: test indices {test_idx[:5]}...{test_idx[-5:]}")
-        print(f"Max train idx: {max(train_idx)}, Max test idx: {max(test_idx)}")
     
     results = []
     
@@ -180,17 +168,7 @@ def learning_rate_experiment(rates=[0.005, 0.01, 0.02, 0.05], n_estimators=500,
     # Load and prepare data
     data = load_model_data()
     X, y, _ = prepare_modeling_data(data, SELECTED_PREDICTORS, TARGET_VARIABLE)
-    # Add this right after prepare_modeling_data()
-    print(f"X index range: {X.index.min()} to {X.index.max()}")
-    print(f"X index is continuous: {X.index.equals(pd.RangeIndex(len(X)))}")
-    print(f"First few indices: {X.index[:10].tolist()}")
-    print(f"Last few indices: {X.index[-10:].tolist()}")
     cv_splits = create_time_series_splits(X, n_splits=n_splits)
-    # Add this right after cv_splits creation
-    for i, (train_idx, test_idx) in enumerate(cv_splits):
-        print(f"Fold {i+1}: train indices {train_idx[:5]}...{train_idx[-5:]}")
-        print(f"Fold {i+1}: test indices {test_idx[:5]}...{test_idx[-5:]}")
-        print(f"Max train idx: {max(train_idx)}, Max test idx: {max(test_idx)}")
     
     results = []
     
@@ -245,17 +223,7 @@ def n_estimators_experiment(n_est_values=[100, 250, 500, 750, 1000],
     # Load and prepare data
     data = load_model_data()
     X, y, _ = prepare_modeling_data(data, SELECTED_PREDICTORS, TARGET_VARIABLE)
-    # Add this right after prepare_modeling_data()
-    print(f"X index range: {X.index.min()} to {X.index.max()}")
-    print(f"X index is continuous: {X.index.equals(pd.RangeIndex(len(X)))}")
-    print(f"First few indices: {X.index[:10].tolist()}")
-    print(f"Last few indices: {X.index[-10:].tolist()}")
     cv_splits = create_time_series_splits(X, n_splits=n_splits)
-    # Add this right after cv_splits creation
-    for i, (train_idx, test_idx) in enumerate(cv_splits):
-        print(f"Fold {i+1}: train indices {train_idx[:5]}...{train_idx[-5:]}")
-        print(f"Fold {i+1}: test indices {test_idx[:5]}...{test_idx[-5:]}")
-        print(f"Max train idx: {max(train_idx)}, Max test idx: {max(test_idx)}")
     
     results = []
     
@@ -335,17 +303,7 @@ def feature_subset_experiment(feature_groups=None, distribution='normal',
             continue
             
         X, y, _ = prepare_modeling_data(data, available_features, TARGET_VARIABLE)
-        # Add this right after prepare_modeling_data()
-        print(f"X index range: {X.index.min()} to {X.index.max()}")
-        print(f"X index is continuous: {X.index.equals(pd.RangeIndex(len(X)))}")
-        print(f"First few indices: {X.index[:10].tolist()}")
-        print(f"Last few indices: {X.index[-10:].tolist()}")
         cv_splits = create_time_series_splits(X, n_splits=n_splits)
-        # Add this right after cv_splits creation
-        for i, (train_idx, test_idx) in enumerate(cv_splits):
-            print(f"Fold {i+1}: train indices {train_idx[:5]}...{train_idx[-5:]}")
-            print(f"Fold {i+1}: test indices {test_idx[:5]}...{test_idx[-5:]}")
-            print(f"Max train idx: {max(train_idx)}, Max test idx: {max(test_idx)}")
         
         model_params = {
             'n_estimators': n_estimators,
@@ -402,7 +360,7 @@ if __name__ == "__main__":
     results = run_basic_experiments()
     
     # Or run individual experiments:
-    # quick_experiment(n_estimators=250, learning_rate=0.01, distribution='normal')
+    #results = quick_experiment(n_estimators=250, learning_rate=0.01, distribution='normal')
     # compare_distributions()
     # learning_rate_experiment()
     # feature_subset_experiment()

@@ -14,8 +14,9 @@
 # =============================================================================
 import os
 import json
+from ngboost import NGBoost
 from ngboost.distns import Normal, LogNormal, Exponential
-from ngboost.scores import MLE, CRPS
+from ngboost.scores import CRPS, LogScore
 
 # =============================================================================
 # FILE PATHS
@@ -60,7 +61,7 @@ DISTRIBUTIONS = {
 
 # Scoring functions to test
 SCORING_FUNCTIONS = {
-    'mle': MLE,
+    'LogScore': LogScore,
     'crps': CRPS
 }
 

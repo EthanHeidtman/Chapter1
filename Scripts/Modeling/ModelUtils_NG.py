@@ -40,27 +40,32 @@ class NGBoostModel:
         """
         # Use defaults from config if not provided
         if distribution is None:
-            distribution = DISTRIBUTIONS['normal']
+            distribution = Normal
         if score is None:
-            score = SCORING_FUNCTIONS['mle']
+            score = LogScore
             
         # Merge with default parameters
         model_params = NGBOOST_PARAMS.copy()
         model_params.update(params)
         
+        # Remove distribution and score from params to avoid duplication
+        model_params.pop('distribution', None)
+        model_params.pop('score', None)
+        
         self.model = NGBoost(
             Base=default_tree_learner,
             Dist=distribution,
-            Score=score(),
+            Score=score,
             **model_params
         )
         
         self.is_fitted = False
         self.feature_names = None
+        self.distribution_name = distribution.__name__
         
     def fit(self, X, y):
         """
-        Fit the NGBoost model.
+        Fit the NGBoost model with data validation.
         
         Parameters:
         -----------
@@ -72,8 +77,30 @@ class NGBoostModel:
         if isinstance(X, pd.DataFrame):
             self.feature_names = X.columns.tolist()
         
-        self.model.fit(X, y)
-        self.is_fitted = True
+        # Validate target data for distribution requirements
+        y_array = np.array(y)
+        
+        if self.distribution_name == 'LogNormal':
+            if np.any(y_array <= 0):
+                min_val = y_array.min()
+                print(f"WARNING: LogNormal requires positive values. Min value: {min_val:.6f}")
+                print("Adding small constant to ensure positivity...")
+                y_array = y_array + abs(min_val) + 1e-6
+        
+        elif self.distribution_name == 'Exponential':
+            if np.any(y_array < 0):
+                min_val = y_array.min()
+                print(f"WARNING: Exponential requires non-negative values. Min value: {min_val:.6f}")
+                print("Clipping negative values to zero...")
+                y_array = np.maximum(y_array, 0)
+        
+        try:
+            self.model.fit(X, y_array)
+            self.is_fitted = True
+            print(f"  Model fitted successfully with {self.distribution_name} distribution")
+        except Exception as e:
+            print(f"  Error fitting {self.distribution_name} model: {e}")
+            raise
         
     def predict(self, X, return_std=False):
         """
@@ -93,15 +120,28 @@ class NGBoostModel:
         """
         if not self.is_fitted:
             raise ValueError("Model must be fitted before making predictions")
+        
+        try:
+            pred_dist = self.model.pred_dist(X)
+            predictions = pred_dist.loc
             
-        pred_dist = self.model.pred_dist(X)
-        predictions = pred_dist.loc
-        
-        if return_std:
-            std = pred_dist.scale
-            return predictions, std
-        
-        return predictions
+            # Handle potential numerical issues
+            predictions = np.array(predictions)
+            if np.any(np.isnan(predictions)) or np.any(np.isinf(predictions)):
+                print(f"WARNING: Invalid predictions detected for {self.distribution_name}")
+                predictions = np.nan_to_num(predictions, nan=0.0, posinf=1.0, neginf=0.0)
+            
+            if return_std:
+                std = pred_dist.scale
+                std = np.array(std)
+                std = np.nan_to_num(std, nan=1.0, posinf=1.0, neginf=0.1)
+                return predictions, std
+            
+            return predictions
+            
+        except Exception as e:
+            print(f"  Error making predictions with {self.distribution_name}: {e}")
+            raise
     
     def predict_quantiles(self, X, quantiles=[0.05, 0.25, 0.5, 0.75, 0.95]):
         """
@@ -121,14 +161,21 @@ class NGBoostModel:
         """
         if not self.is_fitted:
             raise ValueError("Model must be fitted before making predictions")
-            
-        pred_dist = self.model.pred_dist(X)
-        quantile_preds = {}
         
-        for q in quantiles:
-            quantile_preds[f'q{int(q*100)}'] = pred_dist.ppf(q)
+        try:
+            pred_dist = self.model.pred_dist(X)
+            quantile_preds = {}
             
-        return pd.DataFrame(quantile_preds)
+            for q in quantiles:
+                q_pred = pred_dist.ppf(q)
+                q_pred = np.nan_to_num(q_pred, nan=0.0, posinf=1.0, neginf=0.0)
+                quantile_preds[f'q{int(q*100)}'] = q_pred
+                
+            return pd.DataFrame(quantile_preds)
+            
+        except Exception as e:
+            print(f"  Error calculating quantiles with {self.distribution_name}: {e}")
+            raise
     
     def get_feature_importance(self):
         """
@@ -142,12 +189,15 @@ class NGBoostModel:
         if not self.is_fitted:
             raise ValueError("Model must be fitted before getting feature importance")
             
-        if hasattr(self.model, 'feature_importances_'):
-            importance = self.model.feature_importances_
-            if self.feature_names:
-                return pd.Series(importance, index=self.feature_names).sort_values(ascending=False)
-            else:
-                return importance
+        try:
+            if hasattr(self.model, 'feature_importances_'):
+                importance = self.model.feature_importances_
+                if self.feature_names:
+                    return pd.Series(importance, index=self.feature_names).sort_values(ascending=False)
+                else:
+                    return importance
+        except Exception as e:
+            print(f"  Could not extract feature importance: {e}")
         
         return None
 
@@ -189,25 +239,7 @@ def calculate_metrics(y_true, y_pred, extreme_mask=None):
 
 def cross_validate_ngboost(X, y, model_params=None, cv_splits=None, extreme_percentile=95):
     """
-    Perform cross-validation for NGBoost model.
-    
-    Parameters:
-    -----------
-    X : pd.DataFrame
-        Features
-    y : pd.Series
-        Target variable
-    model_params : dict, optional
-        NGBoost model parameters
-    cv_splits : list, optional
-        Cross-validation splits
-    extreme_percentile : float
-        Percentile for extreme events
-        
-    Returns:
-    --------
-    dict
-        Cross-validation results
+    Perform cross-validation for NGBoost model with better error handling.
     """
     if model_params is None:
         model_params = {}
@@ -217,8 +249,11 @@ def cross_validate_ngboost(X, y, model_params=None, cv_splits=None, extreme_perc
         cv_splits = create_time_series_splits(pd.DataFrame(index=X.index))
     
     # Get extreme events mask
-    from DataUtils_NG import get_extreme_events_mask
-    extreme_mask = get_extreme_events_mask(y, extreme_percentile)
+    extreme_threshold = np.percentile(y, extreme_percentile)
+    extreme_mask = y > extreme_threshold
+    
+    print(f"Extreme events (>{extreme_percentile}th percentile): {extreme_mask.sum()} of {len(y)} ({extreme_mask.mean()*100:.1f}%)")
+    print(f"Threshold: {extreme_threshold:.4f}")
     
     cv_results = {
         'r2': [],
@@ -234,32 +269,57 @@ def cross_validate_ngboost(X, y, model_params=None, cv_splits=None, extreme_perc
     for fold, (train_idx, test_idx) in enumerate(cv_splits):
         print(f"  Fold {fold + 1}/{len(cv_splits)}")
         
-        # Split data
-        X_train, X_test = X.iloc[train_idx], X.iloc[test_idx]
-        y_train, y_test = y.iloc[train_idx], y.iloc[test_idx]
-        extreme_test = extreme_mask[test_idx]
-        
-        # Train model
-        model = NGBoostModel(**model_params)
-        model.fit(X_train, y_train)
-        
-        # Make predictions
-        y_pred = model.predict(X_test)
-        
-        # Calculate metrics
-        fold_metrics = calculate_metrics(y_test.values, y_pred, extreme_test)
-        
-        # Store results
-        for metric, value in fold_metrics.items():
-            if metric in cv_results:
-                cv_results[metric].append(value)
+        try:
+            # Split data
+            X_train, X_test = X.iloc[train_idx], X.iloc[test_idx]
+            y_train, y_test = y.iloc[train_idx], y.iloc[test_idx]
+            extreme_test = extreme_mask.iloc[test_idx]
+            
+            # Train model
+            model = NGBoostModel(**model_params)
+            model.fit(X_train, y_train)
+            
+            # Make predictions
+            y_pred = model.predict(X_test)
+            
+            # Calculate overall metrics
+            r2_overall = r2_score(y_test.values, y_pred)
+            rmse_overall = np.sqrt(mean_squared_error(y_test.values, y_pred))
+            mae_overall = mean_absolute_error(y_test.values, y_pred)
+            
+            cv_results['r2'].append(r2_overall)
+            cv_results['rmse'].append(rmse_overall)
+            cv_results['mae'].append(mae_overall)
+            
+            # Calculate extreme event metrics if we have extreme events in test set
+            if extreme_test.sum() > 0:
+                y_test_extreme = y_test.values[extreme_test]
+                y_pred_extreme = y_pred[extreme_test]
+                
+                r2_extreme = r2_score(y_test_extreme, y_pred_extreme)
+                rmse_extreme = np.sqrt(mean_squared_error(y_test_extreme, y_pred_extreme))
+                mae_extreme = mean_absolute_error(y_test_extreme, y_pred_extreme)
+                
+                cv_results['r2_extreme'].append(r2_extreme)
+                cv_results['rmse_extreme'].append(rmse_extreme)
+                cv_results['mae_extreme'].append(mae_extreme)
+            
+            print(f"    Fold {fold + 1} R²: {r2_overall:.4f}")
+            
+        except Exception as e:
+            print(f"    Fold {fold + 1} FAILED: {e}")
+            # Add NaN values to maintain fold structure
+            for metric in ['r2', 'rmse', 'mae']:
+                cv_results[metric].append(np.nan)
     
     # Calculate summary statistics
     cv_summary = {}
     for metric, values in cv_results.items():
-        if values:  # Only if we have values
-            cv_summary[f'{metric}_mean'] = np.mean(values)
-            cv_summary[f'{metric}_std'] = np.std(values)
+        if values and not all(np.isnan(values)):  # Only if we have valid values
+            valid_values = [v for v in values if not np.isnan(v)]
+            if valid_values:
+                cv_summary[f'{metric}_mean'] = np.mean(valid_values)
+                cv_summary[f'{metric}_std'] = np.std(valid_values)
     
     print("Cross-validation completed!")
     return cv_summary, cv_results
