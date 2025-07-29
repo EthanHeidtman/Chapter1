@@ -13,431 +13,283 @@
 # =============================================================================
 import numpy as np
 import pandas as pd
-from sklearn.metrics import mean_squared_error, mean_absolute_error, r2_score
-from sklearn.linear_model import LinearRegression
-from sklearn.ensemble import RandomForestRegressor
 from ngboost import NGBoost
+from ngboost.distns import Normal, LogNormal, Gamma
+from ngboost.scores import LogScore, CRPS
 from ngboost.learners import default_tree_learner
-from Config_NG import *
+from sklearn.model_selection import ParameterGrid
+import joblib
+import os
+from datetime import datetime
+import warnings
 
-class NGBoostModel:
-    """
-    Wrapper class for NGBoost model with convenient methods.
-    """
+class NGBoostModelTrainer:
+    """Handle NGBoost model training and hyperparameter optimization"""
     
-    def __init__(self, distribution=None, score=None, **params):
-        """
-        Initialize NGBoost model.
+    def __init__(self, config):
+        self.config = config
+        self.best_params = None
+        self.best_score = None
+        self.trained_models = {}
+    
+    def create_ngboost_model(self, distribution, scoring, hyperparams):
+        """Create NGBoost model with specified parameters"""
         
-        Parameters:
-        -----------
-        distribution : ngboost distribution
-            Distribution for the target variable
-        score : ngboost score
-            Scoring function 
-        **params : dict
-            Additional NGBoost parameters
-        """
-        # Use defaults from config if not provided
-        if distribution is None:
-            distribution = Normal
-        if score is None:
-            score = LogScore
-            
-        # Merge with default parameters
-        model_params = NGBOOST_PARAMS.copy()
-        model_params.update(params)
+        # Get distribution class
+        if isinstance(distribution, str):
+            distribution = self.config['distributions'][distribution]
         
-        # Remove distribution and score from params to avoid duplication
-        model_params.pop('distribution', None)
-        model_params.pop('score', None)
+        # Get scoring function
+        if isinstance(scoring, str):
+            scoring = self.config['scoring_functions'][scoring]
         
-        self.model = NGBoost(
-            Base=default_tree_learner,
+        # Combine base params with hyperparams
+        model_params = {**self.config['base_params'], **hyperparams}
+        
+        # Set up base learner
+        n_jobs = self.config['parallel_config'].get('ngboost_n_jobs', 1)
+        base_learner = default_tree_learner
+        
+        # Create model
+        model = NGBoost(
             Dist=distribution,
-            Score=score,
-            **model_params
+            Score=scoring,
+            Base=base_learner,
+            n_estimators=model_params['n_estimators'],
+            learning_rate=model_params['learning_rate'],
+            minibatch_frac=model_params.get('minibatch_frac', 1.0),
+            col_sample=model_params.get('col_sample', 1.0),
+            verbose=model_params.get('verbose', False),
+            random_state=model_params.get('random_state', 42),
+            tol=model_params.get('tol', 1e-5)
         )
         
-        self.is_fitted = False
-        self.feature_names = None
-        self.distribution_name = distribution.__name__
-        
-    def fit(self, X, y):
-        """
-        Fit the NGBoost model with data validation.
-        
-        Parameters:
-        -----------
-        X : pd.DataFrame or np.array
-            Features
-        y : pd.Series or np.array
-            Target variable
-        """
-        if isinstance(X, pd.DataFrame):
-            self.feature_names = X.columns.tolist()
-        
-        # Validate target data for distribution requirements
-        y_array = np.array(y)
-        
-        if self.distribution_name == 'LogNormal':
-            if np.any(y_array <= 0):
-                min_val = y_array.min()
-                print(f"WARNING: LogNormal requires positive values. Min value: {min_val:.6f}")
-                print("Adding small constant to ensure positivity...")
-                y_array = y_array + abs(min_val) + 1e-6
-        
-        elif self.distribution_name == 'Exponential':
-            if np.any(y_array < 0):
-                min_val = y_array.min()
-                print(f"WARNING: Exponential requires non-negative values. Min value: {min_val:.6f}")
-                print("Clipping negative values to zero...")
-                y_array = np.maximum(y_array, 0)
+        return model
+    
+    def train_single_model(self, model, X_train, y_train, X_val=None, y_val=None):
+        """Train a single NGBoost model"""
         
         try:
-            self.model.fit(X, y_array)
-            self.is_fitted = True
-            print(f"  Model fitted successfully with {self.distribution_name} distribution")
-        except Exception as e:
-            print(f"  Error fitting {self.distribution_name} model: {e}")
-            raise
-        
-    def predict(self, X, return_std=False):
-        """
-        Make predictions with the fitted model.
-        
-        Parameters:
-        -----------
-        X : pd.DataFrame or np.array
-            Features
-        return_std : bool
-            Whether to return prediction uncertainty
-            
-        Returns:
-        --------
-        np.array or tuple
-            Predictions, optionally with standard deviations
-        """
-        if not self.is_fitted:
-            raise ValueError("Model must be fitted before making predictions")
-        
-        try:
-            pred_dist = self.model.pred_dist(X)
-            predictions = pred_dist.loc
-            
-            # Handle potential numerical issues
-            predictions = np.array(predictions)
-            if np.any(np.isnan(predictions)) or np.any(np.isinf(predictions)):
-                print(f"WARNING: Invalid predictions detected for {self.distribution_name}")
-                predictions = np.nan_to_num(predictions, nan=0.0, posinf=1.0, neginf=0.0)
-            
-            if return_std:
-                std = pred_dist.scale
-                std = np.array(std)
-                std = np.nan_to_num(std, nan=1.0, posinf=1.0, neginf=0.1)
-                return predictions, std
-            
-            return predictions
-            
-        except Exception as e:
-            print(f"  Error making predictions with {self.distribution_name}: {e}")
-            raise
-    
-    def predict_quantiles(self, X, quantiles=[0.05, 0.25, 0.5, 0.75, 0.95]):
-        """
-        Get quantile predictions.
-        
-        Parameters:
-        -----------
-        X : pd.DataFrame or np.array
-            Features
-        quantiles : list
-            List of quantiles to predict
-            
-        Returns:
-        --------
-        pd.DataFrame
-            Quantile predictions
-        """
-        if not self.is_fitted:
-            raise ValueError("Model must be fitted before making predictions")
-        
-        try:
-            pred_dist = self.model.pred_dist(X)
-            quantile_preds = {}
-            
-            for q in quantiles:
-                q_pred = pred_dist.ppf(q)
-                q_pred = np.nan_to_num(q_pred, nan=0.0, posinf=1.0, neginf=0.0)
-                quantile_preds[f'q{int(q*100)}'] = q_pred
-                
-            return pd.DataFrame(quantile_preds)
-            
-        except Exception as e:
-            print(f"  Error calculating quantiles with {self.distribution_name}: {e}")
-            raise
-    
-    def get_feature_importance(self):
-        """
-        Get feature importance if available.
-        
-        Returns:
-        --------
-        pd.Series or None
-            Feature importance scores
-        """
-        if not self.is_fitted:
-            raise ValueError("Model must be fitted before getting feature importance")
-            
-        try:
-            if hasattr(self.model, 'feature_importances_'):
-                importance = self.model.feature_importances_
-                if self.feature_names:
-                    return pd.Series(importance, index=self.feature_names).sort_values(ascending=False)
-                else:
-                    return importance
-        except Exception as e:
-            print(f"  Could not extract feature importance: {e}")
-        
-        return None
-
-def calculate_metrics(y_true, y_pred, extreme_mask=None):
-    """
-    Calculate model performance metrics.
-    
-    Parameters:
-    -----------
-    y_true : array-like
-        True values
-    y_pred : array-like
-        Predicted values
-    extreme_mask : array-like, optional
-        Boolean mask for extreme events
-        
-    Returns:
-    --------
-    dict
-        Dictionary of metrics
-    """
-    metrics = {}
-    
-    # Overall metrics
-    metrics['r2'] = r2_score(y_true, y_pred)
-    metrics['rmse'] = np.sqrt(mean_squared_error(y_true, y_pred))
-    metrics['mae'] = mean_absolute_error(y_true, y_pred)
-    
-    # Extreme event metrics if mask provided
-    if extreme_mask is not None and extreme_mask.sum() > 0:
-        y_true_extreme = y_true[extreme_mask]
-        y_pred_extreme = y_pred[extreme_mask]
-        
-        metrics['r2_extreme'] = r2_score(y_true_extreme, y_pred_extreme)
-        metrics['rmse_extreme'] = np.sqrt(mean_squared_error(y_true_extreme, y_pred_extreme))
-        metrics['mae_extreme'] = mean_absolute_error(y_true_extreme, y_pred_extreme)
-    
-    return metrics
-
-def cross_validate_ngboost(X, y, model_params=None, cv_splits=None, extreme_percentile=95):
-    """
-    Perform cross-validation for NGBoost model with better error handling.
-    """
-    if model_params is None:
-        model_params = {}
-    
-    if cv_splits is None:
-        from DataUtils_NG import create_time_series_splits
-        cv_splits = create_time_series_splits(pd.DataFrame(index=X.index))
-    
-    # Get extreme events mask
-    extreme_threshold = np.percentile(y, extreme_percentile)
-    extreme_mask = y > extreme_threshold
-    
-    print(f"Extreme events (>{extreme_percentile}th percentile): {extreme_mask.sum()} of {len(y)} ({extreme_mask.mean()*100:.1f}%)")
-    print(f"Threshold: {extreme_threshold:.4f}")
-    
-    cv_results = {
-        'r2': [],
-        'rmse': [],
-        'mae': [],
-        'r2_extreme': [],
-        'rmse_extreme': [],
-        'mae_extreme': []
-    }
-    
-    print(f"Running {len(cv_splits)}-fold cross-validation...")
-    
-    for fold, (train_idx, test_idx) in enumerate(cv_splits):
-        print(f"  Fold {fold + 1}/{len(cv_splits)}")
-        
-        try:
-            # Split data
-            X_train, X_test = X.iloc[train_idx], X.iloc[test_idx]
-            y_train, y_test = y.iloc[train_idx], y.iloc[test_idx]
-            extreme_test = extreme_mask.iloc[test_idx]
-            
-            # Train model
-            model = NGBoostModel(**model_params)
-            model.fit(X_train, y_train)
-            
-            # Make predictions
-            y_pred = model.predict(X_test)
-            
-            # Calculate overall metrics
-            r2_overall = r2_score(y_test.values, y_pred)
-            rmse_overall = np.sqrt(mean_squared_error(y_test.values, y_pred))
-            mae_overall = mean_absolute_error(y_test.values, y_pred)
-            
-            cv_results['r2'].append(r2_overall)
-            cv_results['rmse'].append(rmse_overall)
-            cv_results['mae'].append(mae_overall)
-            
-            # Calculate extreme event metrics if we have extreme events in test set
-            if extreme_test.sum() > 0:
-                y_test_extreme = y_test.values[extreme_test]
-                y_pred_extreme = y_pred[extreme_test]
-                
-                r2_extreme = r2_score(y_test_extreme, y_pred_extreme)
-                rmse_extreme = np.sqrt(mean_squared_error(y_test_extreme, y_pred_extreme))
-                mae_extreme = mean_absolute_error(y_test_extreme, y_pred_extreme)
-                
-                cv_results['r2_extreme'].append(r2_extreme)
-                cv_results['rmse_extreme'].append(rmse_extreme)
-                cv_results['mae_extreme'].append(mae_extreme)
-            
-            print(f"    Fold {fold + 1} R²: {r2_overall:.4f}")
-            
-        except Exception as e:
-            print(f"    Fold {fold + 1} FAILED: {e}")
-            # Add NaN values to maintain fold structure
-            for metric in ['r2', 'rmse', 'mae']:
-                cv_results[metric].append(np.nan)
-    
-    # Calculate summary statistics
-    cv_summary = {}
-    for metric, values in cv_results.items():
-        if values and not all(np.isnan(values)):  # Only if we have valid values
-            valid_values = [v for v in values if not np.isnan(v)]
-            if valid_values:
-                cv_summary[f'{metric}_mean'] = np.mean(valid_values)
-                cv_summary[f'{metric}_std'] = np.std(valid_values)
-    
-    print("Cross-validation completed!")
-    return cv_summary, cv_results
-
-def compare_models(X, y, cv_splits=None):
-    """
-    Compare NGBoost against baseline models.
-    
-    Parameters:
-    -----------
-    X : pd.DataFrame
-        Features
-    y : pd.Series
-        Target variable
-    cv_splits : list, optional
-        Cross-validation splits
-        
-    Returns:
-    --------
-    pd.DataFrame
-        Comparison results
-    """
-    if cv_splits is None:
-        from DataUtils_NG import create_time_series_splits
-        cv_splits = create_time_series_splits(pd.DataFrame(index=X.index))
-    
-    models = {
-        'NGBoost': NGBoostModel(),
-        'Linear': LinearRegression(),
-        'RandomForest': RandomForestRegressor(n_estimators=100, random_state=RANDOM_SEED)
-    }
-    
-    results = []
-    
-    for model_name, model in models.items():
-        print(f"\nTesting {model_name}...")
-        fold_scores = []
-        
-        for train_idx, test_idx in cv_splits:
-            X_train, X_test = X.iloc[train_idx], X.iloc[test_idx]
-            y_train, y_test = y.iloc[train_idx], y.iloc[test_idx]
-            
-            # Fit model
-            if model_name == 'NGBoost':
-                model.fit(X_train, y_train)
-                y_pred = model.predict(X_test)
+            # Train the model
+            if X_val is not None and y_val is not None:
+                model.fit(X_train, y_train, X_val=X_val, Y_val=y_val)
             else:
                 model.fit(X_train, y_train)
-                y_pred = model.predict(X_test)
             
-            # Calculate R²
-            fold_r2 = r2_score(y_test, y_pred)
-            fold_scores.append(fold_r2)
-        
-        results.append({
-            'Model': model_name,
-            'R2_mean': np.mean(fold_scores),
-            'R2_std': np.std(fold_scores)
-        })
+            return model, True, None
+            
+        except Exception as e:
+            return None, False, str(e)
     
-    return pd.DataFrame(results)
+    def predict_with_uncertainty(self, model, X):
+        """Make predictions with uncertainty estimates"""
+        
+        try:
+            # Get distributional predictions
+            y_dists = model.pred_dist(X)
+            
+            # Extract mean and std
+            y_pred = y_dists.mean()
+            y_std = y_dists.scale  # or y_dists.var()**0.5 depending on distribution
+            
+            # Get prediction intervals (5th and 95th percentiles)
+            y_lower = y_dists.ppf(0.05)
+            y_upper = y_dists.ppf(0.95)
+            
+            return {
+                'mean': y_pred,
+                'std': y_std,
+                'lower_90': y_lower,
+                'upper_90': y_upper,
+                'distributions': y_dists
+            }
+            
+        except Exception as e:
+            print(f"Prediction error: {e}")
+            return None
 
-def grid_search_ngboost(X, y, param_grid, cv_splits=None):
-    """
-    Simple grid search for NGBoost hyperparameters.
+class NGBoostCrossValidator:
+    """Handle cross-validation for NGBoost models"""
     
-    Parameters:
-    -----------
-    X : pd.DataFrame
-        Features
-    y : pd.Series
-        Target variable
-    param_grid : dict
-        Parameter grid to search
-    cv_splits : list, optional
-        Cross-validation splits
+    def __init__(self, cv_splitter, data_processor):
+        self.cv_splitter = cv_splitter
+        self.data_processor = data_processor
         
-    Returns:
-    --------
-    dict
-        Best parameters and scores
-    """
-    if cv_splits is None:
-        from DataUtils_NG import create_time_series_splits
-        cv_splits = create_time_series_splits(pd.DataFrame(index=X.index))
-    
-    from itertools import product
-    
-    # Generate all parameter combinations
-    param_names = list(param_grid.keys())
-    param_values = list(param_grid.values())
-    param_combinations = list(product(*param_values))
-    
-    best_score = -np.inf
-    best_params = None
-    results = []
-    
-    print(f"Testing {len(param_combinations)} parameter combinations...")
-    
-    for i, param_combo in enumerate(param_combinations):
-        params = dict(zip(param_names, param_combo))
-        print(f"  Combination {i+1}/{len(param_combinations)}: {params}")
+    def cross_validate_model(self, model_config, X, y, metrics_calculator):
+        """Perform cross-validation for a single model configuration"""
         
-        # Cross-validate with these parameters
-        cv_summary, _ = cross_validate_ngboost(X, y, params, cv_splits)
+        from DataUtils_NG import calculate_salinity_metrics
         
-        mean_r2 = cv_summary.get('r2_mean', -np.inf)
-        results.append({**params, 'cv_r2': mean_r2})
+        cv_results = {
+            'fold_results': [],
+            'mean_metrics': {},
+            'std_metrics': {},
+            'model_config': model_config
+        }
         
-        if mean_r2 > best_score:
-            best_score = mean_r2
-            best_params = params
+        print(f"Starting CV for {model_config}")
+        
+        for fold_idx, (train_idx, test_idx) in enumerate(self.cv_splitter.split(X, y)):
+            
+            print(f"  Fold {fold_idx + 1}/{self.cv_splitter.cv_config['n_splits']}")
+            
+            # Split data
+            X_train, X_test = X.iloc[train_idx], X.iloc[test_idx] 
+            y_train, y_test = y.iloc[train_idx], y.iloc[test_idx]
+            
+            # Scale features
+            X_train_scaled, X_test_scaled = self.data_processor.scale_features(X_train, X_test)
+            
+            # Create and train model
+            trainer = NGBoostModelTrainer(model_config)
+            model = trainer.create_ngboost_model(
+                distribution=model_config['distribution'],
+                scoring=model_config['scoring'],
+                hyperparams=model_config['hyperparams']
+            )
+            
+            # Train model
+            trained_model, success, error = trainer.train_single_model(model, X_train_scaled, y_train)
+            
+            if not success:
+                print(f"    Training failed: {error}")
+                continue
+            
+            # Make predictions
+            predictions = trainer.predict_with_uncertainty(trained_model, X_test_scaled)
+            
+            if predictions is None:
+                print(f"    Prediction failed")
+                continue
+            
+            # Calculate metrics
+            fold_metrics = calculate_salinity_metrics(
+                y_test.values, 
+                predictions['mean'], 
+                predictions['std'],
+                thresholds=model_config.get('salinity_thresholds', {'moderate': 0.3, 'high': 0.5, 'extreme': 1.0})
+            )
+            
+            # Store fold results
+            fold_result = {
+                'fold': fold_idx,
+                'metrics': fold_metrics,
+                'train_size': len(train_idx),
+                'test_size': len(test_idx)
+            }
+            
+            cv_results['fold_results'].append(fold_result)
+            
+            print(f"    R²: {fold_metrics['r2']:.4f}, RMSE: {fold_metrics['rmse']:.4f}")
+        
+        # Calculate mean and std of metrics across folds
+        if cv_results['fold_results']:
+            all_metrics = [fold['metrics'] for fold in cv_results['fold_results']]
+            metric_names = all_metrics[0].keys()
+            
+            for metric in metric_names:
+                values = [m[metric] for m in all_metrics if not np.isnan(m[metric])]
+                cv_results['mean_metrics'][metric] = np.mean(values)
+                cv_results['std_metrics'][metric] = np.std(values)
+        
+        return cv_results
+
+class NGBoostHyperparameterOptimizer:
+    """Optimize hyperparameters for NGBoost models"""
     
-    print(f"\nBest parameters: {best_params}")
-    print(f"Best CV R²: {best_score:.4f}")
+    def __init__(self, config):
+        self.config = config
+        self.results = []
     
-    return {
-        'best_params': best_params,
-        'best_score': best_score,
-        'all_results': results
-    }
+    def optimize_hyperparameters(self, X, y, cv_splitter, data_processor):
+        """Run hyperparameter optimization"""
+        
+        # Get hyperparameter grid
+        hyperparam_grid = self.config['hyperparameter_grid']
+        distributions = self.config['distributions']
+        scoring_functions = self.config.get('scoring_functions', ['LogScore'])
+        
+        # Create parameter combinations
+        all_combinations = []
+        
+        for distribution in distributions:
+            for scoring in scoring_functions:
+                for hyperparams in ParameterGrid(hyperparam_grid):
+                    combination = {
+                        'distribution': distribution,
+                        'scoring': scoring,
+                        'hyperparams': hyperparams,
+                        'salinity_thresholds': self.config.get('salinity_thresholds', {}),
+                        **self.config  # Include other config items
+                    }
+                    all_combinations.append(combination)
+        
+        print(f"Testing {len(all_combinations)} hyperparameter combinations")
+        
+        # Cross-validate each combination
+        cv_validator = NGBoostCrossValidator(cv_splitter, data_processor)
+        
+        for i, combination in enumerate(all_combinations):
+            print(f"\nCombination {i+1}/{len(all_combinations)}")
+            print(f"Distribution: {combination['distribution']}")
+            print(f"Hyperparams: {combination['hyperparams']}")
+            
+            cv_results = cv_validator.cross_validate_model(combination, X, y, None)
+            cv_results['combination_id'] = i
+            
+            self.results.append(cv_results)
+        
+        # Find best combination
+        self._find_best_combination()
+        
+        return self.results
+    
+    def _find_best_combination(self):
+        """Find the best hyperparameter combination based on CV results"""
+        
+        if not self.results:
+            return
+        
+        # Score based on R² (could be made configurable)
+        valid_results = [r for r in self.results if r['mean_metrics']]
+        
+        if not valid_results:
+            print("No valid results found")
+            return
+        
+        # Find best based on R² 
+        best_result = max(valid_results, key=lambda x: x['mean_metrics'].get('r2', -np.inf))
+        
+        self.best_params = best_result['model_config']
+        self.best_score = best_result['mean_metrics']['r2']
+        
+        print(f"\nBest combination found:")
+        print(f"R² = {self.best_score:.4f}")
+        print(f"Distribution: {self.best_params['distribution']}")
+        print(f"Hyperparams: {self.best_params['hyperparams']}")
+    
+    def get_best_params(self):
+        """Get the best hyperparameters found"""
+        return self.best_params, self.best_score
+    
+    def save_results(self, filepath):
+        """Save optimization results to file"""
+        
+        # Convert results to serializable format
+        serializable_results = []
+        for result in self.results:
+            serializable_result = {
+                'combination_id': result['combination_id'],
+                'model_config': result['model_config'],
+                'mean_metrics': result['mean_metrics'],
+                'std_metrics': result['std_metrics'],
+                'n_folds': len(result['fold_results'])
+            }
+            serializable_results.append(serializable_result)
+        
+        # Save as pickle for full results, JSON for summary
+        joblib.dump(self.results, filepath.replace('.json', '_full.pkl'))
+        
+        import json
+        with open(filepath, 'w') as f:
+            json.dump(serializable_results, f, indent=2, default=str)
