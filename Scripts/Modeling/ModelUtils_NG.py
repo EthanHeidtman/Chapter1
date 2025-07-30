@@ -18,16 +18,36 @@ from ngboost.distns import Normal, LogNormal, Gamma
 from ngboost.scores import LogScore, CRPS
 from ngboost.learners import default_tree_learner
 from sklearn.model_selection import ParameterGrid
+from sklearn.ensemble import RandomForestRegressor
+from sklearn.linear_model import LinearRegression
 import joblib
 import os
+import json
 from datetime import datetime
 import warnings
 
 class NGBoostModelTrainer:
     """Handle NGBoost model training and hyperparameter optimization"""
     
-    def __init__(self, config):
-        self.config = config
+    def __init__(self, distributions, scoring_functions, base_params, parallel_config):
+        """
+        Initialize with config parameters
+        
+        Parameters:
+        -----------
+        distributions : dict
+            Distribution classes (from Config_NG.DISTRIBUTIONS)
+        scoring_functions : dict  
+            Scoring function classes (from Config_NG.SCORING_FUNCTIONS)
+        base_params : dict
+            Base model parameters (from Config_NG.BASE_PARAMS)
+        parallel_config : dict
+            Parallel processing config (from Config_NG.PARALLEL_CONFIG)
+        """
+        self.distributions = distributions
+        self.scoring_functions = scoring_functions
+        self.base_params = base_params
+        self.parallel_config = parallel_config
         self.best_params = None
         self.best_score = None
         self.trained_models = {}
@@ -37,23 +57,35 @@ class NGBoostModelTrainer:
         
         # Get distribution class
         if isinstance(distribution, str):
-            distribution = self.config['distributions'][distribution]
+            if distribution not in self.distributions:
+                raise ValueError(f"Unknown distribution: {distribution}. Available: {list(self.distributions.keys())}")
+            distribution_class = self.distributions[distribution]
+        else:
+            distribution_class = distribution
         
         # Get scoring function
         if isinstance(scoring, str):
-            scoring = self.config['scoring_functions'][scoring]
+            if scoring not in self.scoring_functions:
+                raise ValueError(f"Unknown scoring function: {scoring}. Available: {list(self.scoring_functions.keys())}")
+            scoring_class = self.scoring_functions[scoring]
+        else:
+            scoring_class = scoring
         
         # Combine base params with hyperparams
-        model_params = {**self.config['base_params'], **hyperparams}
+        model_params = {**self.base_params, **hyperparams}
         
-        # Set up base learner
-        n_jobs = self.config['parallel_config'].get('ngboost_n_jobs', 1)
+        # Set up base learner with parallel processing
+        n_jobs = self.parallel_config.get('ngboost_n_jobs', 1)
         base_learner = default_tree_learner
+        
+        print(f"Creating NGBoost model: {distribution} distribution, {scoring} scoring")
+        print(f"Parameters: n_estimators={model_params['n_estimators']}, "
+              f"learning_rate={model_params['learning_rate']}")
         
         # Create model
         model = NGBoost(
-            Dist=distribution,
-            Score=scoring,
+            Dist=distribution_class,
+            Score=scoring_class,
             Base=base_learner,
             n_estimators=model_params['n_estimators'],
             learning_rate=model_params['learning_rate'],
@@ -70,52 +102,133 @@ class NGBoostModelTrainer:
         """Train a single NGBoost model"""
         
         try:
+            print(f"Training model on {len(X_train)} samples...")
+            
             # Train the model
             if X_val is not None and y_val is not None:
+                print(f"Using validation set with {len(X_val)} samples")
                 model.fit(X_train, y_train, X_val=X_val, Y_val=y_val)
             else:
                 model.fit(X_train, y_train)
             
+            print("Training completed successfully")
             return model, True, None
             
         except Exception as e:
+            print(f"Training failed: {str(e)}")
             return None, False, str(e)
     
     def predict_with_uncertainty(self, model, X):
         """Make predictions with uncertainty estimates"""
         
         try:
+            print(f"Making predictions for {len(X)} samples...")
+            
             # Get distributional predictions
             y_dists = model.pred_dist(X)
             
-            # Extract mean and std
+            # Extract statistics based on distribution type
             y_pred = y_dists.mean()
-            y_std = y_dists.scale  # or y_dists.var()**0.5 depending on distribution
             
-            # Get prediction intervals (5th and 95th percentiles)
-            y_lower = y_dists.ppf(0.05)
-            y_upper = y_dists.ppf(0.95)
+            # Handle different distribution types for scale parameter
+            if hasattr(y_dists, 'scale'):
+                y_std = y_dists.scale
+            elif hasattr(y_dists, 'var'):
+                y_std = np.sqrt(y_dists.var())
+            else:
+                # Fallback - estimate from quantiles
+                y_std = (y_dists.ppf(0.84) - y_dists.ppf(0.16)) / 2
             
-            return {
+            # Get prediction intervals
+            y_lower_50 = y_dists.ppf(0.25)  # 50% interval
+            y_upper_50 = y_dists.ppf(0.75)
+            y_lower_90 = y_dists.ppf(0.05)  # 90% interval
+            y_upper_90 = y_dists.ppf(0.95)
+            y_lower_95 = y_dists.ppf(0.025) # 95% interval
+            y_upper_95 = y_dists.ppf(0.975)
+            
+            predictions = {
                 'mean': y_pred,
                 'std': y_std,
-                'lower_90': y_lower,
-                'upper_90': y_upper,
+                'lower_50': y_lower_50,
+                'upper_50': y_upper_50,
+                'lower_90': y_lower_90,
+                'upper_90': y_upper_90,
+                'lower_95': y_lower_95,
+                'upper_95': y_upper_95,
                 'distributions': y_dists
             }
             
+            print("Predictions completed successfully")
+            return predictions
+            
         except Exception as e:
             print(f"Prediction error: {e}")
+            return None
+    
+    def calculate_feature_importance(self, model, X, method='permutation'):
+        """Calculate feature importance from trained model"""
+        
+        try:
+            if method == 'permutation':
+                # Use permutation importance
+                from sklearn.inspection import permutation_importance
+                
+                # Need predictions for baseline
+                baseline_preds = model.predict(X)
+                
+                # Calculate permutation importance
+                perm_importance = permutation_importance(
+                    model, X, baseline_preds, 
+                    n_repeats=5,
+                    random_state=self.base_params.get('random_state', 42)
+                )
+                
+                importance_df = pd.DataFrame({
+                    'feature': X.columns,
+                    'importance_mean': perm_importance.importances_mean,
+                    'importance_std': perm_importance.importances_std
+                }).sort_values('importance_mean', ascending=False)
+                
+            else:
+                # Use built-in feature importance if available
+                if hasattr(model, 'feature_importances_'):
+                    importance_df = pd.DataFrame({
+                        'feature': X.columns,
+                        'importance_mean': model.feature_importances_,
+                        'importance_std': np.zeros(len(X.columns))
+                    }).sort_values('importance_mean', ascending=False)
+                else:
+                    print("Model does not have built-in feature importance")
+                    return None
+            
+            return importance_df
+            
+        except Exception as e:
+            print(f"Feature importance calculation failed: {e}")
             return None
 
 class NGBoostCrossValidator:
     """Handle cross-validation for NGBoost models"""
     
-    def __init__(self, cv_splitter, data_processor):
+    def __init__(self, cv_splitter, data_processor, salinity_thresholds):
+        """
+        Initialize cross-validator
+        
+        Parameters:
+        -----------
+        cv_splitter : SalinityTimeSeriesCV
+            Cross-validation splitter
+        data_processor : SalinityDataProcessor
+            Data preprocessing handler
+        salinity_thresholds : dict
+            Salinity thresholds for metrics (from Config_NG.SALINITY_THRESHOLDS)
+        """
         self.cv_splitter = cv_splitter
         self.data_processor = data_processor
+        self.salinity_thresholds = salinity_thresholds
         
-    def cross_validate_model(self, model_config, X, y, metrics_calculator):
+    def cross_validate_model(self, trainer, distribution, scoring, hyperparams, X, y):
         """Perform cross-validation for a single model configuration"""
         
         from DataUtils_NG import calculate_salinity_metrics
@@ -124,63 +237,79 @@ class NGBoostCrossValidator:
             'fold_results': [],
             'mean_metrics': {},
             'std_metrics': {},
-            'model_config': model_config
+            'model_config': {
+                'distribution': distribution,
+                'scoring': scoring,
+                'hyperparams': hyperparams
+            }
         }
         
-        print(f"Starting CV for {model_config}")
+        print(f"\nStarting CV for {distribution} distribution with {scoring} scoring")
+        print(f"Hyperparameters: {hyperparams}")
+        
+        successful_folds = 0
         
         for fold_idx, (train_idx, test_idx) in enumerate(self.cv_splitter.split(X, y)):
             
             print(f"  Fold {fold_idx + 1}/{self.cv_splitter.cv_config['n_splits']}")
             
-            # Split data
-            X_train, X_test = X.iloc[train_idx], X.iloc[test_idx] 
-            y_train, y_test = y.iloc[train_idx], y.iloc[test_idx]
-            
-            # Scale features
-            X_train_scaled, X_test_scaled = self.data_processor.scale_features(X_train, X_test)
-            
-            # Create and train model
-            trainer = NGBoostModelTrainer(model_config)
-            model = trainer.create_ngboost_model(
-                distribution=model_config['distribution'],
-                scoring=model_config['scoring'],
-                hyperparams=model_config['hyperparams']
-            )
-            
-            # Train model
-            trained_model, success, error = trainer.train_single_model(model, X_train_scaled, y_train)
-            
-            if not success:
-                print(f"    Training failed: {error}")
+            try:
+                # Split data
+                X_train, X_test = X.iloc[train_idx], X.iloc[test_idx] 
+                y_train, y_test = y.iloc[train_idx], y.iloc[test_idx]
+                
+                # Scale features
+                X_train_scaled, X_test_scaled = self.data_processor.scale_features(X_train, X_test)
+                
+                # Create and train model
+                model = trainer.create_ngboost_model(distribution, scoring, hyperparams)
+                trained_model, success, error = trainer.train_single_model(model, X_train_scaled, y_train)
+                
+                if not success:
+                    print(f"    Training failed: {error}")
+                    continue
+                
+                # Make predictions
+                predictions = trainer.predict_with_uncertainty(trained_model, X_test_scaled)
+                
+                if predictions is None:
+                    print(f"    Prediction failed")
+                    continue
+                
+                # Calculate metrics
+                fold_metrics = calculate_salinity_metrics(
+                    y_test.values, 
+                    predictions['mean'], 
+                    predictions['std'],
+                    salinity_thresholds=self.salinity_thresholds
+                )
+                
+                # Get fold info
+                fold_info = self.cv_splitter.get_fold_info(X, fold_idx, train_idx, test_idx)
+                
+                # Store fold results
+                fold_result = {
+                    'fold': fold_idx,
+                    'metrics': fold_metrics,
+                    'fold_info': fold_info,
+                    'predictions_sample': {
+                        'y_true': y_test.values[:10].tolist(),  # First 10 for inspection
+                        'y_pred': predictions['mean'][:10].tolist(),
+                        'y_std': predictions['std'][:10].tolist()
+                    }
+                }
+                
+                cv_results['fold_results'].append(fold_result)
+                successful_folds += 1
+                
+                print(f"    R²: {fold_metrics['r2']:.4f}, RMSE: {fold_metrics['rmse']:.4f}, "
+                      f"High-sal R²: {fold_metrics.get('high_sal_r2', 'N/A')}")
+                
+            except Exception as e:
+                print(f"    Fold {fold_idx + 1} failed: {str(e)}")
                 continue
-            
-            # Make predictions
-            predictions = trainer.predict_with_uncertainty(trained_model, X_test_scaled)
-            
-            if predictions is None:
-                print(f"    Prediction failed")
-                continue
-            
-            # Calculate metrics
-            fold_metrics = calculate_salinity_metrics(
-                y_test.values, 
-                predictions['mean'], 
-                predictions['std'],
-                thresholds=model_config.get('salinity_thresholds', {'moderate': 0.3, 'high': 0.5, 'extreme': 1.0})
-            )
-            
-            # Store fold results
-            fold_result = {
-                'fold': fold_idx,
-                'metrics': fold_metrics,
-                'train_size': len(train_idx),
-                'test_size': len(test_idx)
-            }
-            
-            cv_results['fold_results'].append(fold_result)
-            
-            print(f"    R²: {fold_metrics['r2']:.4f}, RMSE: {fold_metrics['rmse']:.4f}")
+        
+        print(f"  Completed {successful_folds}/{self.cv_splitter.cv_config['n_splits']} folds successfully")
         
         # Calculate mean and std of metrics across folds
         if cv_results['fold_results']:
@@ -188,94 +317,180 @@ class NGBoostCrossValidator:
             metric_names = all_metrics[0].keys()
             
             for metric in metric_names:
-                values = [m[metric] for m in all_metrics if not np.isnan(m[metric])]
-                cv_results['mean_metrics'][metric] = np.mean(values)
-                cv_results['std_metrics'][metric] = np.std(values)
+                values = [m[metric] for m in all_metrics if not (np.isnan(m[metric]) if isinstance(m[metric], float) else False)]
+                if values:
+                    cv_results['mean_metrics'][metric] = np.mean(values)
+                    cv_results['std_metrics'][metric] = np.std(values)
+                else:
+                    cv_results['mean_metrics'][metric] = np.nan
+                    cv_results['std_metrics'][metric] = np.nan
         
         return cv_results
 
 class NGBoostHyperparameterOptimizer:
     """Optimize hyperparameters for NGBoost models"""
     
-    def __init__(self, config):
-        self.config = config
-        self.results = []
-    
-    def optimize_hyperparameters(self, X, y, cv_splitter, data_processor):
-        """Run hyperparameter optimization"""
+    def __init__(self, distributions, scoring_functions, base_params, parallel_config, salinity_thresholds):
+        """
+        Initialize optimizer with config parameters
         
-        # Get hyperparameter grid
-        hyperparam_grid = self.config['hyperparameter_grid']
-        distributions = self.config['distributions']
-        scoring_functions = self.config.get('scoring_functions', ['LogScore'])
+        Parameters:
+        -----------
+        distributions : dict
+            Distribution classes (from Config_NG.DISTRIBUTIONS)
+        scoring_functions : dict
+            Scoring function classes (from Config_NG.SCORING_FUNCTIONS)
+        base_params : dict
+            Base model parameters (from Config_NG.BASE_PARAMS)
+        parallel_config : dict
+            Parallel processing config (from Config_NG.PARALLEL_CONFIG)
+        salinity_thresholds : dict
+            Salinity thresholds (from Config_NG.SALINITY_THRESHOLDS)
+        """
+        self.distributions = distributions
+        self.scoring_functions = scoring_functions
+        self.base_params = base_params
+        self.parallel_config = parallel_config
+        self.salinity_thresholds = salinity_thresholds
+        self.results = []
+        self.best_params = None
+        self.best_score = None
+    
+    def optimize_hyperparameters(self, experiment_config, X, y, cv_splitter, data_processor):
+        """Run hyperparameter optimization for a specific experiment"""
+        
+        # Get experiment configuration
+        hyperparam_grid = experiment_config['hyperparameter_grid']
+        distributions = experiment_config['distributions']
+        scoring = experiment_config['scoring']
+        
+        # Handle different scoring formats
+        if isinstance(scoring, str):
+            scoring_list = [scoring]
+        elif isinstance(scoring, list):
+            scoring_list = scoring
+        else:
+            scoring_list = ['LogScore']  # Default
+        
+        # Create trainer
+        trainer = NGBoostModelTrainer(
+            self.distributions, 
+            self.scoring_functions, 
+            self.base_params, 
+            self.parallel_config
+        )
         
         # Create parameter combinations
         all_combinations = []
         
         for distribution in distributions:
-            for scoring in scoring_functions:
-                for hyperparams in ParameterGrid(hyperparam_grid):
+            for scoring_func in scoring_list:
+                if isinstance(hyperparam_grid, dict):
+                    for hyperparams in ParameterGrid(hyperparam_grid):
+                        combination = {
+                            'distribution': distribution,
+                            'scoring': scoring_func,
+                            'hyperparams': hyperparams
+                        }
+                        all_combinations.append(combination)
+                else:
+                    # Handle special case like 'best_params'
                     combination = {
                         'distribution': distribution,
-                        'scoring': scoring,
-                        'hyperparams': hyperparams,
-                        'salinity_thresholds': self.config.get('salinity_thresholds', {}),
-                        **self.config  # Include other config items
+                        'scoring': scoring_func,
+                        'hyperparams': hyperparam_grid
                     }
                     all_combinations.append(combination)
         
         print(f"Testing {len(all_combinations)} hyperparameter combinations")
         
         # Cross-validate each combination
-        cv_validator = NGBoostCrossValidator(cv_splitter, data_processor)
+        cv_validator = NGBoostCrossValidator(cv_splitter, data_processor, self.salinity_thresholds)
         
         for i, combination in enumerate(all_combinations):
-            print(f"\nCombination {i+1}/{len(all_combinations)}")
+            print(f"\n{'='*60}")
+            print(f"Combination {i+1}/{len(all_combinations)}")
             print(f"Distribution: {combination['distribution']}")
+            print(f"Scoring: {combination['scoring']}")
             print(f"Hyperparams: {combination['hyperparams']}")
+            print(f"{'='*60}")
             
-            cv_results = cv_validator.cross_validate_model(combination, X, y, None)
+            cv_results = cv_validator.cross_validate_model(
+                trainer,
+                combination['distribution'],
+                combination['scoring'], 
+                combination['hyperparams'],
+                X, y
+            )
             cv_results['combination_id'] = i
             
             self.results.append(cv_results)
+            
+            # Print summary for this combination
+            if cv_results['mean_metrics']:
+                print(f"\nCombination {i+1} Results:")
+                print(f"  R²: {cv_results['mean_metrics'].get('r2', 'N/A'):.4f} "
+                      f"(±{cv_results['std_metrics'].get('r2', 0):.4f})")
+                print(f"  RMSE: {cv_results['mean_metrics'].get('rmse', 'N/A'):.4f} "
+                      f"(±{cv_results['std_metrics'].get('rmse', 0):.4f})")
+                print(f"  High-sal R²: {cv_results['mean_metrics'].get('high_sal_r2', 'N/A')}")
         
         # Find best combination
         self._find_best_combination()
         
         return self.results
     
-    def _find_best_combination(self):
+    def _find_best_combination(self, primary_metric='r2', secondary_metric='high_sal_r2'):
         """Find the best hyperparameter combination based on CV results"""
         
         if not self.results:
+            print("No results available for optimization")
             return
         
-        # Score based on R² (could be made configurable)
-        valid_results = [r for r in self.results if r['mean_metrics']]
+        # Filter valid results
+        valid_results = [r for r in self.results if r['mean_metrics'] and 
+                        not np.isnan(r['mean_metrics'].get(primary_metric, np.nan))]
         
         if not valid_results:
             print("No valid results found")
             return
         
-        # Find best based on R² 
-        best_result = max(valid_results, key=lambda x: x['mean_metrics'].get('r2', -np.inf))
+        # Find best based on primary metric (R²)
+        best_result = max(valid_results, key=lambda x: x['mean_metrics'].get(primary_metric, -np.inf))
         
         self.best_params = best_result['model_config']
-        self.best_score = best_result['mean_metrics']['r2']
+        self.best_score = best_result['mean_metrics'][primary_metric]
         
-        print(f"\nBest combination found:")
-        print(f"R² = {self.best_score:.4f}")
+        print(f"\n{'='*60}")
+        print("BEST COMBINATION FOUND:")
+        print(f"{'='*60}")
+        print(f"Primary metric ({primary_metric}): {self.best_score:.4f}")
+        if secondary_metric in best_result['mean_metrics']:
+            print(f"Secondary metric ({secondary_metric}): {best_result['mean_metrics'][secondary_metric]:.4f}")
         print(f"Distribution: {self.best_params['distribution']}")
-        print(f"Hyperparams: {self.best_params['hyperparams']}")
+        print(f"Scoring: {self.best_params['scoring']}")
+        print(f"Hyperparameters: {self.best_params['hyperparams']}")
+        print(f"{'='*60}")
     
     def get_best_params(self):
         """Get the best hyperparameters found"""
         return self.best_params, self.best_score
     
-    def save_results(self, filepath):
-        """Save optimization results to file"""
+    def save_results(self, experiment_paths, experiment_name):
+        """Save optimization results using experiment directory structure"""
         
-        # Convert results to serializable format
+        # Create timestamped filename
+        timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+        
+        # Save full results as pickle
+        full_results_path = os.path.join(
+            experiment_paths['results'], 
+            f"{experiment_name}_hyperopt_full_{timestamp}.pkl"
+        )
+        joblib.dump(self.results, full_results_path)
+        print(f"Full results saved to: {full_results_path}")
+        
+        # Save summary as JSON
         serializable_results = []
         for result in self.results:
             serializable_result = {
@@ -283,13 +498,122 @@ class NGBoostHyperparameterOptimizer:
                 'model_config': result['model_config'],
                 'mean_metrics': result['mean_metrics'],
                 'std_metrics': result['std_metrics'],
-                'n_folds': len(result['fold_results'])
+                'n_successful_folds': len(result['fold_results'])
             }
             serializable_results.append(serializable_result)
         
-        # Save as pickle for full results, JSON for summary
-        joblib.dump(self.results, filepath.replace('.json', '_full.pkl'))
+        summary_path = os.path.join(
+            experiment_paths['results'],
+            f"{experiment_name}_hyperopt_summary_{timestamp}.json"
+        )
         
-        import json
-        with open(filepath, 'w') as f:
-            json.dump(serializable_results, f, indent=2, default=str)
+        with open(summary_path, 'w') as f:
+            json.dump({
+                'experiment_name': experiment_name,
+                'timestamp': timestamp,
+                'best_params': self.best_params,
+                'best_score': self.best_score,
+                'all_results': serializable_results
+            }, f, indent=2, default=str)
+        
+        print(f"Summary saved to: {summary_path}")
+        
+        return full_results_path, summary_path
+
+class BaselineModelComparator:
+    """Compare NGBoost against baseline models"""
+    
+    def __init__(self, baseline_models):
+        """
+        Initialize with baseline model types
+        
+        Parameters:
+        -----------
+        baseline_models : list
+            List of baseline model names (from Config_NG.BASELINE_MODELS)
+        """
+        self.baseline_models = baseline_models
+        self.trained_baselines = {}
+    
+    def create_baseline_model(self, model_type, random_state=42):
+        """Create baseline model of specified type"""
+        
+        if model_type == 'linear':
+            return LinearRegression()
+        elif model_type == 'random_forest':
+            return RandomForestRegressor(
+                n_estimators=100,
+                random_state=random_state,
+                n_jobs=-1
+            )
+        else:
+            raise ValueError(f"Unknown baseline model type: {model_type}")
+    
+    def compare_models(self, X, y, cv_splitter, data_processor, salinity_thresholds):
+        """Compare baseline models using the same CV framework"""
+        
+        from DataUtils_NG import calculate_salinity_metrics
+        
+        baseline_results = {}
+        
+        for model_type in self.baseline_models:
+            print(f"\nTesting baseline model: {model_type}")
+            
+            model_results = {
+                'fold_results': [],
+                'mean_metrics': {},
+                'std_metrics': {}
+            }
+            
+            for fold_idx, (train_idx, test_idx) in enumerate(cv_splitter.split(X, y)):
+                
+                print(f"  Fold {fold_idx + 1}")
+                
+                try:
+                    # Split data
+                    X_train, X_test = X.iloc[train_idx], X.iloc[test_idx]
+                    y_train, y_test = y.iloc[train_idx], y.iloc[test_idx]
+                    
+                    # Scale features  
+                    X_train_scaled, X_test_scaled = data_processor.scale_features(X_train, X_test)
+                    
+                    # Create and train baseline model
+                    model = self.create_baseline_model(model_type)
+                    model.fit(X_train_scaled, y_train)
+                    
+                    # Make predictions
+                    y_pred = model.predict(X_test_scaled)
+                    
+                    # Calculate metrics (no uncertainty for baseline models)
+                    fold_metrics = calculate_salinity_metrics(
+                        y_test.values, 
+                        y_pred, 
+                        y_pred_std=None,  # No uncertainty
+                        salinity_thresholds=salinity_thresholds
+                    )
+                    
+                    model_results['fold_results'].append({
+                        'fold': fold_idx,
+                        'metrics': fold_metrics
+                    })
+                    
+                    print(f"    R²: {fold_metrics['r2']:.4f}, RMSE: {fold_metrics['rmse']:.4f}")
+                    
+                except Exception as e:
+                    print(f"    Fold {fold_idx + 1} failed: {str(e)}")
+                    continue
+            
+            # Calculate mean metrics
+            if model_results['fold_results']:
+                all_metrics = [fold['metrics'] for fold in model_results['fold_results']]
+                metric_names = all_metrics[0].keys()
+                
+                for metric in metric_names:
+                    values = [m[metric] for m in all_metrics if not (np.isnan(m[metric]) if isinstance(m[metric], float) else False)]
+                    if values:
+                        model_results['mean_metrics'][metric] = np.mean(values)
+                        model_results['std_metrics'][metric] = np.std(values)
+            
+            baseline_results[model_type] = model_results
+        
+        return baseline_results

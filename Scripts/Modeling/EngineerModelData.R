@@ -168,8 +168,6 @@ mutate(
    # Cumulative inflow deficit (how much flow is missing)
    InflowDeficit = pmax(0, LowInflowThreshold - Inflows, na.rm = TRUE),
    InflowDeficit = ifelse(is.na(Inflows), 0, InflowDeficit),  # Set deficit to 0 when inflows are missing
-   # VeryLowInflowDeficit = pmax(0, VeryLowInflowThreshold - Inflows, na.rm = TRUE),
-   # VeryLowInflowDeficit = ifelse(is.na(Inflows), 0, VeryLowInflowDeficit), # Set deficit to 0 when inflows are missing
    
    # Cumulative stress over multiple time windows
    CumulativeInflowDeficit3 = zoo::rollsum(InflowDeficit, 24 * 3, fill = NA, align = "right", partial = TRUE, na.rm = TRUE),
@@ -233,7 +231,7 @@ model_data <- model_data %>%
    mutate_if(is.logical, as.factor)
 
 # Normalize Predictors and Add to model_data
-preds_to_normalize <- colnames(model_data)[which(colnames(model_data) == 'Discharge') : ncol(model_data)] # Starting from the discharge colum
+preds_to_normalize <- colnames(model_data)[which(colnames(model_data) == 'Discharge') : ncol(model_data)] # Starting from the discharge column
 
 # Apply the normalization function
 normalized_predictors <- normalize_multiple_predictors(model_data, preds_to_normalize)
