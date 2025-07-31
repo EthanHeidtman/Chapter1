@@ -1,0 +1,44 @@
+{
+  "linear": {
+    "mean_metrics": {
+      "r2": 0.038505867793307426,
+      "rmse": 0.0207723444034302,
+      "mae": 0.016478246296601197,
+      "high_salinity_precision": 0.0,
+      "high_salinity_recall": 0.0,
+      "extreme_event_bias": -0.001241614457919759,
+      "residual_autocorr": 0.9875094551306104
+    },
+    "std_metrics": {
+      "r2": 0.320666317771113,
+      "rmse": 0.0024877970066938676,
+      "mae": 0.0023192584181699278,
+      "high_salinity_precision": 0.0,
+      "high_salinity_recall": 0.0,
+      "extreme_event_bias": 0.00723053937351866,
+      "residual_autocorr": 0.0065985012779629
+    },
+    "n_folds": 5
+  },
+  "random_forest": {
+    "mean_metrics": {
+      "r2": -1.8375088388979435,
+      "rmse": 0.030029881808072662,
+      "mae": 0.019285899801587326,
+      "high_salinity_precision": 0.0,
+      "high_salinity_recall": 0.0,
+      "extreme_event_bias": 0.0025668950830506883,
+      "residual_autocorr": 0.9870329227520112
+    },
+    "std_metrics": {
+      "r2": 3.344883925267653,
+      "rmse": 0.012526898508489584,
+      "mae": 0.004870621984354209,
+      "high_salinity_precision": 0.0,
+      "high_salinity_recall": 0.0,
+      "extreme_event_bias": 0.03759110592541856,
+      "residual_autocorr": 0.00734090590479778
+    },
+    "n_folds": 5
+  }
+}

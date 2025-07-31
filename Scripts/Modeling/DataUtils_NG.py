@@ -63,7 +63,7 @@ class SalinityDataProcessor:
         
         # Convert datetime if needed
         if 'DateTime' in self.data.columns:
-            self.data['DateTime'] = pd.to_datetime(self.data['DateTime'])
+            self.data['DateTime'] =pd.to_datetime(self.data['DateTime'], format="%Y-%m-%d %H:%M:%S", errors='coerce')
             self.data = self.data.set_index('DateTime')
         elif 'Date' in self.data.columns:
             self.data['Date'] = pd.to_datetime(self.data['Date'])
@@ -258,7 +258,7 @@ class SalinityTimeSeriesCV:
         
         return info
 
-def calculate_salinity_metrics(y_true, y_pred, y_pred_std=None, salinity_thresholds=None):
+def calculate_salinity_metrics(y_true, y_pred, y_pred_std=None, y_pred_dist=None, salinity_thresholds=None):
     """
     Calculate all core metrics for salinity prediction
     
@@ -270,6 +270,8 @@ def calculate_salinity_metrics(y_true, y_pred, y_pred_std=None, salinity_thresho
         Predicted salinity values
     y_pred_std : array-like, optional
         Predicted standard deviations for probabilistic metrics
+    y_pred_dist : NGBoost distribution object, optional
+        Predicted distributions for accurate probabilistic metrics
     salinity_thresholds : dict, optional
         Thresholds for event classification (from Config_NG.SALINITY_THRESHOLDS)
     """
@@ -327,9 +329,14 @@ def calculate_salinity_metrics(y_true, y_pred, y_pred_std=None, salinity_thresho
     else:
         metrics['residual_autocorr'] = 0
     
-    # Probabilistic metrics if std provided (NGBoost output)
-    if y_pred_std is not None:
-        # Log-likelihood (assuming normal distribution)
+    # Probabilistic metrics using distribution objects (preferred) or std approximation
+    if y_pred_dist is not None:
+        # Use actual distributions for accurate calculations
+        metrics['log_likelihood'] = calculate_log_likelihood(y_true, y_pred_dist)
+        metrics['crps_score'] = calculate_crps(y_true, y_pred_dist)
+        
+    elif y_pred_std is not None:
+        # Fallback to normal approximation if only std is available
         with warnings.catch_warnings():
             warnings.simplefilter("ignore")
             log_likelihood = -0.5 * np.sum(np.log(2 * np.pi * y_pred_std**2) + 
@@ -346,6 +353,10 @@ def calculate_salinity_metrics(y_true, y_pred, y_pred_std=None, salinity_thresho
             metrics['crps_score'] = np.mean(crps_values)
         except:
             metrics['crps_score'] = np.nan
+    else:
+        # No probabilistic information available
+        metrics['log_likelihood'] = np.nan
+        metrics['crps_score'] = np.nan
     
     return metrics
 
@@ -479,3 +490,89 @@ def check_data_quality(data, predictors, target):
             }
     
     return report
+
+def calculate_crps(y_true, y_pred_dist):
+    """
+    Calculate CRPS (Continuous Ranked Probability Score) from NGBoost distributions
+    
+    Parameters:
+    -----------
+    y_true : array-like
+        True salinity values
+    y_pred_dist : NGBoost distribution object
+        Predicted distributions from NGBoost
+    
+    Returns:
+    --------
+    float : Average CRPS score
+    """
+    try:
+        crps_values = []
+        
+        for i, true_val in enumerate(y_true):
+            # Get the distribution for this observation
+            if hasattr(y_pred_dist, '__getitem__'):
+                dist_i = y_pred_dist[i]
+            else:
+                # Handle case where y_pred_dist is already a single distribution
+                dist_i = y_pred_dist
+            
+            # Calculate CRPS using numerical integration
+            # CRPS = ∫ [F(x) - I(x >= y_true)]² dx
+            # For computational efficiency, we'll use a discrete approximation
+            
+            # Get distribution parameters
+            if hasattr(dist_i, 'mean') and hasattr(dist_i, 'scale'):
+                mean = dist_i.mean()
+                scale = dist_i.scale if hasattr(dist_i, 'scale') else np.sqrt(dist_i.var())
+                
+                # Create evaluation points around the true value and prediction
+                x_min = min(true_val, mean) - 3 * scale
+                x_max = max(true_val, mean) + 3 * scale
+                x_points = np.linspace(x_min, x_max, 100)
+                
+                # Calculate CDF values
+                cdf_values = dist_i.cdf(x_points)
+                
+                # Indicator function: 1 if x >= true_val, 0 otherwise
+                indicator = (x_points >= true_val).astype(float)
+                
+                # Calculate integrand
+                integrand = (cdf_values - indicator) ** 2
+                
+                # Numerical integration using trapezoidal rule
+                crps_i = np.trapz(integrand, x_points)
+                crps_values.append(crps_i)
+                
+            else:
+                # Fallback method if distribution doesn't have expected attributes
+                crps_values.append(np.nan)
+        
+        return np.nanmean(crps_values)
+        
+    except Exception as e:
+        print(f"Error calculating CRPS: {e}")
+        return np.nan
+    
+def calculate_log_likelihood(y_true, y_pred_dist):
+    """
+    Calculate log-likelihood from NGBoost distribution predictions
+    
+    Parameters:
+    -----------
+    y_true : array-like
+        True salinity values
+    y_pred_dist : NGBoost distribution object
+        Predicted distributions from NGBoost
+    
+    Returns:
+    --------
+    float : Average log-likelihood
+    """
+    try:
+        # Calculate log probability density for each observation
+        log_probs = y_pred_dist.logpdf(y_true)
+        return np.mean(log_probs)
+    except Exception as e:
+        print(f"Error calculating log-likelihood: {e}")
+        return np.nan

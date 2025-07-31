@@ -56,7 +56,7 @@ class NGBoostExperimentRunner:
         print(f"Initialized experiment: {experiment_name}")
         print(f"Description: {self.experiment_config['description']}")
         print(f"Experiment directory: {self.experiment_paths['base']}")
-        
+    
     def setup_experiment(self):
         """Initialize data processor, CV splitter, and other components"""
         
@@ -74,10 +74,9 @@ class NGBoostExperimentRunner:
         # Setup CV splitter  
         self.cv_splitter = SalinityTimeSeriesCV(CV_CONFIG)
         
-        # Setup optimizer
+        # Setup optimizer (removed scoring_functions parameter)
         self.optimizer = NGBoostHyperparameterOptimizer(
             distributions=DISTRIBUTIONS,
-            scoring_functions=SCORING_FUNCTIONS,
             base_params=BASE_PARAMS,
             parallel_config=PARALLEL_CONFIG,
             salinity_thresholds=SALINITY_THRESHOLDS
@@ -201,10 +200,9 @@ class NGBoostExperimentRunner:
             print("No best parameters found, cannot evaluate holdout")
             return None
         
-        # Create trainer
+        # Create trainer (removed scoring_functions parameter)
         trainer = NGBoostModelTrainer(
             distributions=DISTRIBUTIONS,
-            scoring_functions=SCORING_FUNCTIONS,
             base_params=BASE_PARAMS,
             parallel_config=PARALLEL_CONFIG
         )
@@ -212,10 +210,9 @@ class NGBoostExperimentRunner:
         # Scale training data
         X_train_scaled, _ = self.data_processor.scale_features(X_train)
         
-        # Train final model on all training data
+        # Train final model on all training data (removed scoring parameter)
         final_model = trainer.create_ngboost_model(
             distribution=best_params['distribution'],
-            scoring=best_params['scoring'], 
             hyperparams=best_params['hyperparams']
         )
         
@@ -241,11 +238,12 @@ class NGBoostExperimentRunner:
             print("Holdout prediction failed")
             return None
         
-        # Calculate holdout metrics
+        # Calculate holdout metrics with full distributions for accurate scoring
         holdout_metrics = calculate_salinity_metrics(
             y_holdout.values,
             predictions['mean'],
             predictions['std'],
+            y_pred_dist=predictions['distributions'],  # Pass full distributions
             salinity_thresholds=SALINITY_THRESHOLDS
         )
         
@@ -300,6 +298,8 @@ class NGBoostExperimentRunner:
         print(f"\nHoldout Evaluation Results:")
         print(f"  R² = {holdout_metrics['r2']:.4f}")
         print(f"  RMSE = {holdout_metrics['rmse']:.4f}")
+        print(f"  Log-likelihood = {holdout_metrics.get('log_likelihood', 'N/A')}")
+        print(f"  CRPS = {holdout_metrics.get('crps_score', 'N/A')}")
         print(f"  High salinity R² = {holdout_metrics.get('high_sal_r2', 'N/A')}")
         print(f"  High salinity precision = {holdout_metrics['high_salinity_precision']:.4f}")
         print(f"  High salinity recall = {holdout_metrics['high_salinity_recall']:.4f}")
@@ -669,8 +669,7 @@ def print_experiment_info(experiment_name):
     print(f"\nSpecial features:")
     if exp.get('include_2016_holdout', False):
         print("  ✓ Includes 2016 extreme event holdout evaluation")
-    if 'CRPS' in exp.get('scoring', []):
-        print("  ✓ Uses CRPS scoring in addition to LogScore")
+    print("  ✓ Uses NGBoost default LogScore for training, calculates CRPS post-hoc")
 
 def list_available_experiments():
     """List all available experiments with descriptions"""

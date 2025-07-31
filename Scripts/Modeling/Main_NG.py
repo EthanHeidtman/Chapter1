@@ -126,7 +126,13 @@ def check_system_status():
     
     # 4. Check if we can load data
     try:
-        processor = SalinityDataProcessor(DATA_PATH)
+        processor = SalinityDataProcessor(
+                        data_path=DATA_PATH,
+                        selected_predictors=SELECTED_PREDICTORS,
+                        target_variable=TARGET_VARIABLE,
+                        data_config=DATA_CONFIG,
+                        holdout_events=HOLDOUT_EVENTS  # optional
+                    )
         data_loadable = True
         data_shape = processor.load_data().shape
     except Exception as e:
@@ -139,7 +145,7 @@ def check_system_status():
     try:
         from ngboost import NGBoost
         from ngboost.distns import LogNormal, Gamma
-        from ngboost.scores import LogScore, CRPS
+        #from ngboost.scores import LogScore, CRPS
         ngboost_available = True
     except ImportError as e:
         ngboost_available = False
@@ -160,7 +166,13 @@ def check_system_status():
         
         # Show quick stats
         try:
-            processor = NGBoostDataProcessor(DATA_PATH)
+            processor = SalinityDataProcessor(
+                        data_path=DATA_PATH,
+                        selected_predictors=SELECTED_PREDICTORS,
+                        target_variable=TARGET_VARIABLE,
+                        data_config=DATA_CONFIG,
+                        holdout_events=HOLDOUT_EVENTS  # optional
+                    )
             data = processor.load_data()
             salinity_stats = data[TARGET_VARIABLE].describe()
             
@@ -256,10 +268,10 @@ def run_experiment(experiment_name, skip_confirmation=False):
         print(f"{'='*40}")
         
         # Create experiment runner
-        runner = NGBoostExperimentRunner()
+        runner = NGBoostExperimentRunner(experiment_name)
         
         # Run the experiment
-        results = runner.run_experiment(experiment_name)
+        results = runner.run_experiment()
         
         print(f"\n{'='*40}")
         print(f"✓ Experiment '{experiment_name}' completed successfully!")

@@ -17,7 +17,6 @@ import json
 import multiprocessing
 from ngboost import NGBoost
 from ngboost.distns import LogNormal, Gamma
-from ngboost.scores import CRPS, LogScore
 
 # =============================================================================
 # FILE PATHS
@@ -105,7 +104,7 @@ BASE_PARAMS = {
 }
 
 # =============================================================================
-# DISTRIBUTIONS AND SCORING
+# DISTRIBUTIONS - NGBoost handles scoring internally
 # =============================================================================
 # Only realistic distributions for positive, right-skewed salinity data
 DISTRIBUTIONS = {
@@ -113,10 +112,7 @@ DISTRIBUTIONS = {
     'gamma': Gamma
 }
 
-SCORING_FUNCTIONS = {
-    'LogScore': LogScore,  # Primary - matches internal optimization
-    'CRPS': CRPS           # Secondary - better for extreme event evaluation
-}
+POSTHOC_SCORING = True
 
 # =============================================================================
 # VALIDATION STRATEGY
@@ -138,7 +134,7 @@ HOLDOUT_EVENTS = {
 }
 
 # =============================================================================
-# EVALUATION METRICS
+# EVALUATION METRICS - Calculated post-prediction
 # =============================================================================
 # Core metrics calculated for every experiment
 CORE_METRICS = {
@@ -147,16 +143,16 @@ CORE_METRICS = {
     'rmse': 'Root Mean Square Error', 
     'mae': 'Mean Absolute Error',
     
-    # Extreme event performance (most critical for your application)
+    # Extreme event performance
     'high_sal_r2': 'R-squared for salinity > 0.5',
     'high_sal_rmse': 'RMSE for salinity > 0.5', 
     'high_sal_mae': 'MAE for salinity > 0.5',
     
-    # Probabilistic performance (NGBoost strength)
+    # Probabilistic performance 
     'log_likelihood': 'Model log-likelihood',
     'crps_score': 'Continuous Ranked Probability Score',
     
-    # Risk-based metrics for dam management
+    # Risk-based metrics 
     'high_salinity_precision': 'Precision for salinity > 0.5',
     'high_salinity_recall': 'Recall for salinity > 0.5',
     'extreme_event_bias': 'Mean bias for top 5% salinity values',
@@ -168,7 +164,7 @@ CORE_METRICS = {
 # Thresholds for salinity events (risk-based management)
 SALINITY_THRESHOLDS = {
     'moderate': 0.3,   # Moderate concern level
-    'high': 0.5,       # High concern level (drinking water impact)
+    'high': 0.5,       # High concern level 
     'extreme': 1.0     # Extreme event level (like 2016)
 }
 
@@ -180,7 +176,6 @@ EXPERIMENTS = {
     'quick_test': {
         'hyperparameter_grid': GRID_QUICK,
         'distributions': ['lognormal'],  
-        'scoring': 'LogScore',
         'n_runs': 1,
         'description': 'Fast development test with LogNormal'
     },
@@ -189,7 +184,6 @@ EXPERIMENTS = {
     'distribution_comparison': {
         'hyperparameter_grid': GRID_QUICK,
         'distributions': ['lognormal', 'gamma'],
-        'scoring': 'LogScore',
         'n_runs': 2,
         'description': 'Compare LogNormal vs Gamma distributions'
     },
@@ -198,7 +192,6 @@ EXPERIMENTS = {
     'optimize_learning': {
         'hyperparameter_grid': GRID_1_LEARNING,
         'distributions': ['lognormal'],            # Best distribution from phase 2
-        'scoring': 'LogScore',
         'n_runs': 3,
         'description': 'Find optimal learning rate and n_estimators'
     },
@@ -207,7 +200,6 @@ EXPERIMENTS = {
     'optimize_regularization': {
         'hyperparameter_grid': GRID_2_REGULARIZATION,
         'distributions': ['lognormal'],            # Best distribution from phase 2
-        'scoring': 'LogScore',
         'n_runs': 3,
         'description': 'Optimize regularization with best base params'
     },
@@ -216,7 +208,6 @@ EXPERIMENTS = {
     'final_model': {
         'hyperparameter_grid': 'best_params',  
         'distributions': ['lognormal'],  
-        'scoring': ['LogScore', 'CRPS'],  
         'include_2016_holdout': True,
         'n_runs': 5,
         'description': 'Final model with 2016 extreme event validation'
@@ -226,7 +217,6 @@ EXPERIMENTS = {
 # =============================================================================
 # COMPUTATIONAL SETTINGS
 # =============================================================================
-# Auto-detect cores, but be conservative
 MAX_CORES = min(multiprocessing.cpu_count() - 1, 8)
 
 PARALLEL_CONFIG = {
@@ -266,7 +256,7 @@ PROBABILISTIC_ANALYSIS = {
 # R PLOTTING DATA EXPORT
 # =============================================================================
 R_PLOT_CONFIG = {
-    'export_format': 'csv',  # CSV files for easy R import
+    'export_format': 'csv',             
     
     'export_types': {
         'predictions_vs_observed': True,        # Scatter plots, residual plots
@@ -274,7 +264,7 @@ R_PLOT_CONFIG = {
         'feature_importance': True,             # Bar plots, importance rankings
         'distribution_comparisons': True,       # Model comparison plots
         'extreme_event_analysis': True,         # 2016 event detailed analysis
-        'calibration_data': True,              # Probability calibration plots
+        'calibration_data': True,               # Probability calibration plots
         'cross_validation_results': True,       # CV performance across folds
         'hyperparameter_optimization': True,    # Tuning process visualization
     },
@@ -286,6 +276,7 @@ R_PLOT_CONFIG = {
     # File naming convention
     'filename_format': '{experiment_name}_{data_type}_{timestamp}.csv'
 }
+
 # =============================================================================
 # RESULTS AND LOGGING
 # =============================================================================
@@ -303,28 +294,8 @@ RESULTS_CONFIG = {
 }
 
 # =============================================================================
-# R PLOTTING DATA EXPORT
+# EXTREME EVENT CONFIGURATION
 # =============================================================================
-R_PLOT_CONFIG = {
-    'export_format': 'csv',  # CSV files for easy R import
-    'export_directory': 'Outputs/PlotData/NGBoost',
-    
-    # Data exports for specific ggplot visualizations
-    'export_types': {
-        'predictions_vs_observed': True,        # Scatter plots, residual plots
-        'time_series_predictions': True,        # Time series with uncertainty bands
-        'feature_importance': True,             # Bar plots, importance rankings
-        'distribution_comparisons': True,       # Model comparison plots
-        'extreme_event_analysis': True,         # 2016 event detailed analysis
-        'calibration_data': True,               # Probability calibration plots
-        'cross_validation_results': True,       # CV performance across folds
-        'hyperparameter_optimization': True,    # Tuning process visualization
-    },
-    
-    # Include metadata for R plotting
-    'include_metadata': True,  # Experiment details, model specs, etc.
-    'timestamp_format': 'ISO',  # Standard datetime format for R
-}
 EXTREME_EVENT_CONFIG = {
     'focus_on_tails': True,
     'tail_threshold': 0.95,  # Focus on top 5% of salinity events

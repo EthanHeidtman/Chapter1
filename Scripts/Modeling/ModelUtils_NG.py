@@ -13,9 +13,9 @@
 # =============================================================================
 import numpy as np
 import pandas as pd
-from ngboost import NGBoost
+from ngboost import NGBRegressor
 from ngboost.distns import Normal, LogNormal, Gamma
-from ngboost.scores import LogScore, CRPS
+#from ngboost.scores import LogScore, CRPS
 from ngboost.learners import default_tree_learner
 from sklearn.model_selection import ParameterGrid
 from sklearn.ensemble import RandomForestRegressor
@@ -29,7 +29,7 @@ import warnings
 class NGBoostModelTrainer:
     """Handle NGBoost model training and hyperparameter optimization"""
     
-    def __init__(self, distributions, scoring_functions, base_params, parallel_config):
+    def __init__(self, distributions, base_params, parallel_config):  # Removed scoring_functions
         """
         Initialize with config parameters
         
@@ -37,22 +37,19 @@ class NGBoostModelTrainer:
         -----------
         distributions : dict
             Distribution classes (from Config_NG.DISTRIBUTIONS)
-        scoring_functions : dict  
-            Scoring function classes (from Config_NG.SCORING_FUNCTIONS)
         base_params : dict
             Base model parameters (from Config_NG.BASE_PARAMS)
         parallel_config : dict
             Parallel processing config (from Config_NG.PARALLEL_CONFIG)
         """
         self.distributions = distributions
-        self.scoring_functions = scoring_functions
         self.base_params = base_params
         self.parallel_config = parallel_config
         self.best_params = None
         self.best_score = None
         self.trained_models = {}
     
-    def create_ngboost_model(self, distribution, scoring, hyperparams):
+    def create_ngboost_model(self, distribution, hyperparams):  # Removed scoring parameter
         """Create NGBoost model with specified parameters"""
         
         # Get distribution class
@@ -63,14 +60,6 @@ class NGBoostModelTrainer:
         else:
             distribution_class = distribution
         
-        # Get scoring function
-        if isinstance(scoring, str):
-            if scoring not in self.scoring_functions:
-                raise ValueError(f"Unknown scoring function: {scoring}. Available: {list(self.scoring_functions.keys())}")
-            scoring_class = self.scoring_functions[scoring]
-        else:
-            scoring_class = scoring
-        
         # Combine base params with hyperparams
         model_params = {**self.base_params, **hyperparams}
         
@@ -78,14 +67,13 @@ class NGBoostModelTrainer:
         n_jobs = self.parallel_config.get('ngboost_n_jobs', 1)
         base_learner = default_tree_learner
         
-        print(f"Creating NGBoost model: {distribution} distribution, {scoring} scoring")
+        print(f"Creating NGBoost model: {distribution} distribution")
         print(f"Parameters: n_estimators={model_params['n_estimators']}, "
               f"learning_rate={model_params['learning_rate']}")
         
-        # Create model
-        model = NGBoost(
+        # Create model (NGBoost will use default LogScore)
+        model = NGBRegressor(
             Dist=distribution_class,
-            Score=scoring_class,
             Base=base_learner,
             n_estimators=model_params['n_estimators'],
             learning_rate=model_params['learning_rate'],
@@ -156,7 +144,7 @@ class NGBoostModelTrainer:
                 'upper_90': y_upper_90,
                 'lower_95': y_lower_95,
                 'upper_95': y_upper_95,
-                'distributions': y_dists
+                'distributions': y_dists  # Keep full distributions for post-hoc scoring
             }
             
             print("Predictions completed successfully")
@@ -164,48 +152,6 @@ class NGBoostModelTrainer:
             
         except Exception as e:
             print(f"Prediction error: {e}")
-            return None
-    
-    def calculate_feature_importance(self, model, X, method='permutation'):
-        """Calculate feature importance from trained model"""
-        
-        try:
-            if method == 'permutation':
-                # Use permutation importance
-                from sklearn.inspection import permutation_importance
-                
-                # Need predictions for baseline
-                baseline_preds = model.predict(X)
-                
-                # Calculate permutation importance
-                perm_importance = permutation_importance(
-                    model, X, baseline_preds, 
-                    n_repeats=5,
-                    random_state=self.base_params.get('random_state', 42)
-                )
-                
-                importance_df = pd.DataFrame({
-                    'feature': X.columns,
-                    'importance_mean': perm_importance.importances_mean,
-                    'importance_std': perm_importance.importances_std
-                }).sort_values('importance_mean', ascending=False)
-                
-            else:
-                # Use built-in feature importance if available
-                if hasattr(model, 'feature_importances_'):
-                    importance_df = pd.DataFrame({
-                        'feature': X.columns,
-                        'importance_mean': model.feature_importances_,
-                        'importance_std': np.zeros(len(X.columns))
-                    }).sort_values('importance_mean', ascending=False)
-                else:
-                    print("Model does not have built-in feature importance")
-                    return None
-            
-            return importance_df
-            
-        except Exception as e:
-            print(f"Feature importance calculation failed: {e}")
             return None
 
 class NGBoostCrossValidator:
@@ -227,8 +173,8 @@ class NGBoostCrossValidator:
         self.cv_splitter = cv_splitter
         self.data_processor = data_processor
         self.salinity_thresholds = salinity_thresholds
-        
-    def cross_validate_model(self, trainer, distribution, scoring, hyperparams, X, y):
+    
+    def cross_validate_model(self, trainer, distribution, hyperparams, X, y):  # Removed scoring parameter
         """Perform cross-validation for a single model configuration"""
         
         from DataUtils_NG import calculate_salinity_metrics
@@ -239,12 +185,11 @@ class NGBoostCrossValidator:
             'std_metrics': {},
             'model_config': {
                 'distribution': distribution,
-                'scoring': scoring,
                 'hyperparams': hyperparams
             }
         }
         
-        print(f"\nStarting CV for {distribution} distribution with {scoring} scoring")
+        print(f"\nStarting CV for {distribution} distribution")
         print(f"Hyperparameters: {hyperparams}")
         
         successful_folds = 0
@@ -262,7 +207,7 @@ class NGBoostCrossValidator:
                 X_train_scaled, X_test_scaled = self.data_processor.scale_features(X_train, X_test)
                 
                 # Create and train model
-                model = trainer.create_ngboost_model(distribution, scoring, hyperparams)
+                model = trainer.create_ngboost_model(distribution, hyperparams)
                 trained_model, success, error = trainer.train_single_model(model, X_train_scaled, y_train)
                 
                 if not success:
@@ -276,11 +221,12 @@ class NGBoostCrossValidator:
                     print(f"    Prediction failed")
                     continue
                 
-                # Calculate metrics
+                # Calculate metrics with distribution objects for accurate scoring
                 fold_metrics = calculate_salinity_metrics(
                     y_test.values, 
                     predictions['mean'], 
                     predictions['std'],
+                    y_pred_dist=predictions['distributions'],  # Pass full distributions
                     salinity_thresholds=self.salinity_thresholds
                 )
                 
@@ -303,7 +249,8 @@ class NGBoostCrossValidator:
                 successful_folds += 1
                 
                 print(f"    R²: {fold_metrics['r2']:.4f}, RMSE: {fold_metrics['rmse']:.4f}, "
-                      f"High-sal R²: {fold_metrics.get('high_sal_r2', 'N/A')}")
+                      f"LogLik: {fold_metrics.get('log_likelihood', 'N/A')}, "
+                      f"CRPS: {fold_metrics.get('crps_score', 'N/A')}")
                 
             except Exception as e:
                 print(f"    Fold {fold_idx + 1} failed: {str(e)}")
@@ -326,29 +273,12 @@ class NGBoostCrossValidator:
                     cv_results['std_metrics'][metric] = np.nan
         
         return cv_results
-
+    
 class NGBoostHyperparameterOptimizer:
     """Optimize hyperparameters for NGBoost models"""
     
-    def __init__(self, distributions, scoring_functions, base_params, parallel_config, salinity_thresholds):
-        """
-        Initialize optimizer with config parameters
-        
-        Parameters:
-        -----------
-        distributions : dict
-            Distribution classes (from Config_NG.DISTRIBUTIONS)
-        scoring_functions : dict
-            Scoring function classes (from Config_NG.SCORING_FUNCTIONS)
-        base_params : dict
-            Base model parameters (from Config_NG.BASE_PARAMS)
-        parallel_config : dict
-            Parallel processing config (from Config_NG.PARALLEL_CONFIG)
-        salinity_thresholds : dict
-            Salinity thresholds (from Config_NG.SALINITY_THRESHOLDS)
-        """
+    def __init__(self, distributions, base_params, parallel_config, salinity_thresholds): 
         self.distributions = distributions
-        self.scoring_functions = scoring_functions
         self.base_params = base_params
         self.parallel_config = parallel_config
         self.salinity_thresholds = salinity_thresholds
@@ -362,20 +292,10 @@ class NGBoostHyperparameterOptimizer:
         # Get experiment configuration
         hyperparam_grid = experiment_config['hyperparameter_grid']
         distributions = experiment_config['distributions']
-        scoring = experiment_config['scoring']
         
-        # Handle different scoring formats
-        if isinstance(scoring, str):
-            scoring_list = [scoring]
-        elif isinstance(scoring, list):
-            scoring_list = scoring
-        else:
-            scoring_list = ['LogScore']  # Default
-        
-        # Create trainer
+        # Create trainer (no scoring functions needed)
         trainer = NGBoostModelTrainer(
             self.distributions, 
-            self.scoring_functions, 
             self.base_params, 
             self.parallel_config
         )
@@ -384,23 +304,20 @@ class NGBoostHyperparameterOptimizer:
         all_combinations = []
         
         for distribution in distributions:
-            for scoring_func in scoring_list:
-                if isinstance(hyperparam_grid, dict):
-                    for hyperparams in ParameterGrid(hyperparam_grid):
-                        combination = {
-                            'distribution': distribution,
-                            'scoring': scoring_func,
-                            'hyperparams': hyperparams
-                        }
-                        all_combinations.append(combination)
-                else:
-                    # Handle special case like 'best_params'
+            if isinstance(hyperparam_grid, dict):
+                for hyperparams in ParameterGrid(hyperparam_grid):
                     combination = {
                         'distribution': distribution,
-                        'scoring': scoring_func,
-                        'hyperparams': hyperparam_grid
+                        'hyperparams': hyperparams
                     }
                     all_combinations.append(combination)
+            else:
+                # Handle special case like 'best_params'
+                combination = {
+                    'distribution': distribution,
+                    'hyperparams': hyperparam_grid
+                }
+                all_combinations.append(combination)
         
         print(f"Testing {len(all_combinations)} hyperparameter combinations")
         
@@ -411,14 +328,12 @@ class NGBoostHyperparameterOptimizer:
             print(f"\n{'='*60}")
             print(f"Combination {i+1}/{len(all_combinations)}")
             print(f"Distribution: {combination['distribution']}")
-            print(f"Scoring: {combination['scoring']}")
             print(f"Hyperparams: {combination['hyperparams']}")
             print(f"{'='*60}")
             
             cv_results = cv_validator.cross_validate_model(
                 trainer,
                 combination['distribution'],
-                combination['scoring'], 
                 combination['hyperparams'],
                 X, y
             )
@@ -433,7 +348,8 @@ class NGBoostHyperparameterOptimizer:
                       f"(±{cv_results['std_metrics'].get('r2', 0):.4f})")
                 print(f"  RMSE: {cv_results['mean_metrics'].get('rmse', 'N/A'):.4f} "
                       f"(±{cv_results['std_metrics'].get('rmse', 0):.4f})")
-                print(f"  High-sal R²: {cv_results['mean_metrics'].get('high_sal_r2', 'N/A')}")
+                print(f"  LogLik: {cv_results['mean_metrics'].get('log_likelihood', 'N/A')}")
+                print(f"  CRPS: {cv_results['mean_metrics'].get('crps_score', 'N/A')}")
         
         # Find best combination
         self._find_best_combination()
@@ -471,7 +387,7 @@ class NGBoostHyperparameterOptimizer:
         print(f"Scoring: {self.best_params['scoring']}")
         print(f"Hyperparameters: {self.best_params['hyperparams']}")
         print(f"{'='*60}")
-    
+        
     def get_best_params(self):
         """Get the best hyperparameters found"""
         return self.best_params, self.best_score

@@ -1,0 +1,68 @@
+{
+  "experiment_name": "quick_test",
+  "timestamp": "20250731_141145",
+  "best_params": null,
+  "best_score": null,
+  "all_results": [
+    {
+      "combination_id": 0,
+      "model_config": {
+        "distribution": "lognormal",
+        "hyperparams": {
+          "col_sample": 1.0,
+          "learning_rate": 0.01,
+          "minibatch_frac": 1.0,
+          "n_estimators": 200
+        }
+      },
+      "mean_metrics": {},
+      "std_metrics": {},
+      "n_successful_folds": 0
+    },
+    {
+      "combination_id": 1,
+      "model_config": {
+        "distribution": "lognormal",
+        "hyperparams": {
+          "col_sample": 1.0,
+          "learning_rate": 0.01,
+          "minibatch_frac": 1.0,
+          "n_estimators": 500
+        }
+      },
+      "mean_metrics": {},
+      "std_metrics": {},
+      "n_successful_folds": 0
+    },
+    {
+      "combination_id": 2,
+      "model_config": {
+        "distribution": "lognormal",
+        "hyperparams": {
+          "col_sample": 1.0,
+          "learning_rate": 0.05,
+          "minibatch_frac": 1.0,
+          "n_estimators": 200
+        }
+      },
+      "mean_metrics": {},
+      "std_metrics": {},
+      "n_successful_folds": 0
+    },
+    {
+      "combination_id": 3,
+      "model_config": {
+        "distribution": "lognormal",
+        "hyperparams": {
+          "col_sample": 1.0,
+          "learning_rate": 0.05,
+          "minibatch_frac": 1.0,
+          "n_estimators": 500
+        }
+      },
+      "mean_metrics": {},
+      "std_metrics": {},
+      "n_successful_folds": 0
+    }
+  ]
+}

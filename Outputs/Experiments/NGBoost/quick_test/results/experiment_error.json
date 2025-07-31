@@ -1,0 +1,6 @@
+{
+  "experiment_name": "quick_test",
+  "error_timestamp": "2025-07-31T14:35:09.754066",
+  "error_message": "'scoring'",
+  "error_type": "KeyError"
+}
