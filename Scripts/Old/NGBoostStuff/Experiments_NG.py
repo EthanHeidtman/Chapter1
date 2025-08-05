@@ -74,7 +74,7 @@ class NGBoostExperimentRunner:
         # Setup CV splitter  
         self.cv_splitter = SalinityTimeSeriesCV(CV_CONFIG)
         
-        # Setup optimizer (removed scoring_functions parameter)
+        # Setup optimizer 
         self.optimizer = NGBoostHyperparameterOptimizer(
             distributions=DISTRIBUTIONS,
             base_params=BASE_PARAMS,
@@ -200,7 +200,7 @@ class NGBoostExperimentRunner:
             print("No best parameters found, cannot evaluate holdout")
             return None
         
-        # Create trainer (removed scoring_functions parameter)
+        # Create trainer 
         trainer = NGBoostModelTrainer(
             distributions=DISTRIBUTIONS,
             base_params=BASE_PARAMS,
@@ -210,7 +210,7 @@ class NGBoostExperimentRunner:
         # Scale training data
         X_train_scaled, _ = self.data_processor.scale_features(X_train)
         
-        # Train final model on all training data (removed scoring parameter)
+        # Train final model on all training data 
         final_model = trainer.create_ngboost_model(
             distribution=best_params['distribution'],
             hyperparams=best_params['hyperparams']
@@ -335,7 +335,7 @@ class NGBoostExperimentRunner:
                         'experiment': self.experiment_name,
                         'combination_id': result['combination_id'],
                         'distribution': result['model_config']['distribution'],
-                        'scoring': result['model_config']['scoring'],
+                        'scoring': result['model_config'].get('scoring', 'LogScore'),
                         'fold': fold_result['fold'],
                         'r2': fold_result['metrics']['r2'],
                         'rmse': fold_result['metrics']['rmse'],
@@ -357,7 +357,7 @@ class NGBoostExperimentRunner:
                     'experiment': self.experiment_name,
                     'combination_id': result['combination_id'],
                     'distribution': result['model_config']['distribution'],
-                    'scoring': result['model_config']['scoring'],
+                    'scoring': result['model_config'].get('scoring', 'LogScore'),
                     'n_estimators': result['model_config']['hyperparams'].get('n_estimators', ''),
                     'learning_rate': result['model_config']['hyperparams'].get('learning_rate', ''),
                     'minibatch_frac': result['model_config']['hyperparams'].get('minibatch_frac', ''),

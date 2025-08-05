@@ -231,7 +231,7 @@ PARALLEL_CONFIG = {
 # =============================================================================
 DATA_CONFIG = {
     'missing_values': 'drop',           # Drop rows with missing values
-    'scaling': 'robust',                # RobustScaler (good with outliers)
+    'scaling': 'none',                
     'target_transform': None            # No transformation (NGBoost handles distribution)
 }
 

@@ -1,0 +1,180 @@
+{
+  "experiment_name": "quick_test",
+  "timestamp": "20250801_085353",
+  "best_params": {
+    "distribution": "lognormal",
+    "hyperparams": {
+      "col_sample": 1.0,
+      "learning_rate": 0.01,
+      "minibatch_frac": 1.0,
+      "n_estimators": 200
+    }
+  },
+  "best_score": -0.17008704077969267,
+  "all_results": [
+    {
+      "combination_id": 0,
+      "model_config": {
+        "distribution": "lognormal",
+        "hyperparams": {
+          "col_sample": 1.0,
+          "learning_rate": 0.01,
+          "minibatch_frac": 1.0,
+          "n_estimators": 200
+        }
+      },
+      "mean_metrics": {
+        "r2": -0.17008704077969267,
+        "rmse": 0.022128129364077785,
+        "mae": 0.017761935397791587,
+        "high_sal_r2": NaN,
+        "high_sal_rmse": NaN,
+        "high_sal_mae": NaN,
+        "high_salinity_precision": 0.0,
+        "high_salinity_recall": 0.0,
+        "extreme_event_bias": 0.005067021367360528,
+        "residual_autocorr": 0.9879295923401916,
+        "log_likelihood": 2.5364267045178357,
+        "crps_score": 0.01148297990778777
+      },
+      "std_metrics": {
+        "r2": 0.6809148169774131,
+        "rmse": 0.00303798728434997,
+        "mae": 0.0022535850514465686,
+        "high_sal_r2": NaN,
+        "high_sal_rmse": NaN,
+        "high_sal_mae": NaN,
+        "high_salinity_precision": 0.0,
+        "high_salinity_recall": 0.0,
+        "extreme_event_bias": 0.02084840803838498,
+        "residual_autocorr": 0.007718142600376494,
+        "log_likelihood": 0.13563035197601836,
+        "crps_score": 0.0010520379289344522
+      },
+      "n_successful_folds": 5
+    },
+    {
+      "combination_id": 1,
+      "model_config": {
+        "distribution": "lognormal",
+        "hyperparams": {
+          "col_sample": 1.0,
+          "learning_rate": 0.01,
+          "minibatch_frac": 1.0,
+          "n_estimators": 500
+        }
+      },
+      "mean_metrics": {
+        "r2": -0.4155184816480416,
+        "rmse": 0.024576334347320865,
+        "mae": 0.01858203996058366,
+        "high_sal_r2": NaN,
+        "high_sal_rmse": NaN,
+        "high_sal_mae": NaN,
+        "high_salinity_precision": 0.0,
+        "high_salinity_recall": 0.0,
+        "extreme_event_bias": 0.006619363882430121,
+        "residual_autocorr": 0.9904556127549983,
+        "log_likelihood": 2.4887717560741205,
+        "crps_score": 0.012209909841133444
+      },
+      "std_metrics": {
+        "r2": 0.8346813470058634,
+        "rmse": 0.005144059491992953,
+        "mae": 0.002904381812485445,
+        "high_sal_r2": NaN,
+        "high_sal_rmse": NaN,
+        "high_sal_mae": NaN,
+        "high_salinity_precision": 0.0,
+        "high_salinity_recall": 0.0,
+        "extreme_event_bias": 0.02490359009385582,
+        "residual_autocorr": 0.0044214626521899385,
+        "log_likelihood": 0.23329787082758133,
+        "crps_score": 0.0019373272025870502
+      },
+      "n_successful_folds": 5
+    },
+    {
+      "combination_id": 2,
+      "model_config": {
+        "distribution": "lognormal",
+        "hyperparams": {
+          "col_sample": 1.0,
+          "learning_rate": 0.05,
+          "minibatch_frac": 1.0,
+          "n_estimators": 200
+        }
+      },
+      "mean_metrics": {
+        "r2": -0.5289356416497395,
+        "rmse": 0.025061225215203785,
+        "mae": 0.018716602987174712,
+        "high_sal_r2": NaN,
+        "high_sal_rmse": NaN,
+        "high_sal_mae": NaN,
+        "high_salinity_precision": 0.0,
+        "high_salinity_recall": 0.0,
+        "extreme_event_bias": 0.0038464615328521563,
+        "residual_autocorr": 0.9906946003637577,
+        "log_likelihood": 2.4318513982792824,
+        "crps_score": 0.012257897834192785
+      },
+      "std_metrics": {
+        "r2": 1.0576001700300839,
+        "rmse": 0.0053500283721019245,
+        "mae": 0.0030062371230352393,
+        "high_sal_r2": NaN,
+        "high_sal_rmse": NaN,
+        "high_sal_mae": NaN,
+        "high_salinity_precision": 0.0,
+        "high_salinity_recall": 0.0,
+        "extreme_event_bias": 0.02654388471847063,
+        "residual_autocorr": 0.004382771163489858,
+        "log_likelihood": 0.2917224011109189,
+        "crps_score": 0.0019891007857975977
+      },
+      "n_successful_folds": 5
+    },
+    {
+      "combination_id": 3,
+      "model_config": {
+        "distribution": "lognormal",
+        "hyperparams": {
+          "col_sample": 1.0,
+          "learning_rate": 0.05,
+          "minibatch_frac": 1.0,
+          "n_estimators": 500
+        }
+      },
+      "mean_metrics": {
+        "r2": -0.5605930009835106,
+        "rmse": 0.02499165585252273,
+        "mae": 0.01878477296047519,
+        "high_sal_r2": NaN,
+        "high_sal_rmse": NaN,
+        "high_sal_mae": NaN,
+        "high_salinity_precision": 0.0,
+        "high_salinity_recall": 0.0,
+        "extreme_event_bias": 0.0004722287283122212,
+        "residual_autocorr": 0.9898539324553098,
+        "log_likelihood": 2.231389311428027,
+        "crps_score": 0.01265954155584816
+      },
+      "std_metrics": {
+        "r2": 1.178416195090415,
+        "rmse": 0.0054174548717413566,
+        "mae": 0.0031457236696107193,
+        "high_sal_r2": NaN,
+        "high_sal_rmse": NaN,
+        "high_sal_mae": NaN,
+        "high_salinity_precision": 0.0,
+        "high_salinity_recall": 0.0,
+        "extreme_event_bias": 0.026996795353276468,
+        "residual_autocorr": 0.003473266727691662,
+        "log_likelihood": 0.3662845581692467,
+        "crps_score": 0.0020027156272001256
+      },
+      "n_successful_folds": 5
+    }
+  ]
+}

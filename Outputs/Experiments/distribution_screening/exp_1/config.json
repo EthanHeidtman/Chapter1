@@ -1,0 +1,15 @@
+{
+  "data_csv": "Data/Tidied/Final/CleanFinalModelData.csv",
+  "predictors_json": "Outputs/Experiments/LinearModeling/LinearPredictors.json",
+  "salinity_col": "Salinity",
+  "base_threshold": 0.2,
+  "target_threshold": 0.8,
+  "group_window_days": 7,
+  "param_regression_method": "rf",
+  "min_exceedances_per_group": 10,
+  "rolling_window_approach": true,
+  "param_smoothing": true,
+  "random_state": 42,
+  "tail_distribution": "gpd",
+  "config_id": "distribution_screening_exp_1"
+}

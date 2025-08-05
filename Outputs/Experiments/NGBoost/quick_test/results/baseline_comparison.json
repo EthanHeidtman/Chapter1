@@ -22,22 +22,22 @@
   },
   "random_forest": {
     "mean_metrics": {
-      "r2": -1.8375088388979435,
+      "r2": -1.8375088388979441,
       "rmse": 0.030029881808072662,
       "mae": 0.019285899801587326,
       "high_salinity_precision": 0.0,
       "high_salinity_recall": 0.0,
       "extreme_event_bias": 0.0025668950830506883,
-      "residual_autocorr": 0.9870329227520112
+      "residual_autocorr": 0.9870329227520109
     },
     "std_metrics": {
-      "r2": 3.344883925267653,
-      "rmse": 0.012526898508489584,
-      "mae": 0.004870621984354209,
+      "r2": 3.3448839252676543,
+      "rmse": 0.012526898508489585,
+      "mae": 0.00487062198435421,
       "high_salinity_precision": 0.0,
       "high_salinity_recall": 0.0,
       "extreme_event_bias": 0.03759110592541856,
-      "residual_autocorr": 0.00734090590479778
+      "residual_autocorr": 0.007340905904797666
     },
     "n_folds": 5
   }

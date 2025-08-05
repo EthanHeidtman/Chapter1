@@ -1,0 +1,505 @@
+{\rtf1\ansi\ansicpg1252\cocoartf2822
+\cocoatextscaling0\cocoaplatform0{\fonttbl\f0\fswiss\fcharset0 Helvetica;}
+{\colortbl;\red255\green255\blue255;}
+{\*\expandedcolortbl;;}
+\margl1440\margr1440\vieww17480\viewh8620\viewkind0
+\pard\tx720\tx1440\tx2160\tx2880\tx3600\tx4320\tx5040\tx5760\tx6480\tx7200\tx7920\tx8640\pardirnatural\partightenfactor0
+
+\f0\fs24 \cf0 ethanheidtman$ python Scripts/Modeling/Main_NG.py quick_test\
+\uc0\u10003  All modules imported successfully\
+NGBoost Salinity Prediction System\
+Susquehanna River Saltwater Intrusion Modeling\
+==================================================\
+Data file: CleanFinalModelData.csv\
+Predictors: 8\
+Target variable: Salinity\
+Available cores: 8\
+2025-08-01 08:31:17,867 - __main__ - INFO - Starting experiment: quick_test\
+\
+============================================================\
+Running NGBoost Experiment: quick_test\
+============================================================\
+\
+============================================================\
+EXPERIMENT: quick_test\
+============================================================\
+Description: Fast development test with LogNormal\
+Distributions to test: ['lognormal']\
+Number of runs: 1\
+\
+Hyperparameter Grid:\
+  n_estimators: [200, 500]\
+  learning_rate: [0.01, 0.05]\
+  minibatch_frac: [1.0]\
+  col_sample: [1.0]\
+\
+Total hyperparameter combinations: 4\
+Estimated models to train: 20\
+Estimated runtime: 10 minutes (0.2 hours)\
+\
+Special features:\
+  \uc0\u10003  Uses NGBoost default LogScore for training, calculates CRPS post-hoc\
+\
+Experiment will be saved to:\
+  Outputs/Experiments/NGBoost/quick_test\
+\
+Proceed with experiment 'quick_test'? (y/n): y\
+\
+========================================\
+Starting experiment execution...\
+========================================\
+Initialized experiment: quick_test\
+Description: Fast development test with LogNormal\
+Experiment directory: Outputs/Experiments/NGBoost/quick_test\
+\
+================================================================================\
+STARTING EXPERIMENT: quick_test\
+================================================================================\
+\
+Setting up experiment: quick_test\
+\uc0\u10003  All components initialized\
+\
+Loading and preparing data...\
+Loading data...\
+/Users/ethanheidtman/Documents/Penn State/Projects/Chapter1/Scripts/Modeling/DataUtils_NG.py:62: DtypeWarning: Columns (10) have mixed types. Specify dtype option on import or set low_memory=False.\
+  self.data = pd.read_csv(self.data_path)\
+Loaded 86214 observations\
+Available columns: ['Year', 'Month', 'Day', 'Salinity', 'Norm_TideRange24', 'Norm_PowLagDischarge72', 'Norm_RollingPowDischarge14', 'Norm_PowLagInflows96', 'Norm_RollingPowInflows10', 'IsLowInflow', 'Norm_CumulativeInflowDeficit30', 'DayOfYear']\
+Date range: 2007-03-30 10:00:00 to 2024-10-31 23:00:00\
+Data quality report:\
+  Total rows: 86214\
+  Target range: 0.052 to 1.728\
+  Missing data points: 3248\
+Original dataset: 86214 observations, 8 predictors\
+Dropped 2209 rows with missing values\
+Final dataset: 84005 observations, 8 predictors\
+Target variable (Salinity) range: 0.052 to 1.728\
+\
+============================================================\
+HYPERPARAMETER OPTIMIZATION\
+============================================================\
+Testing 4 hyperparameter combinations\
+\
+============================================================\
+Combination 1/4\
+Distribution: lognormal\
+Hyperparams: \{'col_sample': 1.0, 'learning_rate': 0.01, 'minibatch_frac': 1.0, 'n_estimators': 200\}\
+============================================================\
+\
+Starting CV for lognormal distribution\
+Hyperparameters: \{'col_sample': 1.0, 'learning_rate': 0.01, 'minibatch_frac': 1.0, 'n_estimators': 200\}\
+Time Series CV: 5 splits with 24-hour gap\
+  Fold 1: Train=67181, Test=3360\
+  Fold 1/5\
+Applying robust scaling to features\
+Creating NGBoost model: lognormal distribution\
+Parameters: n_estimators=200, learning_rate=0.01\
+Training model on 67181 samples...\
+[iter 0] loss=-1.8129 val_loss=0.0000 scale=1.0000 norm=0.5982\
+[iter 100] loss=-2.3399 val_loss=0.0000 scale=2.0000 norm=0.9384\
+Training completed successfully\
+Making predictions for 3360 samples...\
+Predictions completed successfully\
+    R\'b2: 0.0039, RMSE: 0.0203, LogLik: 2.437097724653643, CRPS: 0.011643328249194323\
+  Fold 2: Train=70541, Test=3360\
+  Fold 2/5\
+Applying robust scaling to features\
+Creating NGBoost model: lognormal distribution\
+Parameters: n_estimators=200, learning_rate=0.01\
+Training model on 70541 samples...\
+[iter 0] loss=-1.8262 val_loss=0.0000 scale=1.0000 norm=0.5959\
+[iter 100] loss=-2.3408 val_loss=0.0000 scale=2.0000 norm=0.9388\
+Training completed successfully\
+Making predictions for 3360 samples...\
+Predictions completed successfully\
+    R\'b2: 0.3460, RMSE: 0.0215, LogLik: 2.378802129429339, CRPS: 0.011913427523241902\
+  Fold 3: Train=73901, Test=3360\
+  Fold 3/5\
+Applying robust scaling to features\
+Creating NGBoost model: lognormal distribution\
+Parameters: n_estimators=200, learning_rate=0.01\
+Training model on 73901 samples...\
+[iter 0] loss=-1.8319 val_loss=0.0000 scale=1.0000 norm=0.5937\
+[iter 100] loss=-2.3383 val_loss=0.0000 scale=1.0000 norm=0.4703\
+Training completed successfully\
+Making predictions for 3360 samples...\
+Predictions completed successfully\
+    R\'b2: 0.2394, RMSE: 0.0178, LogLik: 2.759486319503251, CRPS: 0.009457577253289587\
+  Fold 4: Train=77261, Test=3360\
+  Fold 4/5\
+Applying robust scaling to features\
+Creating NGBoost model: lognormal distribution\
+Parameters: n_estimators=200, learning_rate=0.01\
+Training model on 77261 samples...\
+[iter 0] loss=-1.8458 val_loss=0.0000 scale=1.0000 norm=0.5938\
+[iter 100] loss=-2.3504 val_loss=0.0000 scale=2.0000 norm=0.9357\
+Training completed successfully\
+Making predictions for 3360 samples...\
+Predictions completed successfully\
+    R\'b2: -1.5103, RMSE: 0.0246, LogLik: 2.612264325509542, CRPS: 0.011890752823498562\
+  Fold 5: Train=80621, Test=3360\
+  Fold 5/5\
+Applying robust scaling to features\
+Creating NGBoost model: lognormal distribution\
+Parameters: n_estimators=200, learning_rate=0.01\
+Training model on 80621 samples...\
+[iter 0] loss=-1.8566 val_loss=0.0000 scale=1.0000 norm=0.5900\
+[iter 100] loss=-2.3392 val_loss=0.0000 scale=1.0000 norm=0.4694\
+Training completed successfully\
+Making predictions for 3360 samples...\
+Predictions completed successfully\
+    R\'b2: 0.0705, RMSE: 0.0264, LogLik: 2.4944830234934017, CRPS: 0.01250981368971448\
+  Completed 5/5 folds successfully\
+\
+Combination 1 Results:\
+  R\'b2: -0.1701 (\'b10.6809)\
+  RMSE: 0.0221 (\'b10.0030)\
+  LogLik: 2.5364267045178357\
+  CRPS: 0.01148297990778777\
+\
+============================================================\
+Combination 2/4\
+Distribution: lognormal\
+Hyperparams: \{'col_sample': 1.0, 'learning_rate': 0.01, 'minibatch_frac': 1.0, 'n_estimators': 500\}\
+============================================================\
+\
+Starting CV for lognormal distribution\
+Hyperparameters: \{'col_sample': 1.0, 'learning_rate': 0.01, 'minibatch_frac': 1.0, 'n_estimators': 500\}\
+Time Series CV: 5 splits with 24-hour gap\
+  Fold 1: Train=67181, Test=3360\
+  Fold 1/5\
+Applying robust scaling to features\
+Creating NGBoost model: lognormal distribution\
+Parameters: n_estimators=500, learning_rate=0.01\
+Training model on 67181 samples...\
+[iter 0] loss=-1.8129 val_loss=0.0000 scale=1.0000 norm=0.5982\
+[iter 100] loss=-2.3399 val_loss=0.0000 scale=2.0000 norm=0.9384\
+[iter 200] loss=-2.6155 val_loss=0.0000 scale=1.0000 norm=0.4792\
+[iter 300] loss=-2.6921 val_loss=0.0000 scale=1.0000 norm=0.5028\
+[iter 400] loss=-2.7335 val_loss=0.0000 scale=1.0000 norm=0.5174\
+Training completed successfully\
+Making predictions for 3360 samples...\
+Predictions completed successfully\
+    R\'b2: 0.0375, RMSE: 0.0200, LogLik: 2.2023094429454253, CRPS: 0.011676709777914443\
+  Fold 2: Train=70541, Test=3360\
+  Fold 2/5\
+Applying robust scaling to features\
+Creating NGBoost model: lognormal distribution\
+Parameters: n_estimators=500, learning_rate=0.01\
+Training model on 70541 samples...\
+[iter 0] loss=-1.8262 val_loss=0.0000 scale=1.0000 norm=0.5959\
+[iter 100] loss=-2.3408 val_loss=0.0000 scale=2.0000 norm=0.9388\
+[iter 200] loss=-2.5959 val_loss=0.0000 scale=1.0000 norm=0.4840\
+[iter 300] loss=-2.6735 val_loss=0.0000 scale=1.0000 norm=0.5070\
+[iter 400] loss=-2.7175 val_loss=0.0000 scale=1.0000 norm=0.5209\
+Training completed successfully\
+Making predictions for 3360 samples...\
+Predictions completed successfully\
+    R\'b2: -0.2814, RMSE: 0.0301, LogLik: 2.2627330885348544, CRPS: 0.014177615708012823\
+  Fold 3: Train=73901, Test=3360\
+  Fold 3/5\
+Applying robust scaling to features\
+Creating NGBoost model: lognormal distribution\
+Parameters: n_estimators=500, learning_rate=0.01\
+Training model on 73901 samples...\
+[iter 0] loss=-1.8319 val_loss=0.0000 scale=1.0000 norm=0.5937\
+[iter 100] loss=-2.3383 val_loss=0.0000 scale=1.0000 norm=0.4703\
+[iter 200] loss=-2.5993 val_loss=0.0000 scale=1.0000 norm=0.4876\
+[iter 300] loss=-2.6739 val_loss=0.0000 scale=0.5000 norm=0.2562\
+[iter 400] loss=-2.7130 val_loss=0.0000 scale=1.0000 norm=0.5255\
+Training completed successfully\
+Making predictions for 3360 samples...\
+Predictions completed successfully\
+    R\'b2: 0.3085, RMSE: 0.0170, LogLik: 2.820791084930249, CRPS: 0.008804190853531572\
+  Fold 4: Train=77261, Test=3360\
+  Fold 4/5\
+Applying robust scaling to features\
+Creating NGBoost model: lognormal distribution\
+Parameters: n_estimators=500, learning_rate=0.01\
+Training model on 77261 samples...\
+[iter 0] loss=-1.8458 val_loss=0.0000 scale=1.0000 norm=0.5938\
+[iter 100] loss=-2.3504 val_loss=0.0000 scale=2.0000 norm=0.9357\
+[iter 200] loss=-2.6134 val_loss=0.0000 scale=1.0000 norm=0.4863\
+[iter 300] loss=-2.6950 val_loss=0.0000 scale=1.0000 norm=0.5045\
+[iter 400] loss=-2.7305 val_loss=0.0000 scale=1.0000 norm=0.5189\
+Training completed successfully\
+Making predictions for 3360 samples...\
+Predictions completed successfully\
+    R\'b2: -2.0397, RMSE: 0.0271, LogLik: 2.6579483107186976, CRPS: 0.012464677109905769\
+  Fold 5: Train=80621, Test=3360\
+  Fold 5/5\
+Applying robust scaling to features\
+Creating NGBoost model: lognormal distribution\
+Parameters: n_estimators=500, learning_rate=0.01\
+Training model on 80621 samples...\
+[iter 0] loss=-1.8566 val_loss=0.0000 scale=1.0000 norm=0.5900\
+[iter 100] loss=-2.3392 val_loss=0.0000 scale=1.0000 norm=0.4694\
+[iter 200] loss=-2.6060 val_loss=0.0000 scale=1.0000 norm=0.4860\
+[iter 300] loss=-2.6808 val_loss=0.0000 scale=1.0000 norm=0.5092\
+[iter 400] loss=-2.7240 val_loss=0.0000 scale=1.0000 norm=0.5238\
+Training completed successfully\
+Making predictions for 3360 samples...\
+Predictions completed successfully\
+    R\'b2: -0.1025, RMSE: 0.0287, LogLik: 2.5000768532413757, CRPS: 0.013926355756302612\
+  Completed 5/5 folds successfully\
+\
+Combination 2 Results:\
+  R\'b2: -0.4155 (\'b10.8347)\
+  RMSE: 0.0246 (\'b10.0051)\
+  LogLik: 2.4887717560741205\
+  CRPS: 0.012209909841133444\
+\
+============================================================\
+Combination 3/4\
+Distribution: lognormal\
+Hyperparams: \{'col_sample': 1.0, 'learning_rate': 0.05, 'minibatch_frac': 1.0, 'n_estimators': 200\}\
+============================================================\
+\
+Starting CV for lognormal distribution\
+Hyperparameters: \{'col_sample': 1.0, 'learning_rate': 0.05, 'minibatch_frac': 1.0, 'n_estimators': 200\}\
+Time Series CV: 5 splits with 24-hour gap\
+  Fold 1: Train=67181, Test=3360\
+  Fold 1/5\
+Applying robust scaling to features\
+Creating NGBoost model: lognormal distribution\
+Parameters: n_estimators=200, learning_rate=0.05\
+Training model on 67181 samples...\
+[iter 0] loss=-1.8129 val_loss=0.0000 scale=1.0000 norm=0.5982\
+[iter 100] loss=-2.7721 val_loss=0.0000 scale=1.0000 norm=0.5200\
+Training completed successfully\
+Making predictions for 3360 samples...\
+Predictions completed successfully\
+    R\'b2: 0.0483, RMSE: 0.0199, LogLik: 1.9638073435412762, CRPS: 0.011594525893256364\
+  Fold 2: Train=70541, Test=3360\
+  Fold 2/5\
+Applying robust scaling to features\
+Creating NGBoost model: lognormal distribution\
+Parameters: n_estimators=200, learning_rate=0.05\
+Training model on 70541 samples...\
+[iter 0] loss=-1.8262 val_loss=0.0000 scale=1.0000 norm=0.5959\
+[iter 100] loss=-2.7643 val_loss=0.0000 scale=1.0000 norm=0.5221\
+Training completed successfully\
+Making predictions for 3360 samples...\
+Predictions completed successfully\
+    R\'b2: -0.2000, RMSE: 0.0291, LogLik: 2.2792624596625655, CRPS: 0.01353413410504132\
+  Fold 3: Train=73901, Test=3360\
+  Fold 3/5\
+Applying robust scaling to features\
+Creating NGBoost model: lognormal distribution\
+Parameters: n_estimators=200, learning_rate=0.05\
+Training model on 73901 samples...\
+[iter 0] loss=-1.8319 val_loss=0.0000 scale=1.0000 norm=0.5937\
+[iter 100] loss=-2.7477 val_loss=0.0000 scale=1.0000 norm=0.5270\
+Training completed successfully\
+Making predictions for 3360 samples...\
+Predictions completed successfully\
+    R\'b2: 0.2840, RMSE: 0.0173, LogLik: 2.8056410997234806, CRPS: 0.00877073534414658\
+  Fold 4: Train=77261, Test=3360\
+  Fold 4/5\
+Applying robust scaling to features\
+Creating NGBoost model: lognormal distribution\
+Parameters: n_estimators=200, learning_rate=0.05\
+Training model on 77261 samples...\
+[iter 0] loss=-1.8458 val_loss=0.0000 scale=1.0000 norm=0.5938\
+[iter 100] loss=-2.7570 val_loss=0.0000 scale=1.0000 norm=0.5244\
+Training completed successfully\
+Making predictions for 3360 samples...\
+Predictions completed successfully\
+    R\'b2: -2.6158, RMSE: 0.0295, LogLik: 2.6358231184104084, CRPS: 0.01285163979412401\
+  Fold 5: Train=80621, Test=3360\
+  Fold 5/5\
+Applying robust scaling to features\
+Creating NGBoost model: lognormal distribution\
+Parameters: n_estimators=200, learning_rate=0.05\
+Training model on 80621 samples...\
+[iter 0] loss=-1.8566 val_loss=0.0000 scale=1.0000 norm=0.5900\
+[iter 100] loss=-2.7592 val_loss=0.0000 scale=1.0000 norm=0.5261\
+Training completed successfully\
+Making predictions for 3360 samples...\
+Predictions completed successfully\
+    R\'b2: -0.1611, RMSE: 0.0295, LogLik: 2.4747229700586795, CRPS: 0.014538454034395654\
+  Completed 5/5 folds successfully\
+\
+Combination 3 Results:\
+  R\'b2: -0.5289 (\'b11.0576)\
+  RMSE: 0.0251 (\'b10.0054)\
+  LogLik: 2.4318513982792824\
+  CRPS: 0.012257897834192785\
+\
+============================================================\
+Combination 4/4\
+Distribution: lognormal\
+Hyperparams: \{'col_sample': 1.0, 'learning_rate': 0.05, 'minibatch_frac': 1.0, 'n_estimators': 500\}\
+============================================================\
+\
+Starting CV for lognormal distribution\
+Hyperparameters: \{'col_sample': 1.0, 'learning_rate': 0.05, 'minibatch_frac': 1.0, 'n_estimators': 500\}\
+Time Series CV: 5 splits with 24-hour gap\
+  Fold 1: Train=67181, Test=3360\
+  Fold 1/5\
+Applying robust scaling to features\
+Creating NGBoost model: lognormal distribution\
+Parameters: n_estimators=500, learning_rate=0.05\
+Training model on 67181 samples...\
+[iter 0] loss=-1.8129 val_loss=0.0000 scale=1.0000 norm=0.5982\
+[iter 100] loss=-2.7721 val_loss=0.0000 scale=1.0000 norm=0.5200\
+[iter 200] loss=-2.8852 val_loss=0.0000 scale=1.0000 norm=0.5025\
+[iter 300] loss=-2.9570 val_loss=0.0000 scale=0.5000 norm=0.2454\
+[iter 400] loss=-3.0192 val_loss=0.0000 scale=0.5000 norm=0.2401\
+Training completed successfully\
+Making predictions for 3360 samples...\
+Predictions completed successfully\
+    R\'b2: 0.0876, RMSE: 0.0194, LogLik: 1.6083361435823198, CRPS: 0.011496290535306453\
+  Fold 2: Train=70541, Test=3360\
+  Fold 2/5\
+Applying robust scaling to features\
+Creating NGBoost model: lognormal distribution\
+Parameters: n_estimators=500, learning_rate=0.05\
+Training model on 70541 samples...\
+[iter 0] loss=-1.8262 val_loss=0.0000 scale=1.0000 norm=0.5959\
+[iter 100] loss=-2.7643 val_loss=0.0000 scale=1.0000 norm=0.5221\
+[iter 200] loss=-2.8675 val_loss=0.0000 scale=1.0000 norm=0.5046\
+[iter 300] loss=-2.9447 val_loss=0.0000 scale=0.5000 norm=0.2457\
+[iter 400] loss=-3.0046 val_loss=0.0000 scale=1.0000 norm=0.4821\
+Training completed successfully\
+Making predictions for 3360 samples...\
+Predictions completed successfully\
+    R\'b2: -0.0800, RMSE: 0.0276, LogLik: 2.0465435446009277, CRPS: 0.014469793603721758\
+  Fold 3: Train=73901, Test=3360\
+  Fold 3/5\
+Applying robust scaling to features\
+Creating NGBoost model: lognormal distribution\
+Parameters: n_estimators=500, learning_rate=0.05\
+Training model on 73901 samples...\
+[iter 0] loss=-1.8319 val_loss=0.0000 scale=1.0000 norm=0.5937\
+[iter 100] loss=-2.7477 val_loss=0.0000 scale=1.0000 norm=0.5270\
+[iter 200] loss=-2.8613 val_loss=0.0000 scale=2.0000 norm=1.0181\
+[iter 300] loss=-2.9486 val_loss=0.0000 scale=0.5000 norm=0.2456\
+[iter 400] loss=-2.9982 val_loss=0.0000 scale=1.0000 norm=0.4845\
+Training completed successfully\
+Making predictions for 3360 samples...\
+Predictions completed successfully\
+    R\'b2: 0.2626, RMSE: 0.0176, LogLik: 2.6203999168963663, CRPS: 0.00926771057473764\
+  Fold 4: Train=77261, Test=3360\
+  Fold 4/5\
+Applying robust scaling to features\
+Creating NGBoost model: lognormal distribution\
+Parameters: n_estimators=500, learning_rate=0.05\
+Training model on 77261 samples...\
+[iter 0] loss=-1.8458 val_loss=0.0000 scale=1.0000 norm=0.5938\
+[iter 100] loss=-2.7570 val_loss=0.0000 scale=1.0000 norm=0.5244\
+[iter 200] loss=-2.8679 val_loss=0.0000 scale=1.0000 norm=0.5069\
+[iter 300] loss=-2.9432 val_loss=0.0000 scale=1.0000 norm=0.4957\
+[iter 400] loss=-2.9808 val_loss=0.0000 scale=0.5000 norm=0.2472\
+Training completed successfully\
+Making predictions for 3360 samples...\
+Predictions completed successfully\
+    R\'b2: -2.8985, RMSE: 0.0307, LogLik: 2.3722925650681477, CRPS: 0.013755713106087447\
+  Fold 5: Train=80621, Test=3360\
+  Fold 5/5\
+Applying robust scaling to features\
+Creating NGBoost model: lognormal distribution\
+Parameters: n_estimators=500, learning_rate=0.05\
+Training model on 80621 samples...\
+[iter 0] loss=-1.8566 val_loss=0.0000 scale=1.0000 norm=0.5900\
+[iter 100] loss=-2.7592 val_loss=0.0000 scale=1.0000 norm=0.5261\
+[iter 200] loss=-2.8555 val_loss=0.0000 scale=1.0000 norm=0.5138\
+[iter 300] loss=-2.9299 val_loss=0.0000 scale=1.0000 norm=0.4982\
+[iter 400] loss=-2.9888 val_loss=0.0000 scale=0.5000 norm=0.2436\
+Training completed successfully\
+Making predictions for 3360 samples...\
+Predictions completed successfully\
+    R\'b2: -0.1748, RMSE: 0.0296, LogLik: 2.5093743869923744, CRPS: 0.014308199959387511\
+  Completed 5/5 folds successfully\
+\
+Combination 4 Results:\
+  R\'b2: -0.5606 (\'b11.1784)\
+  RMSE: 0.0250 (\'b10.0054)\
+  LogLik: 2.231389311428027\
+  CRPS: 0.01265954155584816\
+\
+============================================================\
+BEST COMBINATION FOUND:\
+============================================================\
+Primary metric (r2): -0.1701\
+Secondary metric (high_sal_r2): nan\
+Distribution: lognormal\
+Scoring: \{'col_sample': 1.0, 'learning_rate': 0.01, 'minibatch_frac': 1.0, 'n_estimators': 200\}\
+Hyperparameters: \{'col_sample': 1.0, 'learning_rate': 0.01, 'minibatch_frac': 1.0, 'n_estimators': 200\}\
+============================================================\
+Full results saved to: Outputs/Experiments/NGBoost/quick_test/results/quick_test_hyperopt_full_20250801_085353.pkl\
+Summary saved to: Outputs/Experiments/NGBoost/quick_test/results/quick_test_hyperopt_summary_20250801_085353.json\
+\
+============================================================\
+BASELINE MODEL COMPARISON\
+============================================================\
+\
+Testing baseline model: linear\
+Time Series CV: 5 splits with 24-hour gap\
+  Fold 1: Train=67181, Test=3360\
+  Fold 1\
+Applying robust scaling to features\
+    R\'b2: -0.3314, RMSE: 0.0235\
+  Fold 2: Train=70541, Test=3360\
+  Fold 2\
+Applying robust scaling to features\
+    R\'b2: 0.3362, RMSE: 0.0217\
+  Fold 3: Train=73901, Test=3360\
+  Fold 3\
+Applying robust scaling to features\
+    R\'b2: 0.2727, RMSE: 0.0174\
+  Fold 4: Train=77261, Test=3360\
+  Fold 4\
+Applying robust scaling to features\
+    R\'b2: -0.3747, RMSE: 0.0182\
+  Fold 5: Train=80621, Test=3360\
+  Fold 5\
+Applying robust scaling to features\
+    R\'b2: 0.2897, RMSE: 0.0230\
+\
+Testing baseline model: random_forest\
+Time Series CV: 5 splits with 24-hour gap\
+  Fold 1: Train=67181, Test=3360\
+  Fold 1\
+Applying robust scaling to features\
+    R\'b2: 0.0403, RMSE: 0.0199\
+  Fold 2: Train=70541, Test=3360\
+  Fold 2\
+Applying robust scaling to features\
+    R\'b2: 0.1011, RMSE: 0.0252\
+  Fold 3: Train=73901, Test=3360\
+  Fold 3\
+Applying robust scaling to features\
+    R\'b2: 0.4233, RMSE: 0.0155\
+  Fold 4: Train=77261, Test=3360\
+  Fold 4\
+Applying robust scaling to features\
+    R\'b2: -8.4173, RMSE: 0.0477\
+  Fold 5: Train=80621, Test=3360\
+  Fold 5\
+Applying robust scaling to features\
+    R\'b2: -1.3350, RMSE: 0.0418\
+\
+Baseline Comparison Summary:\
+NGBoost (best):     R\'b2 = -0.1701\
+Linear          R\'b2 = 0.0385\
+Random_Forest   R\'b2 = -1.8375\
+\
+Exporting plot data for R visualization...\
+\uc0\u10003  Plot data exported to: Outputs/Experiments/NGBoost/quick_test/plot_data\
+\
+================================================================================\
+EXPERIMENT COMPLETED: quick_test\
+================================================================================\
+Results directory: Outputs/Experiments/NGBoost/quick_test\
+Best CV R\'b2: -0.1701\
+\
+========================================\
+\uc0\u10003  Experiment 'quick_test' completed successfully!\
+========================================\
+\
+Outputs saved to: Outputs/Experiments/NGBoost/quick_test\
+  Models: Outputs/Experiments/NGBoost/quick_test/models\
+  Results: Outputs/Experiments/NGBoost/quick_test/results\
+  Plot data: Outputs/Experiments/NGBoost/quick_test/plot_data\
+2025-08-01 08:54:05,232 - __main__ - INFO - Experiment quick_test completed successfully}

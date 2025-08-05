@@ -384,7 +384,7 @@ class NGBoostHyperparameterOptimizer:
         if secondary_metric in best_result['mean_metrics']:
             print(f"Secondary metric ({secondary_metric}): {best_result['mean_metrics'][secondary_metric]:.4f}")
         print(f"Distribution: {self.best_params['distribution']}")
-        print(f"Scoring: {self.best_params['scoring']}")
+        print(f"Scoring: {self.best_params['hyperparams']}")
         print(f"Hyperparameters: {self.best_params['hyperparams']}")
         print(f"{'='*60}")
         

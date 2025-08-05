@@ -1,0 +1,5 @@
+experiment,combination_id,distribution,scoring,n_estimators,learning_rate,minibatch_frac,col_sample,mean_r2,mean_rmse,mean_high_sal_r2,std_r2
+quick_test,0,lognormal,LogScore,200,0.01,1.0,1.0,-0.17008704077969267,0.022128129364077785,,0.6809148169774131
+quick_test,1,lognormal,LogScore,500,0.01,1.0,1.0,-0.4155184816480416,0.024576334347320865,,0.8346813470058634
+quick_test,2,lognormal,LogScore,200,0.05,1.0,1.0,-0.5289356416497395,0.025061225215203785,,1.0576001700300839
+quick_test,3,lognormal,LogScore,500,0.05,1.0,1.0,-0.5605930009835106,0.02499165585252273,,1.178416195090415

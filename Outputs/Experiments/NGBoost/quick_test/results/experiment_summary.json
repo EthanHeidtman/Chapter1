@@ -1,0 +1,82 @@
+{
+  "experiment_info": {
+    "name": "quick_test",
+    "description": "Fast development test with LogNormal",
+    "timestamp": "2025-08-01T08:54:05.232116",
+    "experiment_directory": "Outputs/Experiments/NGBoost/quick_test"
+  },
+  "configuration": {
+    "predictors": [
+      "Norm_TideRange24",
+      "Norm_PowLagDischarge72",
+      "Norm_RollingPowDischarge14",
+      "Norm_PowLagInflows96",
+      "Norm_RollingPowInflows10",
+      "IsLowInflow",
+      "Norm_CumulativeInflowDeficit30",
+      "DayOfYear"
+    ],
+    "target": "Salinity",
+    "hyperparameter_grid": {
+      "n_estimators": [
+        200,
+        500
+      ],
+      "learning_rate": [
+        0.01,
+        0.05
+      ],
+      "minibatch_frac": [
+        1.0
+      ],
+      "col_sample": [
+        1.0
+      ]
+    },
+    "distributions_tested": [
+      "lognormal"
+    ],
+    "cv_config": {
+      "method": "TimeSeriesSplit",
+      "n_splits": 5,
+      "gap": 24,
+      "test_size": 0.2
+    },
+    "data_config": {
+      "missing_values": "drop",
+      "scaling": "robust",
+      "target_transform": null
+    },
+    "salinity_thresholds": {
+      "moderate": 0.3,
+      "high": 0.5,
+      "extreme": 1.0
+    }
+  },
+  "optimization_results": {
+    "best_cv_score": -0.17008704077969267,
+    "best_parameters": {
+      "distribution": "lognormal",
+      "hyperparams": {
+        "col_sample": 1.0,
+        "learning_rate": 0.01,
+        "minibatch_frac": 1.0,
+        "n_estimators": 200
+      }
+    },
+    "total_combinations_tested": 4,
+    "successful_combinations": 4
+  },
+  "baseline_comparison": true,
+  "holdout_evaluation": false,
+  "baseline_results": {
+    "linear": {
+      "r2": 0.038505867793307426,
+      "rmse": 0.0207723444034302
+    },
+    "random_forest": {
+      "r2": -1.8375088388979441,
+      "rmse": 0.030029881808072662
+    }
+  }
+}

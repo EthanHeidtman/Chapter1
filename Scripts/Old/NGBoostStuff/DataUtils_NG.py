@@ -99,8 +99,8 @@ class SalinityDataProcessor:
             print(f"Dropped {(~mask).sum()} rows with missing values")
         elif self.data_config['missing_values'] == 'impute':
             # Simple forward fill for time series data
-            X = X.fillna(method='ffill').fillna(method='bfill')
-            y = y.fillna(method='ffill').fillna(method='bfill')
+            X = X.ffill().bfill()
+            y = y.ffill().bfill()
             print("Imputed missing values using forward/backward fill")
         
         print(f"Final dataset: {len(X)} observations, {len(self.selected_predictors)} predictors")
@@ -491,68 +491,49 @@ def check_data_quality(data, predictors, target):
     
     return report
 
-def calculate_crps(y_true, y_pred_dist):
+def calculate_crps(y_true, y_pred_dist, n_grid=200, tail_prob=1e-3):
     """
-    Calculate CRPS (Continuous Ranked Probability Score) from NGBoost distributions
-    
+    Calculate CRPS (Continuous Ranked Probability Score) using numerical integration.
+
     Parameters:
     -----------
     y_true : array-like
-        True salinity values
-    y_pred_dist : NGBoost distribution object
-        Predicted distributions from NGBoost
-    
+        True target values.
+    y_pred_dist : NGBoost distribution object (or list of distributions)
+        Predicted distributions.
+    n_grid : int
+        Number of points in integration grid.
+    tail_prob : float
+        Lower and upper quantile bounds for integration (e.g., 0.001 → 0.1% and 99.9%).
+
     Returns:
     --------
-    float : Average CRPS score
+    float : Average CRPS score.
     """
-    try:
-        crps_values = []
+    crps_values = []
+    
+    for i, true_val in enumerate(y_true):
+        dist_i = y_pred_dist[i] if hasattr(y_pred_dist, '__getitem__') else y_pred_dist
         
-        for i, true_val in enumerate(y_true):
-            # Get the distribution for this observation
-            if hasattr(y_pred_dist, '__getitem__'):
-                dist_i = y_pred_dist[i]
-            else:
-                # Handle case where y_pred_dist is already a single distribution
-                dist_i = y_pred_dist
+        try:
+            lower = dist_i.ppf(tail_prob)
+            upper = dist_i.ppf(1 - tail_prob)
             
-            # Calculate CRPS using numerical integration
-            # CRPS = ∫ [F(x) - I(x >= y_true)]² dx
-            # For computational efficiency, we'll use a discrete approximation
-            
-            # Get distribution parameters
-            if hasattr(dist_i, 'mean') and hasattr(dist_i, 'scale'):
-                mean = dist_i.mean()
-                scale = dist_i.scale if hasattr(dist_i, 'scale') else np.sqrt(dist_i.var())
-                
-                # Create evaluation points around the true value and prediction
-                x_min = min(true_val, mean) - 3 * scale
-                x_max = max(true_val, mean) + 3 * scale
-                x_points = np.linspace(x_min, x_max, 100)
-                
-                # Calculate CDF values
-                cdf_values = dist_i.cdf(x_points)
-                
-                # Indicator function: 1 if x >= true_val, 0 otherwise
-                indicator = (x_points >= true_val).astype(float)
-                
-                # Calculate integrand
-                integrand = (cdf_values - indicator) ** 2
-                
-                # Numerical integration using trapezoidal rule
-                crps_i = np.trapz(integrand, x_points)
-                crps_values.append(crps_i)
-                
-            else:
-                # Fallback method if distribution doesn't have expected attributes
+            if np.isnan(lower) or np.isnan(upper) or lower >= upper:
                 crps_values.append(np.nan)
+                continue
+            
+            x_points = np.linspace(lower, upper, n_grid)
+            cdf_values = dist_i.cdf(x_points)
+            indicator = (x_points >= true_val).astype(float)
+            integrand = (cdf_values - indicator) ** 2
+            crps_i = np.trapz(integrand, x_points)
+            crps_values.append(crps_i)
         
-        return np.nanmean(crps_values)
-        
-    except Exception as e:
-        print(f"Error calculating CRPS: {e}")
-        return np.nan
+        except Exception as e:
+            crps_values.append(np.nan)
+    
+    return np.nanmean(crps_values)
     
 def calculate_log_likelihood(y_true, y_pred_dist):
     """

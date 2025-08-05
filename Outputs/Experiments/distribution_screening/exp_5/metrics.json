@@ -1,0 +1,70 @@
+{
+  "classification": {
+    "accuracy": 0.9487,
+    "accuracy_std": 0.0705,
+    "auc": 0.7442,
+    "auc_std": 0.2013,
+    "precision": 0.0967,
+    "precision_std": 0.124,
+    "recall": 0.1186,
+    "recall_std": 0.1883,
+    "f1": 0.0849,
+    "f1_std": 0.1095
+  },
+  "hybrid": {
+    "accuracy": 0.9987,
+    "auc": 0.9984,
+    "precision": 0,
+    "recall": 0,
+    "f1": 0,
+    "overall": {
+      "rmse": 0.032,
+      "mae": 0.0018,
+      "r2": 0.218
+    },
+    "high_sal": {
+      "rmse": 0.7621,
+      "mae": 0.7428,
+      "r2": 0
+    },
+    "low_sal": {
+      "rmse": 0.0162,
+      "mae": 0.0008,
+      "r2": 0
+    }
+  },
+  "direct_baseline": {
+    "accuracy": 1,
+    "auc": 1,
+    "precision": 1,
+    "recall": 1,
+    "f1": 1,
+    "overall": {
+      "rmse": 0.0083,
+      "mae": 0.0003,
+      "r2": 0.9467
+    },
+    "high_sal": {
+      "rmse": 0.1744,
+      "mae": 0.1341,
+      "r2": 0
+    },
+    "low_sal": {
+      "rmse": 0.0055,
+      "mae": 0.0002,
+      "r2": 0
+    }
+  },
+  "parameter_regression": {
+    "c": {
+      "rmse": 7993668.1218,
+      "r2": 0.755,
+      "mae": 1976145.6042
+    },
+    "scale": {
+      "rmse": 0.0124,
+      "r2": 0.8697,
+      "mae": 0.007
+    }
+  }
+}
