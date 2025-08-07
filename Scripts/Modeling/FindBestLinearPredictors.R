@@ -5,7 +5,7 @@
 # Date Created:   2025-06-01
 # Last Updated:   2025-07-16
 # Description:    Loads engineered hourly model data, systematically identifies
-#                 the best predictor of saliniy from each group using linear
+#                 the best predictor of salinity from each group using linear
 #                 modeling. Then saves a smaller version of the model data and 
 #                 the linear predictor results to a .json file for next steps 
 #                 in Python.
@@ -32,7 +32,7 @@ library(lubridate)
 model_data <- as.data.frame(read_qs_files('Data/Tidied/Final/FinalModelData.qs'))
 
 # Define salinity threshold
-salinity_threshold = 0.3 # measured in practical salt units (PSU), which is equivalent to parts per thousand
+salinity_threshold = 0.2 # measured in practical salt units (PSU), which is equivalent to parts per thousand
 
 # Define predictor categories and their candidates
 predictor_config <- list(

@@ -30,7 +30,7 @@ library(zoo)         # For rolling computation
 library(lubridate)   # For datetime related functions
 
 # Read in final hourly data
-data <- read.csv('Data/Tidied/HourlyDataFinal.csv', 
+data <- read.csv('Data/Tidied/Processed/HourlyDataFinal.csv', 
                  colClasses = c('NULL', NA, NA, NA, NA, NA, NA, NA, NA, NA, NA, NA, NA))
 
 data <- data %>%

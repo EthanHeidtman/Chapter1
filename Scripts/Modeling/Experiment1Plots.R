@@ -132,7 +132,7 @@ plot_october_2016_event <- function(stage1_data, threshold = 0.8,
 
 #' Detailed view of just October 2016
 plot_october_2016_detailed <- function(stage1_data, threshold = 0.8, 
-                                       distributions = c("gpd", "lognormal", "gamma")) {
+                                       distributions = c("gpd", "lognormal", "gamma", 'loglogistic', 'burr', 'gengamma')) {
    
    # Filter to October 2016 only
    oct_data <- stage1_data %>%
@@ -180,7 +180,7 @@ plot_october_2016_detailed <- function(stage1_data, threshold = 0.8,
       
       scale_color_brewer(type = "qual", palette = "Dark2") +
       scale_y_continuous(labels = percent_format(), limits = c(0, 1)) +
-      scale_x_datetime(date_labels = "%Oct %d", date_breaks = "3 days") +
+      scale_x_datetime(date_labels = "%b %d, %Y", date_breaks = "3 days") +
       
       labs(
          title = "October 2016 Event - Exceedance Probability Predictions",
@@ -253,7 +253,7 @@ plot_simple_timeseries <- function(stage1_data, threshold = 0.8,
 # ============================================================================
 
 #' Compare top 3 distributions side by side
-plot_top_distributions <- function(stage1_data, metrics_df, threshold = 0.8, n_top = 3) {
+plot_top_distributions <- function(stage1_data, metrics_df, threshold = 0.8, n_top = 6) {
    
    # Find top performing distributions and their actual column names
    top_dist_names <- metrics_df %>%
@@ -294,7 +294,7 @@ plot_top_distributions <- function(stage1_data, metrics_df, threshold = 0.8, n_t
       geom_point(data = filter(comparison_data, Actual_Exceedance),
                  aes(y = 1), color = "red", size = 1, alpha = 0.7) +
       
-      facet_wrap(~ Distribution, ncol = 1) +
+      facet_wrap(~ Distribution, ncol = 2) +
       
       scale_y_continuous(labels = percent_format()) +
       scale_x_datetime(date_labels = "%b %d", date_breaks = "1 week") +

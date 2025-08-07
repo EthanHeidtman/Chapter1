@@ -17,9 +17,9 @@ library(reticulate)
 library(jsonlite)
 library(dplyr)
 library(lubridate)
+library(purrr)
 source_python('Scripts/Modeling/TwoStageModel.py') # Contains the two stage model
 source('Scripts/Functions/Modeling/ExperimentHelpers.R')
-source('Scripts/Modeling/Experiment1Plots.R')
 # source('Scripts/Modeling/Experiment2Plots.R')
 # source('Scripts/Modeling/Experiment3Plots.R')
 
@@ -43,7 +43,7 @@ base_config <- list(
    predictors_json = PREDICTOR_PATH,
    salinity_col = "Salinity",
    base_threshold = 0.2,
-   target_threshold = 0.8,
+   target_threshold = 1.0,
    group_window_days = 7,
    param_regression_method = "rf",  # default, can be overridden
    min_exceedances_per_group = 10,
@@ -78,8 +78,13 @@ stage1_results <- run_all_experiments(stage1_grid, base_config, "distribution_sc
 
 stage1_metrics <- map_dfr(stage1_results, extract_metrics) # Get all reported metrics
 stage1_data <- bind_all_hybrid_predictions(data, stage1_results) # Gather all time series outputs
-
-dashboard <- create_simple_dashboard(stage1_data, stage1_metrics, threshold = 0.8)
+source('Scripts/Modeling/Experiment1Plots.R')
+dashboard <- create_simple_dashboard(stage1_data, stage1_metrics, threshold = 1.0)
+dashboard$performance
+dashboard$october_event
+dashboard$october_detailed
+dashboard$timeseries
+dashboard$top_comparison
 
 cat("Starting Stage 2: Threshold Sensitivity...\n")
 stage2_results <- run_all_experiments(stage2_grid, base_config, "threshold_sensitivity")

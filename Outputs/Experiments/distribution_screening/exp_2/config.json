@@ -3,7 +3,7 @@
   "predictors_json": "Outputs/Experiments/LinearModeling/LinearPredictors.json",
   "salinity_col": "Salinity",
   "base_threshold": 0.2,
-  "target_threshold": 0.8,
+  "target_threshold": 1,
   "group_window_days": 7,
   "param_regression_method": "rf",
   "min_exceedances_per_group": 10,

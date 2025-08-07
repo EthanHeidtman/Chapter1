@@ -12,6 +12,8 @@ scikit-learn = "^1.7.1"
 pandas = "^2.3.1"
 datetime = "^5.5"
 ngboost = "^0.5.6"
+copulas = "^0.12.3"
+copulae = "^0.8.0"
 
 [build-system]
 requires = ["poetry-core>=2.0.0,<3.0.0"]
