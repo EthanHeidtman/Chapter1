@@ -3,24 +3,23 @@
     "by_category": {
       "tide": "Norm_TideRange24",
       "discharge_lag": "Norm_PowLagDischarge72",
-      "discharge_rolling": "Norm_RollingPowDischarge14",
+      "discharge_rolling": "Norm_RollingPowDischarge7",
       "inflow_lag": "Norm_PowLagInflows96",
-      "inflow_rolling": "Norm_RollingPowInflows10",
-      "stress_binary": "IsLowInflow",
-      "stress_continuous": "Norm_CumulativeInflowDeficit30",
+      "inflow_rolling": "Norm_RollingPowInflows2",
+      "stress_continuous": "Norm_ConsecutiveLowInflowHours",
       "temporal": "DayOfYear"
     },
     "interactions": {
-      "main": "Norm_CumulativeInflowDeficit30_x_DayOfYear"
+      "main": "Norm_RollingPowInflows2_x_DayOfYear"
     },
-    "all_predictors": ["Norm_TideRange24", "Norm_PowLagDischarge72", "Norm_RollingPowDischarge14", "Norm_PowLagInflows96", "Norm_RollingPowInflows10", "IsLowInflow", "Norm_CumulativeInflowDeficit30", "DayOfYear"],
-    "all_interactions": "Norm_CumulativeInflowDeficit30_x_DayOfYear",
-    "combined": ["Norm_TideRange24", "Norm_PowLagDischarge72", "Norm_RollingPowDischarge14", "Norm_PowLagInflows96", "Norm_RollingPowInflows10", "IsLowInflow", "Norm_CumulativeInflowDeficit30", "DayOfYear", "Norm_CumulativeInflowDeficit30_x_DayOfYear"]
+    "all_predictors": ["Norm_TideRange24", "Norm_PowLagDischarge72", "Norm_RollingPowDischarge7", "Norm_PowLagInflows96", "Norm_RollingPowInflows2", "Norm_ConsecutiveLowInflowHours", "DayOfYear"],
+    "all_interactions": "Norm_RollingPowInflows2_x_DayOfYear",
+    "combined": ["Norm_TideRange24", "Norm_PowLagDischarge72", "Norm_RollingPowDischarge7", "Norm_PowLagInflows96", "Norm_RollingPowInflows2", "Norm_ConsecutiveLowInflowHours", "DayOfYear", "Norm_RollingPowInflows2_x_DayOfYear"]
   },
   "summary": {
-    "total_predictors": 8,
+    "total_predictors": 7,
     "total_interactions": 1,
-    "categories_with_predictors": ["tide", "discharge_lag", "discharge_rolling", "inflow_lag", "inflow_rolling", "stress_binary", "stress_continuous", "temporal"],
+    "categories_with_predictors": ["tide", "discharge_lag", "discharge_rolling", "inflow_lag", "inflow_rolling", "stress_continuous", "temporal"],
     "selection_method": "systematic_linear_testing"
   }
 }

@@ -38,7 +38,7 @@ salinity_threshold = 0.2 # measured in practical salt units (PSU), which is equi
 predictor_config <- list(
 
    # Tide predictors
-   tide = c('IsFloodTide', 'IsEbbTide', 'IsSlackTide', 'Norm_Tide', 'Norm_LagTide1', 'Norm_LagTide2', 'Norm_LagTide4',
+   tide = c( 'Norm_Tide', 'Norm_LagTide1', 'Norm_LagTide2', 'Norm_LagTide4',
             'Norm_TideVelocity', 'Norm_TideAcceleration', 'Norm_TideRange6', 'Norm_TideRange12', 'Norm_TideRange24'),
 
    # Discharge predictors
@@ -58,15 +58,15 @@ predictor_config <- list(
    inflow_rolling = c("Norm_RollingPowInflows1", "Norm_RollingPowInflows2",
                       "Norm_RollingPowInflows7", "Norm_RollingPowInflows10"),
 
-   stress_binary = c('IsLowInflow', 'IsVeryLowInflow', 'IsFlushingFlow'),
-   stress_continuous = c('ConsecutiveLowInflowHours', 'ConsecutiveVeryLowInflowHours', 'LowInflowHours7', 
-                         'LowInflowHours14', 'LowInflowHours30', 'HoursSinceFlush', 'DaysSinceFlush',
-                         'StressFrequency7', 'StressFrequency14', 'StressFrequency30', 'Norm_CumulativeInflowDeficit3',
+   #stress_binary = c('IsLowInflow', 'IsVeryLowInflow', 'IsFlushingFlow'),
+   stress_continuous = c('Norm_ConsecutiveLowInflowHours', 'Norm_ConsecutiveVeryLowInflowHours', 'Norm_LowInflowHours7', 
+                         'Norm_LowInflowHours14', 'Norm_LowInflowHours30', 'Norm_HoursSinceFlush', 'Norm_DaysSinceFlush',
+                         'Norm_StressFrequency7', 'Norm_StressFrequency14', 'Norm_StressFrequency30', 'Norm_CumulativeInflowDeficit3',
                          'Norm_CumulativeInflowDeficit7', 'Norm_CumulativeInflowDeficit30', 'Norm_MaxConsecutiveStress7',
-                         'Norm_MaxConsecutiveStress14', 'Norm_MaxConsecutiveStress30', 'SSI7', 'SSI14', 'SSI30'),
+                         'Norm_MaxConsecutiveStress14', 'Norm_MaxConsecutiveStress30', 'Norm_SSI7', 'Norm_SSI14', 'Norm_SSI30'),
 
    # Seasonal/temporal
-   temporal = c("Season", "DayOfYear")
+   temporal = c("DayOfYear")
 
 )
 

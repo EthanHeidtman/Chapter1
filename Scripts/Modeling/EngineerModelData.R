@@ -221,14 +221,17 @@ mutate(
 ) %>%
    
    # Clean up temporary variables
-   select(-`1`)
+   select(-c(`1`, where(is.logical), Season, contains('Threshold')))
  
 
+# model_data <- model_data %>%
+#    relocate(Discharge, .after = Salinity) %>%
+#    relocate(FERC, where(is.logical), where(is.character), where(is.factor), 
+#             contains('Hours'), contains('Days'), contains('Frequency'), contains('SSI'), .after = Inflows) %>%
+#    mutate_if(is.logical, as.factor)
 model_data <- model_data %>%
-   relocate(Discharge, .after = Salinity) %>%
-   relocate(FERC, where(is.logical), where(is.character), where(is.factor), 
-            contains('Hours'), contains('Days'), contains('Frequency'), contains('SSI'), .after = Inflows) %>%
-   mutate_if(is.logical, as.factor)
+   relocate(FERC, Salinity, Discharge, .after = DayOfYear)
+   
 
 # Normalize Predictors and Add to model_data
 preds_to_normalize <- colnames(model_data)[which(colnames(model_data) == 'Discharge') : ncol(model_data)] # Starting from the discharge column
