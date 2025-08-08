@@ -64,9 +64,8 @@ predictor_config <- list(
                          'Norm_StressFrequency7', 'Norm_StressFrequency14', 'Norm_StressFrequency30', 'Norm_CumulativeInflowDeficit3',
                          'Norm_CumulativeInflowDeficit7', 'Norm_CumulativeInflowDeficit30', 'Norm_MaxConsecutiveStress7',
                          'Norm_MaxConsecutiveStress14', 'Norm_MaxConsecutiveStress30', 'Norm_SSI7', 'Norm_SSI14', 'Norm_SSI30'),
-
-   # Seasonal/temporal
-   temporal = c("DayOfYear")
+   
+   temporal = c('DayOfYear_sin', 'DayOfYear_cos')
 
 )
 

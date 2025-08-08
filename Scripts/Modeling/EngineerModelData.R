@@ -230,7 +230,14 @@ mutate(
 #             contains('Hours'), contains('Days'), contains('Frequency'), contains('SSI'), .after = Inflows) %>%
 #    mutate_if(is.logical, as.factor)
 model_data <- model_data %>%
-   relocate(FERC, Salinity, Discharge, .after = DayOfYear)
+   relocate(FERC, Salinity, Discharge, .after = DayOfYear) %>%
+   group_by(Year) %>%
+   mutate(
+      DayOfYear_sin = sin(2 * pi * DayOfYear / max(DayOfYear)),
+      DayOfYear_cos = cos(2 * pi * DayOfYear / max(DayOfYear))
+   ) %>%
+   ungroup() %>%
+   relocate(DayOfYear_sin, DayOfYear_cos, .after = DayOfYear)
    
 
 # Normalize Predictors and Add to model_data

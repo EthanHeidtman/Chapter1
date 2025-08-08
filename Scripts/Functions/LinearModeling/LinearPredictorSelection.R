@@ -119,10 +119,19 @@ linear_predictor_selector <- function(data, salinity_threshold, predictor_config
    stage8_temporal <- test_predictor_group('Salinity ~', predictor_config$temporal, data, "temporal")
    stage_results$temporal <- stage8_temporal
    
-   if (!is.na(stage8_temporal$best_predictor)) {
+   if (!all(is.na(stage8_temporal$best_predictor))) {
+      # Store all best predictors (could be 1 or 2)
       best_predictors$temporal <- stage8_temporal$best_predictor
-      cat(sprintf("Best temporal predictor: %s (score: %.3f)\n", 
-                  stage8_temporal$best_predictor, stage8_temporal$best_score))
+      
+      # Print each predictor and its score
+      for (i in seq_along(stage8_temporal$best_predictor)) {
+         cat(sprintf(
+            "Best temporal predictor %d: %s (score: %.3f)\n",
+            i,
+            stage8_temporal$best_predictor[i],
+            stage8_temporal$best_score[i]
+         ))
+      }
    } else {
       cat("No significant temporal predictor found\n")
    }

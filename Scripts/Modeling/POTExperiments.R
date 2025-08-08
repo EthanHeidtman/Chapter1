@@ -40,31 +40,28 @@ base_config <- list(
    data_csv = DATA_PATH,
    predictors_json = PREDICTOR_PATH,
    salinity_col = "Salinity",
+   copula_type = 'gaussian',
    base_threshold = 0.2,
-   target_threshold = 1.0,
+   target_threshold = 0.8,
    group_window_days = 7,
-   param_smoothing = TRUE,
+   param_smoothing = FALSE,
    min_exceedances_per_group = 10,
    random_state = as.integer(42)
 )
 
 
-# --- Stage 1: Distribution Screening ---
-stage1_grid <- expand.grid(
-   copula_type = 'gaussian', # 'student_t'
-   tail_distribution = c("gpd", "lognormal", "gengamma", "burr", 'loglogistic', 'gamma'),
-   stringsAsFactors = FALSE
+# Experiment 1: Distribution screening
+exp1_grid <- list(
+   tail_distribution = c("burr", "gengamma", "gamma", "lognormal", 'gpd', 'loglogistic'),
+   copula_type = 'gaussian', 
+   group_window_days = 7
 )
 
-# --- Stage 2: Threshold Sensitivity ---
-stage2_grid <- expand.grid(
-   base_threshold = c(0.1, 0.2, 0.3),
-   target_threshold = c(0.6, 0.8, 1.0),
-   stringsAsFactors = FALSE
-)
+exp1_config <- combine_config(base_config, exp1_grid)
+config <- r_to_py(exp1_config)
+py$config <- config[0]
 
-
-stage1_results <- run_all_experiments(stage1_grid, base_config, "distribution_screening")
+exp1 <- run_experiment('DistributionScreening', base_config, exp1_grid)
 
 
 

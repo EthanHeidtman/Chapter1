@@ -43,4 +43,4 @@ setHook("rstudio.sessionInit", function(...) {
 # Activate renv for R package management
 source("renv/activate.R")
 
-rm(poetry_env, run_reticulate_setup)
+#rm(poetry_env)

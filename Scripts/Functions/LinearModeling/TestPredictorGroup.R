@@ -72,14 +72,23 @@ test_predictor_group <- function(current_formula, predictor_group, data, group_n
    scores <- sapply(results_list, function(x) x$composite_score)
    ranked_indices <- order(scores, decreasing = TRUE)
    
+   # Determine best predictors depending on group type
+   if (group_name == "temporal") {
+      best_predictors <- names(scores)[ranked_indices[1:2]]
+      best_scores <- scores[ranked_indices[1:2]]
+   } else {
+      best_predictors <- names(scores)[ranked_indices[1]]
+      best_scores <- scores[ranked_indices[1]]
+   }
+   
    # Return results
    return(list(
       group_name = group_name,
       models = models,
       results = results_list,
       ranked_predictors = names(scores)[ranked_indices],
-      best_predictor = names(scores)[ranked_indices[1]],
-      best_score = scores[ranked_indices[1]],
+      best_predictor = best_predictors,
+      best_score = best_scores,
       summary_table = data.frame(
          Predictor = ranked_indices,
          Score = scores[ranked_indices],

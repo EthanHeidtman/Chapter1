@@ -18,6 +18,7 @@ import numpy as np
 from scipy import stats
 from sklearn.model_selection import TimeSeriesSplit
 from sklearn.metrics import mean_squared_error, r2_score, mean_absolute_error
+from sklearn.metrics import roc_auc_score, average_precision_score, brier_score_loss
 from types import SimpleNamespace
 import json
 import warnings
@@ -35,88 +36,25 @@ def dict_to_namespace(d):
         return d
     return SimpleNamespace(**{k: dict_to_namespace(v) for k,v in d.items()})
 
-class VariableTypeDetector:
-    """Automatic detection and handling of different variable types"""
-    
-    @staticmethod
-    def detect_variable_type(variable_data, variable_name=None):
-        """Automatically detect variable type from data"""
-        clean_data = variable_data.dropna()
-        unique_vals = clean_data.unique()
-        n_unique = len(unique_vals)
-        
-        # Boolean detection
-        if n_unique == 2 and set(unique_vals).issubset({0, 1, True, False}):
-            return 'boolean'
-        
-        # Circular detection (heuristic based on name and range)
-        if variable_name:
-            circular_indicators = ['day', 'month', 'hour', 'angle', 'direction', 'bearing']
-            if any(indicator in variable_name.lower() for indicator in circular_indicators):
-                val_range = unique_vals.max() - unique_vals.min()
-                if 300 <= val_range <= 366 or 20 <= val_range <= 25:  # Days or hours
-                    return 'circular'
-        
-        # Small discrete detection
-        if n_unique <= 10 and all(isinstance(x, (int, np.integer)) for x in unique_vals):
-            return 'discrete'
-        
-        # Constant (no variation)
-        if n_unique == 1:
-            return 'constant'
-        
-        # Default to continuous
-        return 'continuous'
-    
-    @staticmethod
-    def transform_variable_for_copula(variable_data, variable_type, variable_name=None):
-        """Transform variable to appropriate form for copula modeling"""
-        clean_data = variable_data.dropna()
-        
-        if variable_type == 'boolean':
-            # Use probit transformation to latent continuous
-            prop_true = clean_data.mean()
-            prop_true = np.clip(prop_true, 0.01, 0.99)  # Avoid extremes
-            latent_threshold = norm.ppf(1 - prop_true)
-            # Create latent variable (simplified approach)
-            latent_values = np.where(clean_data, 
-                                   norm.rvs(loc=latent_threshold + 1, scale=1, size=len(clean_data)),
-                                   norm.rvs(loc=latent_threshold - 1, scale=1, size=len(clean_data)))
-            return latent_values, {'type': 'boolean', 'threshold': latent_threshold, 'prop_true': prop_true}
-        
-        elif variable_type == 'circular':
-            # Transform to sin/cos components
-            if variable_name and 'day' in variable_name.lower():
-                period = 365.25
-            else:
-                period = np.max(clean_data) - np.min(clean_data)
-            
-            angle = 2 * np.pi * clean_data / period
-            sin_comp = np.sin(angle)
-            cos_comp = np.cos(angle)
-            # Return as bivariate for multivariate copula
-            return np.column_stack([sin_comp, cos_comp]), {'type': 'circular', 'period': period}
-        
-        elif variable_type == 'discrete':
-            # Treat as continuous with jittering
-            jittered = clean_data + np.random.normal(0, 0.1, len(clean_data))
-            return jittered, {'type': 'discrete', 'original_values': clean_data.unique()}
-        
-        elif variable_type == 'constant':
-            # Cannot be used in copula
-            return None, {'type': 'constant', 'value': clean_data.iloc[0]}
-        
-        else:  # continuous
-            return clean_data.values, {'type': 'continuous'}
-         
+# Map tail distribution names to classes
+TAIL_DISTS = {
+    'burr': Burr(),
+    'gpd': GPD(),
+    'gengamma': GenGamma(), 
+    'lognormal': Lognormal(),
+    'loglogistic': Loglogistic(),
+    'gamma': Gamma()
+}
+
 class TimeVaryingPOTModel:
     """
     Main class for time-varying POT modeling with multivariate copulas
     """
     def __init__(self, config):
         self.config = config
+        
+        # Tail distribution object (e.g., Burr, GPD) chosen by config
         self.tail_dist_obj = TAIL_DISTS[config.tail_distribution]
-        self.variable_detector = VariableTypeDetector()
         
         # Initialize copula based on configuration
         if config.copula_type == 'gaussian':
@@ -127,56 +65,123 @@ class TimeVaryingPOTModel:
             raise ValueError(f"Unsupported copula type: {config.copula_type}")
         
         # Storage for fitted components
-        self.rolling_params = None
-        self.predictor_transformations = None
-        self.copula_params = None
-        self.variable_types = None
+        self.rolling_params = None                # tail parameters per rolling window
+        self.predictor_transformations = {}       # dict: fitted marginals per predictor
+        self.copula_params = None                 # fitted copula parameters
+        self.variable_types = None                # dict: predictor variable types metadata
+        self.predictor_data = None                # DataFrame of predictors transformed in rolling windows
         
-    def detect_and_classify_variables(self, data, predictors):
-        """Detect variable types for all predictors"""
-        print("Detecting variable types...")
-        
-        self.variable_types = {}
-        
-        for predictor in predictors:
-            if predictor in data.columns:
-                var_type = self.variable_detector.detect_variable_type(
-                    data[predictor], predictor
+    def load_data(self, config):
+        """Load CSV and prepare data with datetime parsing"""
+        try:
+            data = pd.read_csv(self.config.data_csv)
+            
+            if 'DateTime' in data.columns:
+                data['DateTime'] = data['DateTime'].astype(str).str.strip()
+                data['DateTime'] = data['DateTime'].apply(
+                    lambda x: x if ':' in x else x + ' 00:00:00'
                 )
-                self.variable_types[predictor] = var_type
-                
-                # Count unique values for reporting
-                n_unique = data[predictor].nunique()
-                print(f"  {predictor}: {var_type} ({n_unique} unique values)")
-            else:
-                print(f"  Warning: Predictor '{predictor}' not found in data")
+                data['DateTime'] = pd.to_datetime(data['DateTime'], errors='coerce')
+                data = data.dropna(subset=['DateTime'])
+                data = data.sort_values('DateTime').reset_index(drop=True)
+            
+            all_predictors = json.loads(open(self.config.predictors_json, "r").read())
+            predictors = all_predictors['predictors']['all_predictors']
+            
+            available_predictors = [p for p in predictors if p in data.columns]
+            if len(available_predictors) != len(predictors):
+                missing = set(predictors) - set(available_predictors)
+                print(f"Warning: Missing predictors in data: {missing}")
+            
+            print(f"Data loaded: {data.shape[0]} rows, {len(available_predictors)} predictors available")
+            return data, available_predictors
         
-        # Filter out constant variables
-        usable_predictors = [p for p, v_type in self.variable_types.items() 
-                           if v_type != 'constant']
+        except Exception as e:
+            print(f"Error loading data: {e}")
+            raise
         
-        if len(usable_predictors) < len(predictors):
-            removed = [p for p in predictors if p not in usable_predictors]
-            print(f"  Removed constant variables: {removed}")
-        
-        return usable_predictors
+    def clean_data(self, df):
+        """Basic cleaning to drop empty rows and enforce numeric dtypes"""
+        df = df.dropna(how='all')
+        df = df.apply(pd.to_numeric, errors='ignore')
+        return df
     
+    def fit_marginal_distribution(self, data, variable_name):
+        """
+        Fit marginal distribution for a predictor variable.
+        Stores sorted values and count for later uniform transform.
+        """
+        clean_data = np.array(data)[~np.isnan(data)]
+        if len(clean_data) < 10:
+            raise ValueError(f"Insufficient data to fit marginal for {variable_name} ({len(clean_data)} points)")
+        self.predictor_transformations[variable_name] = {
+            'data_points': np.sort(clean_data),
+            'n_points': len(clean_data)
+        }
+    
+    def fit_all_marginals(self, df):
+        """Fit marginals for all columns in the DataFrame"""
+        for col in df.columns:
+            self.fit_marginal_distribution(df[col], col)
+            
+    def transform_to_uniform(self, data, variable_name):
+        """
+        Transform raw data points to uniform [0,1] using the fitted marginal.
+        """
+        if variable_name not in self.predictor_transformations:
+            raise ValueError(f"No marginal fitted for variable '{variable_name}'")
+        
+        tinfo = self.predictor_transformations[variable_name]
+        data_points = tinfo['data_points']
+        n_points = tinfo['n_points']
+        
+        clean_data = np.array(data)
+        ranks = np.searchsorted(data_points, clean_data, side='right')
+        uniform_values = ranks / (n_points + 1)  # avoid 0 or 1 exactly
+        
+        return np.clip(uniform_values, 0.001, 0.999)
+
+    def transform_from_uniform(self, uniform_values, variable_name):
+        """
+        Inverse transform: uniform [0,1] -> original data scale.
+        """
+        if variable_name not in self.predictor_transformations:
+            raise ValueError(f"No marginal fitted for variable '{variable_name}'")
+        tinfo = self.predictor_transformations[variable_name]
+        data_points = tinfo['data_points']
+        n_points = tinfo['n_points']
+        
+        uniform_values = np.clip(uniform_values, 1/(n_points+1), n_points/(n_points+1))
+        # Map uniform quantiles to indices in sorted data
+        indices = uniform_values * (n_points + 1) - 1
+        indices = np.clip(indices, 0, n_points - 1)
+        
+        # Interpolate data points
+        lower_idx = np.floor(indices).astype(int)
+        upper_idx = np.ceil(indices).astype(int)
+        weights = indices - lower_idx
+        
+        return (1 - weights) * data_points[lower_idx] + weights * data_points[upper_idx]
+
     def fit_rolling_pot_params(self, data):
         """
         Fit POT parameters on rolling windows of exceedances > threshold
         """
         print(f"Fitting rolling POT parameters using {self.config.tail_distribution}...")
         
-        window_size = self.config.group_window_days
+        window_size = int(self.config.group_window_days)
+        #window_size = int(model.config.group_window_days)
         params_list = []
         
         for i in range(len(data)):
-            end_date = data.loc[i, 'DateTime']
+            print(i)
+            end_date = data.iloc[i]['DateTime']
             start_date = end_date - pd.Timedelta(days=window_size)
             
             # Get salinity exceedances in window
             window_data = data[(data['DateTime'] >= start_date) & (data['DateTime'] <= end_date)]
             exceedances = window_data[self.config.salinity_col] - self.config.base_threshold
+            #exceedances = window_data[model.config.salinity_col] - model.config.base_threshold
             exceedances = exceedances[exceedances > 0]
             
             if len(exceedances) < self.config.min_exceedances_per_group:
@@ -218,68 +223,47 @@ class TimeVaryingPOTModel:
     
     def prepare_predictor_data(self, data, predictors):
         """
-        Prepare predictor data for copula modeling with automatic type handling
+        Extract predictor values in rolling windows and transform to uniform
+        using pre-fitted marginals. Returns DataFrame indexed by timestamp.
         """
         print("Preparing predictor data for copula modeling...")
         
         window_size = self.config.group_window_days
         predictor_data_list = []
-        
+
         for i in range(len(data)):
             end_date = data.loc[i, 'DateTime']
             start_date = end_date - pd.Timedelta(days=window_size)
-            
             window_data = data[(data['DateTime'] >= start_date) & (data['DateTime'] <= end_date)]
-            
+
             if len(window_data) < self.config.min_exceedances_per_group:
                 continue
+
+            row = {'timestamp': end_date}
+            for predictor in predictors:
+                if predictor not in window_data.columns:
+                    continue
+                pred_values = window_data[predictor].dropna()
+                if len(pred_values) < 3:
+                    row[f'{predictor}_values'] = None
+                    row[f'{predictor}_count'] = 0
+                    continue
                 
-            try:
-                row = {'timestamp': end_date}
-                
-                # Process each predictor based on its detected type
-                for predictor in predictors:
-                    if predictor not in window_data.columns:
-                        continue
-                    
-                    pred_values = window_data[predictor].dropna()
-                    
-                    if len(pred_values) < 3:
-                        row[f'{predictor}_values'] = None
-                        row[f'{predictor}_count'] = 0
-                        continue
-                    
-                    # Transform based on variable type
-                    var_type = self.variable_types.get(predictor, 'continuous')
-                    
-                    transformed_values, transform_info = self.variable_detector.transform_variable_for_copula(
-                        pred_values, var_type, predictor
-                    )
-                    
-                    if transformed_values is not None:
-                        row[f'{predictor}_values'] = transformed_values
-                        row[f'{predictor}_count'] = len(pred_values)
-                        row[f'{predictor}_transform_info'] = transform_info
-                        
-                        # Store summary statistics
-                        if var_type in ['continuous', 'discrete']:
-                            row[f'{predictor}_mean'] = np.mean(transformed_values)
-                            row[f'{predictor}_std'] = np.std(transformed_values)
-                        elif var_type == 'boolean':
-                            row[f'{predictor}_prop_true'] = transform_info['prop_true']
-                    else:
-                        row[f'{predictor}_values'] = None
-                        row[f'{predictor}_count'] = 0
-                
-                predictor_data_list.append(row)
-                
-            except Exception as e:
-                print(f"Warning: Failed to prepare predictor data for {end_date}: {e}")
-                continue
+                try:
+                    transformed_values = self.transform_to_uniform(pred_values.values, predictor)
+                    row[f'{predictor}_values'] = transformed_values
+                    row[f'{predictor}_count'] = len(pred_values)
+                    row[f'{predictor}_mean'] = np.mean(transformed_values)
+                    row[f'{predictor}_std'] = np.std(transformed_values)
+                except Exception as e:
+                    print(f"Transform failed for {predictor} at {end_date}: {e}")
+                    row[f'{predictor}_values'] = None
+                    row[f'{predictor}_count'] = 0
+            
+            predictor_data_list.append(row)
         
         self.predictor_data = pd.DataFrame(predictor_data_list).set_index('timestamp')
-        
-        print(f"  Prepared predictor data for {len(self.predictor_data)} time periods")
+        print(f"Prepared predictor data for {len(self.predictor_data)} time periods")
         return self.predictor_data.dropna()
     
     def fit_multivariate_copula_relationships(self, data, predictors):
@@ -298,7 +282,7 @@ class TimeVaryingPOTModel:
         param_names = self.tail_dist_obj.param_names()
         
         # Limit number of predictors for computational efficiency
-        max_predictors = min(len(predictors), self.config.get('max_predictors_per_copula', 5))
+        max_predictors = min(len(predictors), self.config.get('max_predictors_per_copula', 8))
         
         for param in param_names:
             if param not in pot_data.columns:
@@ -473,8 +457,7 @@ class TimeVaryingPOTModel:
         
         return np.array(predictions)
     
-    def calculate_minimum_flow_requirements(self, flow_data, salinity_risk_target=0.05, 
-                                                    confidence_levels=[0.5, 0.8, 0.90, 0.95]):
+    def calculate_minimum_flow_requirements(self, flow_data, salinity_risk_target=0.05, confidence_levels=[0.5, 0.8, 0.90, 0.95]):
         """
         Calculate minimum flow requirements using parameter uncertainty propagation
         instead of bootstrap resampling for better efficiency and accuracy
@@ -594,71 +577,48 @@ class TimeVaryingPOTModel:
     
     def fit_full_model(self, data, predictors):
         """
-        Complete model fitting pipeline with variable handling
+        Complete model fitting pipeline with variable handling.
         """
         print("=== COPULA-BASED POT MODEL FOR FERC SALINITY MANAGEMENT ===")
+    
+        # Step 1: Clean and prepare data
+        clean_df = self.clean_data(data)
+        #clean_df = model.clean_data(data)
+    
+        # Step 2: Fit rolling POT parameters on cleaned data
+        self.fit_rolling_pot_params(clean_df)
+        #model.fit_rolling_pot_params(clean_df)
+        # POT params are treated as "true" here, no predicted params yet, so no metrics for POT params
+    
+        # Step 3: Fit marginal distributions for uniform transformation
+        self.fit_all_marginals(clean_df[predictors])
+    
+        # Step 4: Prepare predictor data with uniform transformation for copula modeling
+        predictor_copula_df = self.prepare_predictor_data(clean_df, predictors)
+    
+        # Step 5: Fit multivariate copula on prepared predictor data and tail params
+        self.fit_multivariate_copula_relationships(predictor_copula_df, predictors)
+    
+        self.metrics = {}
         
-        # Step 1: Detect and classify variable types
-        usable_predictors = self.detect_and_classify_variables(data, predictors)
-        
-        # Step 2: Fit rolling POT parameters
-        self.fit_rolling_pot_params(data)
-        
-        # Step 3: Prepare predictor data with automatic type handling
-        self.prepare_predictor_data(data, usable_predictors)
-        
-        # Step 4: Fit multivariate copula relationships
-        self.fit_multivariate_copula_relationships(data, usable_predictors)
-        
+        # Compute copula fit quality metrics
+        if hasattr(self, 'predictor_data') and self.copula is not None:
+            uniform_data = self.predictor_data  # Assuming this holds the uniform-transformed predictors
+            copula_metrics = ModelMetrics.copula_fit_quality_metrics(uniform_data, self.copula)
+            self.metrics['copula_fit'] = copula_metrics
+            print("Copula Fit Quality Metrics:", copula_metrics)
+    
         print(f"\n=== MODEL FITTING COMPLETE ===")
-        print(f"- Variable types detected for {len(self.variable_types)} predictors")
-        print(f"- POT parameters fitted for {len(self.rolling_params)} time periods")
-        print(f"- Predictor data prepared for {len(self.predictor_data)} periods") 
-        print(f"- Multivariate copula relationships fitted for {len(self.copula_params)} POT parameters")
-        
+        if self.variable_types:
+            print(f"- Variable types detected for {len(self.variable_types)} predictors")
+        if self.rolling_params is not None:
+            print(f"- POT parameters fitted for {len(self.rolling_params)} time periods")
+        if self.predictor_data is not None:
+            print(f"- Predictor data prepared for {len(self.predictor_data)} periods")
+        if self.copula_params is not None:
+            print(f"- Multivariate copula relationships fitted for {len(self.copula_params)} POT parameters")
+    
         return self
-
-# Map tail distribution names to classes
-TAIL_DISTS = {
-    'burr': Burr(),
-    'gpd': GPD(),
-    'gengamma': GenGamma(), 
-    'lognormal': Lognormal(),
-    'loglogistic': Loglogistic(),
-    'gamma': Gamma()
-}
-
-def load_data(config):
-    """Load and prepare data with robust datetime handling"""
-    try:
-        data = pd.read_csv(config.data_csv)
-        
-        if 'DateTime' in data.columns:
-            data['DateTime'] = data['DateTime'].astype(str).str.strip()
-            data['DateTime'] = data['DateTime'].apply(
-                lambda x: x if ':' in x else x + ' 00:00:00'
-            )
-            data['DateTime'] = pd.to_datetime(data['DateTime'], errors='coerce')
-            data = data.dropna(subset=['DateTime'])
-            data = data.sort_values('DateTime').reset_index(drop=True)
-        
-        # Load predictors
-        all_predictors = json.loads(open(config.predictors_json, "r").read())
-        predictors = all_predictors['predictors']['all_predictors']
-        
-        # Filter predictors that exist in data
-        available_predictors = [p for p in predictors if p in data.columns]
-        
-        if len(available_predictors) != len(predictors):
-            missing = set(predictors) - set(available_predictors)
-            print(f"Warning: Missing predictors in data: {missing}")
-        
-        print(f"Data loaded: {data.shape[0]} rows, {len(available_predictors)} available predictors")
-        return data, available_predictors
-        
-    except Exception as e:
-        print(f"Error loading data: {e}")
-        raise
 
 def run_copula_pot_model(config):
     """
@@ -666,14 +626,14 @@ def run_copula_pot_model(config):
     """
     if isinstance(config, dict):
         config = dict_to_namespace(config)
-    
+
     # Validate required config parameters
     required_params = ['data_csv', 'salinity_col', 'base_threshold', 'target_threshold', 
                       'tail_distribution', 'copula_type']
     missing_params = [p for p in required_params if not hasattr(config, p)]
     if missing_params:
         raise ValueError(f"Missing required config parameters: {missing_params}")
-    
+
     # Set defaults for optional parameters
     if not hasattr(config, 'group_window_days'):
         config.group_window_days = 30
@@ -683,129 +643,100 @@ def run_copula_pot_model(config):
         config.param_smoothing = False
     if not hasattr(config, 'max_predictors_per_copula'):
         config.max_predictors_per_copula = 5
-    
-    # Load data
-    data, predictors = load_data(config)
-    
-    # Create target variables for evaluation
-    data['exceed_base'] = (data[config.salinity_col] > config.base_threshold).astype(int)
-    data['exceed_target'] = (data[config.salinity_col] > config.target_threshold).astype(int)
-    
-    print(f"\nThreshold Analysis:")
-    print(f"- Base threshold ({config.base_threshold}) exceedance rate: {data['exceed_base'].mean():.3f}")
-    print(f"- Target threshold ({config.target_threshold}) exceedance rate: {data['exceed_target'].mean():.3f}")
-    
+
     # Initialize and fit copula-based POT model
     try:
         model = TimeVaryingPOTModel(config)
-        model.fit_full_model(data, predictors)
         
+        # Load data
+        data, predictors = model.load_data(config)
+    
+        # Create target variables for evaluation
+        data['exceed_base'] = (data[config.salinity_col] > config.base_threshold).astype(int)
+        data['exceed_target'] = (data[config.salinity_col] > config.target_threshold).astype(int)
+    
+        print(f"\nThreshold Analysis:")
+        print(f"- Base threshold ({config.base_threshold}) exceedance rate: {data['exceed_base'].mean():.3f}")
+        print(f"- Target threshold ({config.target_threshold}) exceedance rate: {data['exceed_target'].mean():.3f}")
+
+        model.fit_full_model(data, predictors)
+
+        # Initialize metrics storage
+        model.metrics = {}
+
         # Generate predictions on full dataset
         print(f"\nGenerating predictions...")
-        predictions = model.predict_pot_risk(
-            data.set_index('DateTime'), 
-            [p for p in predictors if model.variable_types.get(p) != 'constant'][:config.max_predictors_per_copula]
-        )
-        
-        # Evaluate prediction performance
+        prediction_predictors = [p for p in predictors if model.variable_types.get(p) != 'constant'][:config.max_predictors_per_copula]
+        predictions = model.predict_pot_risk(data.set_index('DateTime'), prediction_predictors)
+
+        # Evaluate prediction performance with ModelMetrics
         actual = data['exceed_target'].values
         if len(predictions) == len(actual):
-            from sklearn.metrics import roc_auc_score, average_precision_score
-            try:
-                auc = roc_auc_score(actual, predictions)
-                ap = average_precision_score(actual, predictions)
-                print(f"- Prediction AUC: {auc:.3f}")
-                print(f"- Average Precision: {ap:.3f}")
-            except Exception as e:
-                print(f"- Could not calculate prediction metrics: {e}")
-        
+            exceed_metrics = ModelMetrics.exceedance_prediction_metrics(actual, predictions)
+            model.metrics['exceedance_prediction'] = exceed_metrics
+            print("Exceedance Prediction Metrics:", exceed_metrics)
+
         # Calculate minimum flow requirements if flow predictors available
         flow_predictors = [p for p in predictors 
-                          if any(keyword in p.lower() for keyword in ['flow', 'discharge', 'inflow'])
+                          if any(k in p.lower() for k in ['flow', 'discharge', 'inflow'])
                           and model.variable_types.get(p, 'continuous') in ['continuous', 'discrete']]
-        
+
         flow_requirements = None
-        if len(flow_predictors) >= 1:
+        if flow_predictors:
             print(f"\nCalculating minimum flow requirements using {len(flow_predictors)} flow predictors...")
-            
-            try:
-                flow_data = data[flow_predictors].copy()
-                flow_data.index = data['DateTime']
-                
-                flow_requirements = model.calculate_minimum_flow_requirements(
-                    flow_data, 
-                    salinity_risk_target=0.05,
-                    confidence_levels=[0.5, 0.8, 0.9, 0.95]
+            flow_data = data[flow_predictors].copy()
+            flow_data.index = data['DateTime']
+
+            flow_requirements = model.calculate_minimum_flow_requirements(
+                flow_data,
+                salinity_risk_target=0.05,
+                confidence_levels=[0.5, 0.8, 0.9, 0.95]
+            )
+
+            # Compute flow requirement metrics per confidence level
+            flow_metrics_per_conf = {}
+            for conf_level, results in flow_requirements.items():
+                # Align indices or slice as needed
+                length = len(results['mean'])
+                actual_flows_aligned = flow_data.iloc[:length]
+                exceedance_events_aligned = data['exceed_target'].iloc[:length]
+
+                flow_metrics = ModelMetrics.flow_requirement_metrics(
+                    results['mean'], actual_flows_aligned, exceedance_events_aligned
                 )
-                
-                print("\n=== FERC MINIMUM FLOW REQUIREMENTS ===")
-                for confidence, results in flow_requirements.items():
-                    print(f"{confidence} confidence level:")
-                    print(f"  Mean required flow: {np.mean(results['mean']):.2f}")
-                    print(f"  Flow range: [{np.mean(results['lower']):.2f}, {np.mean(results['upper']):.2f}]")
-                    print(f"  Expected shortage risk: {np.mean(results['shortage_risk']):.3f}")
-                    
-            except Exception as e:
-                print(f"Warning: Could not calculate flow requirements: {e}")
+                flow_metrics_per_conf[conf_level] = flow_metrics
+                print(f"Flow Requirement Metrics ({conf_level} confidence):", flow_metrics)
+
+            model.metrics['flow_requirements'] = flow_metrics_per_conf
+
+            print("\n=== FERC MINIMUM FLOW REQUIREMENTS ===")
+            for confidence, results in flow_requirements.items():
+                print(f"{confidence} confidence level:")
+                print(f"  Mean required flow: {np.mean(results['mean']):.2f}")
+                print(f"  Flow range: [{np.mean(results['lower']):.2f}, {np.mean(results['upper']):.2f}]")
+                print(f"  Expected shortage risk: {np.mean(results['shortage_risk']):.3f}")
+
         else:
             print(f"No suitable flow predictors found for FERC calculations")
             print(f"Available predictors: {list(model.variable_types.keys())}")
-        
+
+        # Add copula fit quality metrics if available
+        if hasattr(model, 'predictor_data') and model.copula is not None:
+            uniform_data = model.predictor_data  # Uniform transformed predictors used for copula
+            copula_metrics = ModelMetrics.copula_fit_quality_metrics(uniform_data, model.copula)
+            model.metrics['copula_fit'] = copula_metrics
+            print("Copula Fit Quality Metrics:", copula_metrics)
+
         return {
             'model': model,
             'predictions': predictions,
             'flow_requirements': flow_requirements,
+            'metrics': model.metrics,
             'data': data,
             'variable_types': model.variable_types,
             'config': config
         }
-        
+
     except Exception as e:
         print(f"Error in model fitting: {e}")
         raise
-
-def validate_config(config):
-    """Validate configuration parameters"""
-    if isinstance(config, dict):
-        config = dict_to_namespace(config)
-    
-    # Check copula type
-    valid_copulas = ['gaussian', 'student_t']
-    if config.copula_type not in valid_copulas:
-        raise ValueError(f"copula_type must be one of {valid_copulas}")
-    
-    # Check tail distribution
-    valid_tail_dists = list(TAIL_DISTS.keys())
-    if config.tail_distribution not in valid_tail_dists:
-        raise ValueError(f"tail_distribution must be one of {valid_tail_dists}")
-    
-    # Check thresholds
-    if config.base_threshold >= config.target_threshold:
-        raise ValueError("base_threshold must be less than target_threshold")
-    
-    print("Configuration validated successfully")
-    return config
-
-# # Example usage and configuration template:
-# def create_example_config():
-#     """Create example configuration for R integration"""
-#     return {
-#         'data_csv': 'Data/Tidied/Final/CleanFinalModelData.csv',
-#         'predictors_json': 'predictors.json',  # Add this path
-#         'salinity_col': 'Salinity',
-#         'base_threshold': 0.2,
-#         'target_threshold': 1.0,  # FERC compliance threshold
-#         'tail_distribution': 'gpd',  # Generalized Pareto for POT
-#         'copula_type': 'gaussian',  # or 'student_t'
-#         'group_window_days': 30,  # Rolling window size
-#         'min_exceedances_per_group': 15,  # Minimum exceedances per window
-#         'param_smoothing': True,  # Smooth POT parameters over time
-#         'max_predictors_per_copula': 5,  # Limit for computational efficiency
-#         'random_state': 42
-#     }
-
-# if __name__ == "__main__":
-#     # Example usage
-#     config = create_example_config()
-#     config = validate_config(config)
-#     results = run_copula_pot_model(config)
