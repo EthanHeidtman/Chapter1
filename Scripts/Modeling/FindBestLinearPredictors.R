@@ -36,68 +36,65 @@ salinity_threshold = 0.2 # measured in practical salt units (PSU), which is equi
 
 # Define predictor categories and their candidates
 predictor_config <- list(
-
+   
    # Tide predictors
    tide = c( 'Norm_Tide', 'Norm_LagTide1', 'Norm_LagTide2', 'Norm_LagTide4',
-            'Norm_TideVelocity', 'Norm_TideAcceleration', 'Norm_TideRange6', 'Norm_TideRange12', 'Norm_TideRange24'),
-
+             'Norm_TideVelocity', 'Norm_TideAcceleration', 'Norm_TideRange6', 'Norm_TideRange12', 'Norm_TideRange24'),
+   
    # Discharge predictors
    discharge_lag = c("Norm_PowLagDischarge1", "Norm_PowLagDischarge3", "Norm_PowLagDischarge6",
                      "Norm_PowLagDischarge10", "Norm_PowLagDischarge12", "Norm_PowLagDischarge24",
                      "Norm_PowLagDischarge36", "Norm_PowLagDischarge48", "Norm_PowLagDischarge72", 'Norm_PowLagDischarge96'),
-
+   
    discharge_rolling = c("Norm_RollingPowDischarge0.5", "Norm_RollingPowDischarge1",
                          "Norm_RollingPowDischarge2", "Norm_RollingPowDischarge4",
                          "Norm_RollingPowDischarge7", "Norm_RollingPowDischarge10",
                          "Norm_RollingPowDischarge14"),
-
+   
    # Inflow predictors
    inflow_lag = c("Norm_LagInflows12", "Norm_LagInflows24", "Norm_LagInflows48", "Norm_LagInflows72",
                   'Norm_PowInflows', "Norm_LagInflows12", "Norm_LagInflows24", "Norm_LagInflows48", "Norm_LagInflows72", 'Norm_PowLagInflows96'),
-
+   
    inflow_rolling = c("Norm_RollingPowInflows1", "Norm_RollingPowInflows2",
                       "Norm_RollingPowInflows7", "Norm_RollingPowInflows10"),
-
-   #stress_binary = c('IsLowInflow', 'IsVeryLowInflow', 'IsFlushingFlow'),
+   
    stress_continuous = c('Norm_ConsecutiveLowInflowHours', 'Norm_ConsecutiveVeryLowInflowHours', 'Norm_LowInflowHours7', 
                          'Norm_LowInflowHours14', 'Norm_LowInflowHours30', 'Norm_HoursSinceFlush', 'Norm_DaysSinceFlush',
                          'Norm_StressFrequency7', 'Norm_StressFrequency14', 'Norm_StressFrequency30', 'Norm_CumulativeInflowDeficit3',
                          'Norm_CumulativeInflowDeficit7', 'Norm_CumulativeInflowDeficit30', 'Norm_MaxConsecutiveStress7',
-                         'Norm_MaxConsecutiveStress14', 'Norm_MaxConsecutiveStress30', 'Norm_SSI7', 'Norm_SSI14', 'Norm_SSI30'),
+                         'Norm_MaxConsecutiveStress14', 'Norm_MaxConsecutiveStress30', 'SSI7'),
    
    temporal = c('DayOfYear_sin', 'DayOfYear_cos')
-
-)
-
-performance_criteria <- list(
-   weights = c(
-      # High salinity event metrics (70% of total weight)
-      #high_sal_detection = 0.25,     # Confusion matrix metrics (hit rate, etc.)
-      high_sal_accuracy = 0.35,      # Error metrics (RMSE, MAE, bias) for high sal events
-      high_sal_reliability = 0.35,   # Does the model detect events and can I trust the predictions?
-      
-      # Model characteristics (30% of total weight)
-      overall_performance = 0.25,    # Overall error metrics
-      complexity = 0.05              # Parsimony and complexity combined
-   )
+   
 )
 
 # Save model building output as a text file
 sink("Outputs/Experiments/LinearModeling/LinearPredictorSelectionLog.txt")
 
-linear_predictor_results <- linear_predictor_selector(model_data, salinity_threshold, predictor_config, performance_criteria)
+linear_predictor_results <- linear_predictor_selector(model_data, salinity_threshold, predictor_config)
 
 # Stop redirecting output and return to console
 sink()
 
-# Strip stage results before writing (huge, take time to save and not really needed)
-linear_predictor_results$stage_results <- NULL
+# Clean out model objects before saving (can't serialize lm objects to JSON)
+for(category in names(linear_predictor_results$stage_results)) {
+   linear_predictor_results$stage_results[[category]]$models <- NULL
+   # Also remove model objects from individual results
+   for(predictor in names(linear_predictor_results$stage_results[[category]]$results)) {
+      linear_predictor_results$stage_results[[category]]$results[[predictor]]$model <- NULL
+   }
+}
+
+# Save results (stage_results contain all the detailed metrics for manual evaluation)
 environment(linear_predictor_results) <- new.env()
 
 # Create minimal data object - only necessary columns to save space
-required_cols <- unique(c('DateTime', 'Year', 'Month', 'Day', 'Salinity', linear_predictor_results$predictors$all_predictors))
+required_cols <- unique(c('DateTime', 'Year', 'Month', 'Day', 'Salinity'))
 required_cols <- required_cols[required_cols %in% names(model_data)]
-clean_data <- model_data[, required_cols, drop = FALSE]
+predictors <- c('Norm_TideRange24', 'Norm_PowLagDischarge72', 'Norm_RollingPowDischarge14', 'Norm_PowInflows', 
+                'Norm_RollingPowInflows7', 'Norm_ConsecutiveLowInflowHours', 'DayOfYear_sin', 'DayOfYear_cos')
+all_required_cols <- c(required_cols, predictors)
+clean_data <- model_data[, all_required_cols, drop = FALSE]
 
 # Write linear predictor output file
 outputs <- list(linear_predictor_results)
@@ -108,6 +105,16 @@ write_qs_files(outputs, 'Outputs/Experiments/LinearModeling', file_names, preset
 outputs <- list(clean_data)
 file_names <- c('CleanFinalModelData')
 write_qs_files(outputs, 'Data/Tidied/Final', file_names, preset = 'archive', format = 'csv')
+
+check_predictor_correlations(clean_data, predictors[-((length(predictors)-1):length(predictors))], target = 'Salinity', threshold = 0.5)
+# check_predictor_ccf(clean_data, 
+#                     predictors = c('Norm_TideRange24', 'Norm_PowLagDischarge72', 
+#                                    'Norm_RollingPowDischarge14', 'Norm_PowInflows', 
+#                                    'Norm_RollingPowInflows7', 'Norm_ConsecutiveLowInflowHours'),
+#                     target = 'Salinity',
+#                     max_lag = 72,
+#                     threshold = 0.2)
+
 
 # Clear environment
 rm(list = ls())

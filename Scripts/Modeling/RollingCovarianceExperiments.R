@@ -1,10 +1,10 @@
 # =============================================================================
-# Script Name:    POTExperiments.py
+# Script Name:    RollingCovarianceExperiments.py
 # Project:        Chapter1
 # Author:         Ethan Heidtman
-# Date Created:   2025-08-07
-# Last Updated:   2025-07-07
-# Description:    Sources the CopulaPotModel from python. Then defines
+# Date Created:   2025-08-14
+# Last Updated:   2025-08-14
+# Description:    Sources the Rolling Covariance model from python. Then defines
 #                 and organizes three sequential experiments to systematically 
 #                 test distributions, threshold sensitivity, and the method used
 #                 for parameter regression. Saves outputs to Outputs/Experiments/
@@ -23,7 +23,7 @@ source('Scripts/Functions/Modeling/ExperimentHelpers.R')
 
 # Define File locations
 DATA_PATH = 'Data/Tidied/Final/CleanFinalModelData.csv'
-PREDICTOR_PATH = 'Outputs/Experiments/LinearModeling/LinearPredictors.json'
+#PREDICTOR_PATH = 'Outputs/Experiments/LinearModeling/LinearPredictors.json'
 OUTPUT_PATH = 'Outputs/Experiments/'
 
 # Read in base data

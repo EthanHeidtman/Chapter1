@@ -16,6 +16,7 @@
 import pandas as pd
 import numpy as np
 from scipy import stats
+from datetime import datetime, timedelta
 from sklearn.model_selection import TimeSeriesSplit
 from sklearn.metrics import mean_squared_error, r2_score, mean_absolute_error
 from sklearn.metrics import roc_auc_score, average_precision_score, brier_score_loss
@@ -27,7 +28,7 @@ from scipy.optimize import minimize
 warnings.filterwarnings('ignore')
 
 # Load functions from other python files
-from TailDistributions import *
+from Distributions import *
 from Copulas import *
 
 def dict_to_namespace(d):
@@ -101,9 +102,21 @@ class TimeVaryingPOTModel:
             raise
         
     def clean_data(self, df):
-        """Basic cleaning to drop empty rows and enforce numeric dtypes"""
-        df = df.dropna(how='all')
-        df = df.apply(pd.to_numeric, errors='ignore')
+        """Clean data by:
+        - dropping rows with all missing
+        - ensuring DateTime column is datetime dtype
+        - converting all other columns except DateTime to numeric where possible
+        """
+        df = df.dropna(how='all').copy()
+        
+        # Convert DateTime column explicitly if it exists
+        if 'DateTime' in df.columns:
+            df['DateTime'] = pd.to_datetime(df['DateTime'], errors='coerce')
+        
+        # Convert other columns (except DateTime) to numeric if possible
+        cols_to_convert = [c for c in df.columns if c != 'DateTime']
+        df[cols_to_convert] = df[cols_to_convert].apply(pd.to_numeric, errors='coerce')
+    
         return df
     
     def fit_marginal_distribution(self, data, variable_name):
@@ -174,7 +187,6 @@ class TimeVaryingPOTModel:
         params_list = []
         
         for i in range(len(data)):
-            print(i)
             end_date = data.iloc[i]['DateTime']
             start_date = end_date - pd.Timedelta(days=window_size)
             
@@ -190,6 +202,7 @@ class TimeVaryingPOTModel:
             try:
                 # Fit tail distribution directly to exceedances
                 params = self.tail_dist_obj.fit_params(exceedances.values)
+                #params = model.tail_dist_obj.fit_params(exceedances.values)
                 
                 # Clean parameter extraction
                 clean_params = {}
@@ -210,6 +223,10 @@ class TimeVaryingPOTModel:
             raise ValueError("No valid POT parameter fits found!")
             
         self.rolling_params = pd.DataFrame(params_list).set_index('timestamp')
+        # Reset index to simple integer index so no duplicates
+        self.rolling_params = self.rolling_params.reset_index(drop=False)
+        #model.rolling_params = pd.DataFrame(params_list).set_index('timestamp')
+        #model.rolling_params = model.rolling_params.reset_index(drop = False)
         
         # Apply smoothing if requested
         if self.config.param_smoothing:
@@ -223,130 +240,161 @@ class TimeVaryingPOTModel:
     
     def prepare_predictor_data(self, data, predictors):
         """
-        Extract predictor values in rolling windows and transform to uniform
-        using pre-fitted marginals. Returns DataFrame indexed by timestamp.
+        Extract summary statistics for predictors in rolling windows and 
+        transform to uniform using pre-fitted marginals.
+        Returns DataFrame indexed by timestamp.
         """
         print("Preparing predictor data for copula modeling...")
         
-        window_size = self.config.group_window_days
+        window_size = int(self.config.group_window_days)
+        #window_size = int(model.config.group_window_days)
         predictor_data_list = []
-
+    
         for i in range(len(data)):
-            end_date = data.loc[i, 'DateTime']
+            end_date = data.iloc[i]['DateTime']
+    
+            # Ensure end_date is a datetime object (not int or string)
+            if not pd.api.types.is_datetime64_any_dtype(type(end_date)):
+                end_date = pd.to_datetime(end_date)
+            
             start_date = end_date - pd.Timedelta(days=window_size)
+            
+            # Filter window_data by 'DateTime' column, which must be datetime dtype
             window_data = data[(data['DateTime'] >= start_date) & (data['DateTime'] <= end_date)]
-
+    
             if len(window_data) < self.config.min_exceedances_per_group:
                 continue
-
+    
             row = {'timestamp': end_date}
+    
             for predictor in predictors:
                 if predictor not in window_data.columns:
                     continue
+                
                 pred_values = window_data[predictor].dropna()
                 if len(pred_values) < 3:
-                    row[f'{predictor}_values'] = None
-                    row[f'{predictor}_count'] = 0
+                    # Not enough data for stats
+                    row[f'{predictor}_mean'] = np.nan
+                    row[f'{predictor}_std'] = np.nan
+                    row[f'{predictor}_q25'] = np.nan
+                    row[f'{predictor}_q75'] = np.nan
                     continue
                 
+                # Calculate summary stats
+                mean_val = np.mean(pred_values.values)
+                std_val = np.std(pred_values.values)
+                q25_val = np.percentile(pred_values.values, 25)
+                q75_val = np.percentile(pred_values.values, 75)
+                
+                # Transform each to uniform margins (expecting 1D array returns)
                 try:
-                    transformed_values = self.transform_to_uniform(pred_values.values, predictor)
-                    row[f'{predictor}_values'] = transformed_values
-                    row[f'{predictor}_count'] = len(pred_values)
-                    row[f'{predictor}_mean'] = np.mean(transformed_values)
-                    row[f'{predictor}_std'] = np.std(transformed_values)
+                    row[f'{predictor}_mean'] = self.transform_to_uniform(np.array([mean_val]), predictor)[0]
+                    row[f'{predictor}_std'] = self.transform_to_uniform(np.array([std_val]), predictor)[0]
+                    row[f'{predictor}_q25'] = self.transform_to_uniform(np.array([q25_val]), predictor)[0]
+                    row[f'{predictor}_q75'] = self.transform_to_uniform(np.array([q75_val]), predictor)[0]
                 except Exception as e:
-                    print(f"Transform failed for {predictor} at {end_date}: {e}")
-                    row[f'{predictor}_values'] = None
-                    row[f'{predictor}_count'] = 0
-            
-            predictor_data_list.append(row)
-        
-        self.predictor_data = pd.DataFrame(predictor_data_list).set_index('timestamp')
-        print(f"Prepared predictor data for {len(self.predictor_data)} time periods")
-        return self.predictor_data.dropna()
+                    print(f"Transform failed for {predictor} summary stats at {end_date}: {e}")
+                    row[f'{predictor}_mean'] = np.nan
+                    row[f'{predictor}_std'] = np.nan
+                    row[f'{predictor}_q25'] = np.nan
+                    row[f'{predictor}_q75'] = np.nan
     
+            predictor_data_list.append(row)
+    
+        # Create DataFrame from all rows
+        self.predictor_data = pd.DataFrame(predictor_data_list)
+        
+        # Make sure timestamp column is datetime dtype
+        self.predictor_data['timestamp'] = pd.to_datetime(self.predictor_data['timestamp'])
+        
+        # Set timestamp as index (consistent with rolling_params now having timestamp column)
+        self.predictor_data = self.predictor_data.set_index('timestamp').sort_index()
+    
+        print(f"Prepared predictor data for {len(self.predictor_data)} time periods")
+        
+        # Drop rows with any NaNs in the summary stats (optional)
+        return self.predictor_data.dropna()
+
     def fit_multivariate_copula_relationships(self, data, predictors):
         """
-        Fit multivariate copulas relating POT parameters to multiple predictors
+        Fit multivariate copulas relating POT parameters to multiple predictors (with summary stats).
         """
         print(f"Fitting multivariate {self.config.copula_type} copula relationships...")
-        
-        # Get aligned time periods
-        common_times = self.rolling_params.index.intersection(self.predictor_data.index)
-        
-        pot_data = self.rolling_params.loc[common_times]
-        current_predictors = data.set_index('DateTime')[predictors].loc[common_times]
-        
+    
+        summary_suffixes = ['_mean', '_std', '_q25', '_q75']
+        expanded_predictors = []
+        for pred in predictors:
+            expanded_predictors.extend([pred + suf for suf in summary_suffixes])
+    
+    
+        common_times = pd.to_datetime(self.rolling_params['timestamp']).intersection(self.predictor_data.index)
+        #common_times = pd.to_datetime(model.rolling_params['timestamp']).intersection(model.predictor_data.index)
+    
+        # Select rows matching common_times
+        pot_data = self.rolling_params[self.rolling_params['timestamp'].isin(common_times)].copy()
+        #pot_data = model.rolling_params[model.rolling_params['timestamp'].isin(common_times)].copy()
+        pot_data = pot_data.set_index('timestamp').loc[common_times]
+
+        current_predictors = self.predictor_data.loc[common_times, expanded_predictors]
+        #current_predictors = mdel.predictor_data.loc[common_times, expanded_predictors]
+
         copula_fits = {}
         param_names = self.tail_dist_obj.param_names()
-        
-        # Limit number of predictors for computational efficiency
-        max_predictors = min(len(predictors), self.config.get('max_predictors_per_copula', 8))
-        
+        #param_names = model.tail_dist_obj.param_names()
+    
+        max_predictors = min(len(expanded_predictors), getattr(self.config, 'max_predictors_per_copula', 8))
+        #max_predictors = min(len(expanded_predictors), getattr(model.config, 'max_predictors_per_copula', 8))
+    
         for param in param_names:
             if param not in pot_data.columns:
                 continue
-                
+    
             print(f"\n  Fitting copula for POT parameter: {param}")
-            
-            # Prepare data matrix for multivariate copula
+    
+            pot_values = pot_data[param].dropna()
             valid_data_list = []
             valid_predictor_names = []
-            
-            # Start with POT parameter
-            pot_values = pot_data[param].dropna()
-            
-            for predictor in predictors[:max_predictors]:
-                if predictor not in current_predictors.columns:
+    
+            for pred_stat in expanded_predictors[:max_predictors]:
+                if pred_stat not in current_predictors.columns:
                     continue
-                
-                # Get predictor values at common time points
-                pred_values = current_predictors[predictor].loc[pot_values.index]
-                
-                # Remove any remaining NaNs
+                pred_values = current_predictors[pred_stat].loc[pot_values.index]
+    
                 valid_mask = pred_values.notna() & pot_values.notna()
-                
-                if valid_mask.sum() < 20:  # Need sufficient data
+                if valid_mask.sum() < 20:
                     continue
-                
+    
                 valid_data_list.append(pred_values[valid_mask])
-                valid_predictor_names.append(predictor)
-                
+                valid_predictor_names.append(pred_stat)
+    
                 if len(valid_predictor_names) >= max_predictors:
                     break
-            
+    
             if len(valid_predictor_names) == 0:
                 print(f"    No valid predictors found for {param}")
                 continue
-            
-            # Update POT values to match valid predictors
-            final_valid_mask = valid_data_list[0].index if valid_data_list else pot_values.index
+    
+            final_valid_mask = valid_data_list[0].index
             for i in range(1, len(valid_data_list)):
                 final_valid_mask = final_valid_mask.intersection(valid_data_list[i].index)
-            
+    
             if len(final_valid_mask) < 20:
                 print(f"    Insufficient valid data pairs for {param} ({len(final_valid_mask)} pairs)")
                 continue
-            
-            # Create final data matrix
+    
             final_pot_values = pot_values.loc[final_valid_mask]
             final_predictor_data = np.column_stack([
-                pred_data.loc[final_valid_mask].values 
-                for pred_data in valid_data_list
+                pred_data.loc[final_valid_mask].values for pred_data in valid_data_list
             ])
-            
-            # Convert to uniform margins for copula
+    
             uniform_data = np.column_stack([
                 stats.rankdata(final_pot_values, method='average') / (len(final_pot_values) + 1),
                 *[stats.rankdata(final_predictor_data[:, i], method='average') / (len(final_predictor_data) + 1)
                   for i in range(final_predictor_data.shape[1])]
             ])
-            
+    
             try:
-                # Fit multivariate copula
                 copula_params = self.copula.fit(uniform_data)
-                
                 copula_fits[param] = {
                     'type': 'multivariate',
                     'copula_type': self.config.copula_type,
@@ -354,26 +402,26 @@ class TimeVaryingPOTModel:
                     'predictors': valid_predictor_names,
                     'pot_marginal': final_pot_values,
                     'predictor_marginals': {
-                        pred: final_predictor_data[:, i] 
+                        pred: final_predictor_data[:, i]
                         for i, pred in enumerate(valid_predictor_names)
                     },
                     'n_observations': len(final_valid_mask)
                 }
-                
+    
                 print(f"    Successfully fitted copula with {len(valid_predictor_names)} predictors")
                 print(f"    Predictors: {valid_predictor_names}")
                 print(f"    Sample size: {len(final_valid_mask)}")
-                
+    
             except Exception as e:
                 print(f"    Warning: Failed to fit multivariate copula for {param}: {e}")
                 continue
-        
+    
         self.copula_params = copula_fits
-        
+    
         print(f"\nCopula fitting summary:")
         total_relationships = len(copula_fits)
         print(f"  Total POT parameter copulas fitted: {total_relationships}")
-        
+    
         return copula_fits
     
     def predict_pot_risk(self, future_data, predictors, target_exceedance=None):
@@ -592,12 +640,15 @@ class TimeVaryingPOTModel:
     
         # Step 3: Fit marginal distributions for uniform transformation
         self.fit_all_marginals(clean_df[predictors])
+        #model.fit_all_marginals(clean_df[predictors])
     
         # Step 4: Prepare predictor data with uniform transformation for copula modeling
         predictor_copula_df = self.prepare_predictor_data(clean_df, predictors)
+        #predictor_copula_df = model.prepare_predictor_data(clean_df, predictors)
     
         # Step 5: Fit multivariate copula on prepared predictor data and tail params
         self.fit_multivariate_copula_relationships(predictor_copula_df, predictors)
+        #model.fit_multivariate_copula_relationships(predictor_copula_df, predictors)
     
         self.metrics = {}
         

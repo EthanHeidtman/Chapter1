@@ -1,5 +1,5 @@
 # =============================================================================
-# Script Name:    TailDistributions.py
+# Script Name:    Distributions.py
 # Project:        Chapter1
 # Author:         Ethan Heidtman
 # Date Created:   2025-07-28
@@ -16,7 +16,7 @@
 import numpy as np
 from scipy.stats import burr12, genpareto, gengamma, lognorm, fisk, gamma
 
-class TailDistribution:
+class Distribution:
     def fit_params(self, excesses):
         raise NotImplementedError
 
@@ -30,7 +30,7 @@ class TailDistribution:
         raise NotImplementedError
 
 
-class Burr(TailDistribution):
+class Burr(Distribution):
     def fit_params(self, excesses):
         c, d, loc, scale = burr12.fit(excesses, floc=0)
         return {'c': c, 'd': d, 'scale': scale}
@@ -45,7 +45,7 @@ class Burr(TailDistribution):
         return ['c', 'd', 'scale']
 
 
-class GPD(TailDistribution):
+class GPD(Distribution):
     def fit_params(self, excesses):
         c, loc, scale = genpareto.fit(excesses, floc=0)
         return {'c': c, 'scale': scale}
@@ -60,7 +60,7 @@ class GPD(TailDistribution):
         return ['c', 'scale']
 
 
-class GenGamma(TailDistribution):
+class GenGamma(Distribution):
     def fit_params(self, excesses):
         a, b, loc, scale = gengamma.fit(excesses, floc=0)
         return {'a': a, 'b': b, 'scale': scale}
@@ -75,7 +75,7 @@ class GenGamma(TailDistribution):
         return ['a', 'b', 'scale']
 
 
-class Lognormal(TailDistribution):
+class Lognormal(Distribution):
     def fit_params(self, excesses):
         shape, loc, scale = lognorm.fit(excesses, floc=0)
         return {'shape': shape, 'scale': scale}
@@ -90,7 +90,7 @@ class Lognormal(TailDistribution):
         return ['shape', 'scale']
 
 
-class Loglogistic(TailDistribution):  # fisk = log-logistic
+class Loglogistic(Distribution):  # fisk = log-logistic
     def fit_params(self, excesses):
         c, loc, scale = fisk.fit(excesses, floc=0)
         return {'c': c, 'scale': scale}
@@ -105,7 +105,7 @@ class Loglogistic(TailDistribution):  # fisk = log-logistic
         return ['c', 'scale']
 
 
-class Gamma(TailDistribution):
+class Gamma(Distribution):
     def fit_params(self, excesses):
         a, loc, scale = gamma.fit(excesses, floc=0)
         return {'a': a, 'scale': scale}

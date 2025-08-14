@@ -1,4 +1,3 @@
-# Function to test predictor group systematically
 test_predictor_group <- function(current_formula, predictor_group, data, group_name) {
    
    cat(sprintf("\n=== TESTING %s PREDICTORS ===\n", toupper(group_name)))
@@ -38,16 +37,17 @@ test_predictor_group <- function(current_formula, predictor_group, data, group_n
          
          results_list[[predictor]] <- eval_result
          
+         # Display key metrics for manual comparison
          cat(sprintf(
-            "%s: High Sal RMSE = %.3f | High MAPE = %.1f%% | Overall R² = %.3f | NSE = %.3f | Score = %.3f\n",
+            "%s: Overall R²=%.3f | RMSE=%.3f | High Sal R²=%.3f RMSE=%.3f HR=%.2f FA=%.2f\n",
             predictor,
-            eval_result$high_sal_rmse,
-            eval_result$high_sal_mae,
             eval_result$overall_r2,
-            eval_result$overall_nse,
-            eval_result$composite_score
+            eval_result$overall_rmse,
+            eval_result$high_sal_r2,
+            eval_result$high_sal_rmse,
+            eval_result$hit_rate,
+            eval_result$false_alarm_rate
          ))
-         
          
       }, error = function(e) {
          cat(sprintf("Error fitting model with %s: %s\n", predictor, e$message))
@@ -60,44 +60,33 @@ test_predictor_group <- function(current_formula, predictor_group, data, group_n
       return(list(
          group_name = group_name,
          models = list(),
-         results = list(),
-         ranked_predictors = character(0),
-         best_predictor = NA_character_,  
-         best_score = -Inf,
+         results = results_list,
          summary_table = data.frame()
       ))
    }
    
-   # Rank results by performance score
-   scores <- sapply(results_list, function(x) x$composite_score)
-   ranked_indices <- order(scores, decreasing = TRUE)
+   # Create summary table for easy comparison (no ranking)
+   summary_df <- data.frame(
+      Predictor = names(results_list),
+      Overall_R2 = sapply(results_list, function(x) x$overall_r2),
+      Overall_RMSE = sapply(results_list, function(x) x$overall_rmse),
+      High_Sal_R2 = sapply(results_list, function(x) x$high_sal_r2),
+      High_Sal_RMSE = sapply(results_list, function(x) x$high_sal_rmse),
+      Hit_Rate = sapply(results_list, function(x) x$hit_rate),
+      False_Alarm_Rate = sapply(results_list, function(x) x$false_alarm_rate),
+      High_Sal_Count = sapply(results_list, function(x) x$high_sal_count),
+      stringsAsFactors = FALSE
+   )
    
-   # Determine best predictors depending on group type
-   if (group_name == "temporal") {
-      best_predictors <- names(scores)[ranked_indices[1:2]]
-      best_scores <- scores[ranked_indices[1:2]]
-   } else {
-      best_predictors <- names(scores)[ranked_indices[1]]
-      best_scores <- scores[ranked_indices[1]]
-   }
+   # Display summary for easy comparison
+   cat("\nSUMMARY TABLE:\n")
+   print(summary_df, row.names = FALSE, digits = 3)
    
-   # Return results
+   # Return results without best predictor selection
    return(list(
       group_name = group_name,
       models = models,
       results = results_list,
-      ranked_predictors = names(scores)[ranked_indices],
-      best_predictor = best_predictors,
-      best_score = best_scores,
-      summary_table = data.frame(
-         Predictor = ranked_indices,
-         Score = scores[ranked_indices],
-         High_Sal_RMSE = sapply(results_list[ranked_indices], function(x) x$high_sal_rmse),
-         High_Sal_MAE = sapply(results_list[ranked_indices], function(x) x$high_sal_mae),
-         Overall_R2 = sapply(results_list[ranked_indices], function(x) x$overall_r2),
-         NSE = sapply(results_list[ranked_indices], function(x) x$overall_nse),
-         KGE = sapply(results_list[ranked_indices], function(x) x$overall_kge),
-         stringsAsFactors = FALSE
-      )
+      summary_table = summary_df
    ))
 }
