@@ -23,536 +23,570 @@ import warnings
 from types import SimpleNamespace
 warnings.filterwarnings('ignore')
 
-# Load functions from other python files
+# Load your custom distribution classes
 from Distributions import *
+
 
 def dict_to_namespace(d):
     """Convert nested dictionary to SimpleNamespace for easy attribute access"""
     if not isinstance(d, dict):
         return d
-    return SimpleNamespace(**{k: dict_to_namespace(v) for k,v in d.items()})
+    return SimpleNamespace(**{k: dict_to_namespace(v) for k, v in d.items()})
 
-# Map distribution names to classes
-DISTS = {
-    'burr': Burr(),
-    'gpd': GPD(),
-    'gengamma': GenGamma(), 
-    'lognormal': Lognormal(),
-    'loglogistic': Loglogistic(),
-    'gamma': Gamma()
-}
 
 class RollingCovarianceModel:
     """
-    Main class for rolling window distribution fitting and covariance-based risk modeling
+    Rolling window distribution fitting and covariance-based risk modeling
     """
+    
     def __init__(self, config):
         self.config = config
         
+        # Initialize distribution mappings from Distributions.py file
+        self._initialize_distributions()
+        
         # Validate distribution family
-        if config.distribution_family not in DISTS:
-            raise ValueError(f"Unsupported distribution: {config.distribution_family}")
+        if config.distribution_family not in self.available_distributions:
+            available = list(self.available_distributions.keys())
+            raise ValueError(f"Unsupported distribution: {config.distribution_family}. "
+                           f"Available: {available}")
         
         self.dist_family = config.distribution_family
-        self.dist_fitter = DISTS[self.dist_family]
+        self.dist_fitter = self.available_distributions[self.dist_family]
         
-        # Storage for fitted components
-        self.rolling_distributions = None    # distribution parameters per window
-        self.covariance_model = None         # β coefficients and covariances
-        self.predictor_data = None           # window-mean predictors
+        # Storage for model components
+        self.data = None
+        self.predictors = None
+        self.rolling_distributions = None
+        self.predictor_data = None
+        self.covariance_model = None
         
-    def load_data(self, config):
-        """Load CSV and prepare data with datetime parsing"""
+    def _initialize_distributions(self):
+        """Initialize available distributions from Distributions.py file"""
+        self.available_distributions = {
+            'burr': Burr(),
+            'gpd': GPD(),
+            'gengamma': GenGamma(), 
+            'lognormal': Lognormal(),
+            'loglogistic': Loglogistic(),
+            'gamma': Gamma()
+        }
+        
+    def load_and_prepare_data(self):
+        """Load CSV data and automatically identify predictors"""
+        print(f"Loading data from: {self.config.data_csv}")
+        
         try:
-            data = pd.read_csv(self.config.data_csv)
+            # Load raw data
+            self.data = pd.read_csv(self.config.data_csv)
+            print(f"Loaded {len(self.data)} rows, {len(self.data.columns)} columns")
             
-            if 'DateTime' in data.columns:
-                data['DateTime'] = data['DateTime'].astype(str).str.strip()
-                data['DateTime'] = data['DateTime'].apply(
-                    lambda x: x if ':' in x else x + ' 00:00:00'
-                )
-                data['DateTime'] = pd.to_datetime(data['DateTime'], errors='coerce')
-                data = data.dropna(subset=['DateTime'])
-                data = data.sort_values('DateTime').reset_index(drop=True)
+            # Parse datetime
+            self._parse_datetime()
             
-            # Load predictors from config (assuming they're directly specified)
-            if hasattr(self.config, 'predictors'):
-                predictors = self.config.predictors
-            else:
-                # Fallback - use all numeric columns except DateTime and Salinity
-                numeric_cols = data.select_dtypes(include=[np.number]).columns
-                predictors = [col for col in numeric_cols if col != self.config.salinity_col]
+            # Identify and prepare predictors
+            self._identify_predictors()
             
-            available_predictors = [p for p in predictors if p in data.columns]
-            if len(available_predictors) != len(predictors):
-                missing = set(predictors) - set(available_predictors)
-                print(f"Warning: Missing predictors in data: {missing}")
+            # Handle cyclical variables
+            self._handle_cyclical_variables()
             
-            print(f"Data loaded: {data.shape[0]} rows, {len(available_predictors)} predictors available")
-            return data, available_predictors
-        
+            # Clean the data
+            self._clean_data()
+            
+            print(f"Final dataset: {len(self.data)} rows, {len(self.predictors)} predictors")
+            print(f"Predictors: {self.predictors}")
+            
+            return self.data, self.predictors
+            
         except Exception as e:
             print(f"Error loading data: {e}")
             raise
-        
-    def clean_data(self, df):
-        """Clean data by dropping rows with all missing and ensuring numeric types"""
-        df = df.dropna(how='all').copy()
-        
-        # Convert DateTime column explicitly
-        if 'DateTime' in df.columns:
-            df['DateTime'] = pd.to_datetime(df['DateTime'], errors='coerce')
-        
-        # Convert other columns to numeric where possible
-        cols_to_convert = [c for c in df.columns if c != 'DateTime']
-        df[cols_to_convert] = df[cols_to_convert].apply(pd.to_numeric, errors='coerce')
     
-        return df
+    def _parse_datetime(self):
+        """Parse datetime column with flexible formatting"""
+        if 'DateTime' in self.data.columns:
+            # Handle various datetime formats
+            self.data['DateTime'] = self.data['DateTime'].astype(str).str.strip()
+            self.data['DateTime'] = self.data['DateTime'].apply(
+                lambda x: x if ':' in x else x + ' 00:00:00'
+            )
+            self.data['DateTime'] = pd.to_datetime(self.data['DateTime'], errors='coerce')
+            
+            # Remove invalid dates and sort
+            initial_len = len(self.data)
+            self.data = self.data.dropna(subset=['DateTime'])
+            if len(self.data) < initial_len:
+                print(f"Warning: Removed {initial_len - len(self.data)} rows with invalid dates")
+                
+            self.data = self.data.sort_values('DateTime').reset_index(drop=True)
+        else:
+            raise ValueError("No 'DateTime' column found in data")
+    
+    def _identify_predictors(self):
+        """Use pre-selected predictors from data"""
+        # Get all numeric columns except DateTime and salinity
+        numeric_cols = self.data.select_dtypes(include=[np.number]).columns.tolist()
+        exclude_cols = ['DateTime', 'Year', 'Month', 'Day', self.config.salinity_col]
+        
+        # Since predictors are pre-selected, use all available numeric columns
+        self.predictors = [col for col in numeric_cols if col not in exclude_cols]
+        
+        if not self.predictors:
+            raise ValueError("No valid predictor variables found in data")
+            
+        print(f"Using {len(self.predictors)} pre-selected predictors")
+    
+    def _handle_cyclical_variables(self):
+        """Transform DayOfYear if present (since it's the only cyclical variable)"""
+        if 'DayOfYear' in self.data.columns and 'DayOfYear' in self.predictors:
+            print("Transforming DayOfYear as cyclical variable")
+            angle = 2 * np.pi * self.data['DayOfYear'] / 365.25
+            self.data['DayOfYear_sin'] = np.sin(angle)
+            self.data['DayOfYear_cos'] = np.cos(angle)
+            
+            # Replace DayOfYear with sin/cos components
+            self.predictors.remove('DayOfYear')
+            self.predictors.extend(['DayOfYear_sin', 'DayOfYear_cos'])
+    
+    def _clean_data(self):
+        """Clean and validate pre-processed data"""
+        initial_len = len(self.data)
+        
+        # Remove rows with all missing values
+        self.data = self.data.dropna(how='all')
+        
+        # Convert predictors and salinity to numeric
+        for col in self.predictors + [self.config.salinity_col]:
+            if col in self.data.columns:
+                self.data[col] = pd.to_numeric(self.data[col], errors='coerce')
+        
+        # Remove rows where salinity is missing
+        self.data = self.data.dropna(subset=[self.config.salinity_col])
+        
+        final_len = len(self.data)
+        if final_len < initial_len:
+            print(f"Removed {initial_len - final_len} rows during cleaning")
+            
+        if final_len < 100:
+            print("Warning: Very few observations remaining after cleaning")
 
-    def fit_rolling_distributions(self, data):
-        """
-        Phase 2: Fit parametric distributions to salinity within each rolling window
-        """
+    def fit_rolling_distributions(self):
+        """Phase 2: Fit parametric distributions to salinity within rolling windows"""
         print(f"Phase 2: Fitting {self.dist_family} distributions on rolling windows...")
         
-        window_size = int(self.config.window_length)
+        window_days = int(self.config.window_length)
         threshold = float(self.config.salinity_threshold)
-        results_list = []
+        min_obs = getattr(self.config, 'min_observations_per_window', 10)
         
-        for i in range(len(data)):
-            end_date = data.iloc[i]['DateTime']
-            start_date = end_date - pd.Timedelta(days=window_size)
+        results = []
+        
+        for i, row in self.data.iterrows():
+            end_date = row['DateTime']
+            start_date = end_date - pd.Timedelta(days=window_days)
             
-            # Get salinity data in window
-            window_data = data[(data['DateTime'] >= start_date) & (data['DateTime'] <= end_date)]
-            salinity_values = window_data[self.config.salinity_col].dropna()
+            # Extract window data
+            window_mask = (self.data['DateTime'] >= start_date) & (self.data['DateTime'] <= end_date)
+            window_salinity = self.data.loc[window_mask, self.config.salinity_col].dropna()
             
-            if len(salinity_values) < self.config.min_observations_per_window:
+            if len(window_salinity) < min_obs:
                 continue
                 
             try:
-                # Fit distribution by MLE
-                params = self.dist_fitter(salinity_values.values)
+                # Fit distribution 
+                param_dict = self.dist_fitter.fit_params(window_salinity.values)
                 
-                # Compute exceedance probability P(S > threshold)
-                if self.dist_family == 'lognormal':
-                    # params = (s, loc, scale) for lognorm
-                    exceedance_prob = 1 - self.dist_obj.cdf(threshold, *params)
-                else:
-                    # Standard scipy format
-                    exceedance_prob = 1 - self.dist_obj.cdf(threshold, *params)
+                # Calculate exceedance probability P(Salinity > threshold)
+                exceedance_prob = 1 - self.dist_fitter.cdf(threshold, param_dict)
                 
-                # Store result
+                # Store results
                 result = {
                     'timestamp': end_date,
-                    'n_observations': len(salinity_values),
+                    'n_observations': len(window_salinity),
                     'exceedance_probability': float(exceedance_prob),
                     'distribution_family': self.dist_family
                 }
                 
-                # Store distribution parameters
-                param_names = [f'param_{j}' for j in range(len(params))]
-                for name, value in zip(param_names, params):
-                    result[name] = float(value)
+                # Store parameters using their actual names
+                for param_name, param_value in param_dict.items():
+                    result[param_name] = float(param_value)
                 
-                results_list.append(result)
+                results.append(result)
                 
             except Exception as e:
-                print(f"Warning: Failed to fit distribution for window ending {end_date}: {e}")
+                # Skip failed fits silently unless in debug mode
+                if getattr(self.config, 'debug', False):
+                    print(f"Distribution fit failed for {end_date}: {e}")
                 continue
         
-        if not results_list:
-            raise ValueError("No valid distribution fits found!")
+        if not results:
+            raise ValueError("No successful distribution fits! Check data quality and parameters.")
             
-        self.rolling_distributions = pd.DataFrame(results_list)
-        print(f"  Fitted distributions for {len(self.rolling_distributions)} time periods")
+        self.rolling_distributions = pd.DataFrame(results)
+        print(f"Successfully fitted {len(self.rolling_distributions)} distributions")
         
         return self.rolling_distributions
     
-    def prepare_predictor_data(self, data, predictors):
-        """
-        Extract window-mean predictors for covariance modeling
-        """
-        print("Preparing window-mean predictor data...")
+    def prepare_predictor_data(self):
+        """Extract window-averaged predictors for covariance modeling"""
+        print("Preparing window-averaged predictor data...")
         
-        window_size = int(self.config.window_length)
-        predictor_data_list = []
-    
-        for i in range(len(data)):
-            end_date = data.iloc[i]['DateTime']
-            start_date = end_date - pd.Timedelta(days=window_size)
+        window_days = int(self.config.window_length)
+        min_obs = getattr(self.config, 'min_observations_per_window', 10)
+        
+        predictor_results = []
+        
+        for i, row in self.data.iterrows():
+            end_date = row['DateTime']
+            start_date = end_date - pd.Timedelta(days=window_days)
             
-            window_data = data[(data['DateTime'] >= start_date) & (data['DateTime'] <= end_date)]
-    
-            if len(window_data) < self.config.min_observations_per_window:
+            # Extract window data
+            window_mask = (self.data['DateTime'] >= start_date) & (self.data['DateTime'] <= end_date)
+            window_data = self.data.loc[window_mask]
+            
+            if len(window_data) < min_obs:
                 continue
-    
-            row = {'timestamp': end_date}
-    
-            for predictor in predictors:
-                if predictor not in window_data.columns:
-                    continue
                 
+            # Calculate window means for each predictor
+            result = {'timestamp': end_date}
+            
+            for predictor in self.predictors:
                 pred_values = window_data[predictor].dropna()
-                if len(pred_values) < 3:
-                    row[predictor] = np.nan
-                    continue
-                
-                # Calculate window mean
-                row[predictor] = float(np.mean(pred_values.values))
-    
-            predictor_data_list.append(row)
-    
-        self.predictor_data = pd.DataFrame(predictor_data_list)
+                if len(pred_values) >= 3:  # Minimum for meaningful average
+                    result[predictor] = float(pred_values.mean())
+                else:
+                    result[predictor] = np.nan
+            
+            predictor_results.append(result)
+        
+        self.predictor_data = pd.DataFrame(predictor_results)
         self.predictor_data['timestamp'] = pd.to_datetime(self.predictor_data['timestamp'])
         self.predictor_data = self.predictor_data.set_index('timestamp').sort_index()
-    
+        
+        # Remove rows with too many missing predictors
+        max_missing = len(self.predictors) // 2  # Allow up to half missing
+        self.predictor_data = self.predictor_data.dropna(thresh=len(self.predictors) - max_missing)
+        
         print(f"Prepared predictor data for {len(self.predictor_data)} time periods")
-        return self.predictor_data.dropna()
+        return self.predictor_data
 
     def logit_transform(self, probabilities):
-        """Transform probabilities to logit space"""
-        # Clip to avoid infinite values
-        p_clipped = np.clip(probabilities, 1e-6, 1 - 1e-6)
+        """Transform probabilities to logit space for linear modeling"""
+        epsilon = getattr(self.config, 'logit_epsilon', 1e-6)
+        p_clipped = np.clip(probabilities, epsilon, 1 - epsilon)
         return np.log(p_clipped / (1 - p_clipped))
 
     def inv_logit_transform(self, logit_values):
-        """Inverse logit transform"""
-        return 1 / (1 + np.exp(-logit_values))
+        """Transform from logit space back to probabilities"""
+        # Clip to prevent overflow
+        logit_clipped = np.clip(logit_values, -500, 500)
+        return 1 / (1 + np.exp(-logit_clipped))
 
-    def fit_rolling_covariance_model(self, predictors):
-        """
-        Phase 3: Build rolling covariance model in logit space
-        """
-        print("Phase 3: Fitting rolling covariance model in logit space...")
+    def fit_covariance_model(self):
+        """Phase 3: Fit rolling covariance model in logit space"""
+        print("Phase 3: Fitting rolling covariance model...")
         
-        # Merge distribution results with predictor data
-        common_times = pd.to_datetime(self.rolling_distributions['timestamp']).intersection(
-            self.predictor_data.index
-        )
+        # Align distribution results with predictor data
+        dist_times = pd.to_datetime(self.rolling_distributions['timestamp'])
+        dist_times_index = pd.Index(dist_times) # make dist_times an index
+        pred_times = self.predictor_data.index
+        common_times = dist_times_index.intersection(pred_times)
         
-        dist_data = self.rolling_distributions[
-            self.rolling_distributions['timestamp'].isin(common_times)
-        ].copy()
-        dist_data = dist_data.set_index('timestamp').loc[common_times]
+        if len(common_times) < 20:
+            raise ValueError("Insufficient overlapping time periods for covariance modeling")
         
-        pred_data = self.predictor_data.loc[common_times, predictors]
+        # Prepare aligned data
+        dist_aligned = self.rolling_distributions.set_index('timestamp').loc[common_times]
+        pred_aligned = self.predictor_data.loc[common_times, self.predictors]
         
-        # Transform exceedance probabilities to logit space
-        y_probs = dist_data['exceedance_probability'].values
+        # Transform to logit space
+        eps = 1e-6
+        y_probs = dist_aligned['exceedance_probability'].values
+        y_probs = np.clip(y_probs, eps, 1 - eps)
         y_logit = self.logit_transform(y_probs)
+        X = pred_aligned.values
         
-        # Prepare predictor matrix
-        X = pred_data.values
-        
-        # Remove any rows with NaN values
-        valid_mask = ~(np.isnan(y_logit) | np.any(np.isnan(X), axis=1))
+        # Remove invalid observations
+        valid_mask = np.isfinite(y_logit) & np.all(np.isfinite(X), axis=1)
         y_logit = y_logit[valid_mask]
-        X = X[valid_mask, :]
+        X = X[valid_mask]
         valid_times = common_times[valid_mask]
         
-        if len(y_logit) < 10:
-            raise ValueError("Insufficient valid data for covariance modeling")
+        print(f"Using {len(y_logit)} valid observations for covariance modeling")
         
-        print(f"  Using {len(y_logit)} valid observations for covariance model")
-        
-        # Fit rolling covariance model
+        # Fit rolling covariance models
         covariance_window = getattr(self.config, 'covariance_window', 60)
-        results_list = []
+        use_shrinkage = getattr(self.config, 'use_shrinkage', False)
         
-        for i in range(len(valid_times)):
-            if i < covariance_window:
-                continue
-                
-            # Rolling window of data
-            start_idx = max(0, i - covariance_window + 1)
+        covariance_results = []
+        
+        for i in range(covariance_window - 1, len(valid_times)):
+            # Define rolling window
+            start_idx = i - covariance_window + 1
             end_idx = i + 1
             
             y_window = y_logit[start_idx:end_idx]
-            X_window = X[start_idx:end_idx, :]
-            
-            # Calculate rolling moments
-            X_mean = np.mean(X_window, axis=0)
-            y_mean = np.mean(y_window)
-            
-            # Center the data
-            X_centered = X_window - X_mean
-            y_centered = y_window - y_mean
-            
-            # Calculate covariances
-            Sigma_XX = np.dot(X_centered.T, X_centered) / (len(y_window) - 1)
-            Sigma_Xy = np.dot(X_centered.T, y_centered) / (len(y_window) - 1)
-            
-            # Apply shrinkage if requested
-            if getattr(self.config, 'use_shrinkage', False):
-                lw = LedoitWolf()
-                Sigma_XX, _ = lw.fit(X_centered).covariance_, lw.shrinkage_
+            X_window = X[start_idx:end_idx]
             
             try:
-                # Analytical solution for coefficients
-                beta = np.linalg.solve(Sigma_XX, Sigma_Xy)
-                beta_0 = y_mean - np.dot(beta, X_mean)
+                # Fit linear model: y = β₀ + βᵀx + ε
+                beta, residual_var = self._fit_linear_model(y_window, X_window, use_shrinkage)
                 
-                # Residual variance for confidence intervals
-                y_pred = beta_0 + np.dot(X_window, beta)
-                residuals = y_window - y_pred
-                residual_var = np.var(residuals, ddof=len(beta))
-                
-                # Store results
                 result = {
                     'timestamp': valid_times[i],
-                    'beta_0': float(beta_0),
+                    'intercept': float(beta[0]),
                     'residual_variance': float(residual_var),
-                    'n_observations': int(len(y_window))
+                    'n_observations': len(y_window)
                 }
                 
-                for j, pred_name in enumerate(predictors):
-                    result[f'beta_{pred_name}'] = float(beta[j])
+                # Store coefficients for each predictor
+                for j, pred_name in enumerate(self.predictors):
+                    result[f'beta_{pred_name}'] = float(beta[j + 1])
                 
-                results_list.append(result)
+                covariance_results.append(result)
                 
-            except np.linalg.LinAlgError:
-                print(f"Warning: Singular matrix at time {valid_times[i]}")
+            except np.linalg.LinAlgError as e:
+                if getattr(self.config, 'debug', False):
+                    print(f"Singular matrix at {valid_times[i]}: {e}")
                 continue
         
-        if not results_list:
-            raise ValueError("No valid covariance model fits!")
-        
-        self.covariance_model = pd.DataFrame(results_list)
-        print(f"  Fitted covariance model for {len(self.covariance_model)} time periods")
+        if not covariance_results:
+            raise ValueError("No successful covariance model fits!")
+            
+        self.covariance_model = pd.DataFrame(covariance_results)
+        print(f"Fitted covariance models for {len(self.covariance_model)} time periods")
         
         return self.covariance_model
-
-    def predict_exceedance_risk(self, current_data, predictors, confidence_level=0.95):
-        """
-        Predict exceedance risk using the covariance model with confidence intervals
-        """
-        if self.covariance_model is None:
-            raise ValueError("Covariance model not fitted yet!")
-            
-        predictions = []
+    
+    def _fit_linear_model(self, y, X, use_shrinkage=False):
+        """Fit linear model with optional shrinkage"""
+        # Add intercept term
+        X_with_intercept = np.column_stack([np.ones(len(y)), X])
         
-        for idx in current_data.index:
+        if use_shrinkage and len(y) > len(self.predictors) + 5:
+            # Apply Ledoit-Wolf shrinkage to covariance matrix
+            lw = LedoitWolf()
+            X_centered = X - np.mean(X, axis=0)
+            cov_shrunk, _ = lw.fit(X_centered).covariance_, lw.shrinkage_
+            
+            # Regularized least squares solution
+            XTX = X_with_intercept.T @ X_with_intercept
+            XTy = X_with_intercept.T @ y
+            
+            # Add small ridge regularization
+            ridge_lambda = 1e-4
+            XTX_reg = XTX + ridge_lambda * np.eye(XTX.shape[0])
+            beta = np.linalg.solve(XTX_reg, XTy)
+        else:
+            # Standard OLS
+            beta = np.linalg.lstsq(X_with_intercept, y, rcond=None)[0]
+        
+        # Calculate residual variance
+        y_pred = X_with_intercept @ beta
+        residuals = y - y_pred
+        residual_var = np.var(residuals, ddof=len(beta))
+        
+        return beta, residual_var
+
+    def rolling_distributions_with_ci(self, confidence_levels=[0.50, 0.75, 0.90, 0.95]):
+        """
+        Generate rolling distributions with multiple confidence intervals for every timestamp.
+        
+        Parameters
+        ----------
+        confidence_levels : list of float
+            Confidence levels to compute (e.g., [0.5, 0.75, 0.9, 0.95]).
+        
+        Returns
+        -------
+        DataFrame
+            Original rolling distribution columns plus:
+            - exceedance_probability
+            - ci_lower_{level}, ci_upper_{level} for each confidence level
+        """
+        if self.rolling_distributions is None or self.covariance_model is None:
+            raise ValueError("Must fit rolling distributions and covariance model first!")
+    
+        # Merge rolling distributions with covariance model on timestamp
+        merged = self.rolling_distributions.merge(
+            self.covariance_model,
+            on='timestamp',
+            how='left',
+            suffixes=('', '_cov')
+        )
+    
+        results = []
+    
+        for _, row in merged.iterrows():
             try:
-                # Get current predictor values
-                X_current = np.array([current_data.loc[idx, pred] for pred in predictors])
-                
-                # Find most recent covariance model parameters
-                recent_model = self.covariance_model.iloc[-1]  # Use most recent
-                
-                # Extract coefficients
-                beta_0 = recent_model['beta_0']
-                beta = np.array([recent_model[f'beta_{pred}'] for pred in predictors])
-                residual_var = recent_model['residual_variance']
-                
-                # Predict in logit space
-                y_logit_pred = beta_0 + np.dot(beta, X_current)
-                
-                # Convert to probability
-                p_pred = self.inv_logit_transform(y_logit_pred)
-                
-                # Calculate confidence interval (approximate)
-                z_score = stats.norm.ppf((1 + confidence_level) / 2)
-                y_logit_se = np.sqrt(residual_var)
-                
-                y_logit_lower = y_logit_pred - z_score * y_logit_se
-                y_logit_upper = y_logit_pred + z_score * y_logit_se
-                
-                p_lower = self.inv_logit_transform(y_logit_lower)
-                p_upper = self.inv_logit_transform(y_logit_upper)
-                
-                predictions.append({
-                    'timestamp': idx,
-                    'predicted_probability': float(p_pred),
-                    'ci_lower': float(p_lower),
-                    'ci_upper': float(p_upper)
-                })
-                
+                # Extract predictors
+                X_current = [row[pred] if pred in row else 0 for pred in self.predictors]
+    
+                # Linear predictor in logit space
+                intercept = row['intercept']
+                coefficients = [row[f'beta_{pred}'] for pred in self.predictors]
+                y_logit = intercept + np.dot(coefficients, X_current)
+    
+                # Predicted exceedance probability
+                p = self.inv_logit_transform(y_logit)
+    
+                # Confidence intervals for each level
+                row_dict = row.to_dict()
+                row_dict['exceedance_probability'] = p
+    
+                residual_var = row['residual_variance']
+                y_se = np.sqrt(residual_var)
+    
+                for conf in confidence_levels:
+                    z = stats.norm.ppf((1 + conf) / 2)
+                    ci_lower = self.inv_logit_transform(y_logit - z * y_se)
+                    ci_upper = self.inv_logit_transform(y_logit + z * y_se)
+                    row_dict[f'ci_lower_{int(conf*100)}'] = ci_lower
+                    row_dict[f'ci_upper_{int(conf*100)}'] = ci_upper
+    
+                results.append(row_dict)
+    
             except Exception as e:
-                print(f"Warning: Prediction failed for index {idx}: {e}")
-                predictions.append({
-                    'timestamp': idx,
-                    'predicted_probability': np.nan,
-                    'ci_lower': np.nan,
-                    'ci_upper': np.nan
-                })
-        
-        return pd.DataFrame(predictions)
-
-    def solve_minimum_release(self, current_predictors, discharge_predictor, 
-                            risk_tolerance=0.05, discharge_range=None):
+                # Keep original row but set NA for probabilities if something fails
+                row_dict = row.to_dict()
+                row_dict['exceedance_probability'] = np.nan
+                for conf in confidence_levels:
+                    row_dict[f'ci_lower_{int(conf*100)}'] = np.nan
+                    row_dict[f'ci_upper_{int(conf*100)}'] = np.nan
+                results.append(row_dict)
+    
+        return pd.DataFrame(results)
+    
+    def predict_future_exceedance(self, future_data, confidence_levels=[0.50, 0.75, 0.90, 0.95]):
         """
-        Solve for minimum discharge that keeps exceedance risk ≤ risk_tolerance
+        Predict exceedance probability for new/future predictor data.
+        
+        Parameters
+        ----------
+        future_data : pd.DataFrame
+            Predictor values at future timestamps. Must include all predictors.
+        confidence_levels : list of float
+            Confidence levels for CI.
+        
+        Returns
+        -------
+        pd.DataFrame
+            Each row: timestamp, predicted probability, ci_lower_{level}, ci_upper_{level}, confidence_level
         """
         if self.covariance_model is None:
-            raise ValueError("Covariance model not fitted yet!")
-            
-        if discharge_predictor not in current_predictors.index:
-            raise ValueError(f"Discharge predictor '{discharge_predictor}' not found")
-            
-        # Get recent model parameters
-        recent_model = self.covariance_model.iloc[-1]
-        beta_0 = recent_model['beta_0']
-        beta_discharge = recent_model[f'beta_{discharge_predictor}']
-        
-        # Set discharge range if not provided
-        if discharge_range is None:
-            current_discharge = current_predictors[discharge_predictor]
-            discharge_range = (current_discharge * 0.5, current_discharge * 3.0)
-        
-        def risk_function(discharge):
-            # Update predictors with test discharge
-            test_predictors = current_predictors.copy()
-            test_predictors[discharge_predictor] = discharge
-            
-            # Calculate risk
-            beta = np.array([recent_model[f'beta_{pred}'] for pred in current_predictors.index])
-            y_logit = beta_0 + np.dot(beta, test_predictors.values)
-            risk = self.inv_logit_transform(y_logit)
-            
-            return risk - risk_tolerance
-        
-        try:
-            # Find minimum discharge where risk ≤ tolerance
-            result = minimize_scalar(lambda q: abs(risk_function(q)), 
-                                   bounds=discharge_range, method='bounded')
-            
-            if result.success:
-                return float(result.x)
-            else:
-                return discharge_range[1]  # Return max if optimization fails
-                
-        except Exception as e:
-            print(f"Warning: Minimum release calculation failed: {e}")
-            return discharge_range[1]
+            raise ValueError("Covariance model must be fitted first.")
+    
+        results = []
+        latest_model = self.covariance_model.iloc[-1]  # Use most recent fitted coefficients
+    
+        for idx in future_data.index:
+            row = future_data.loc[idx]
+            X_current = [row[pred] for pred in self.predictors]
+    
+            intercept = latest_model['intercept']
+            coefficients = [latest_model[f'beta_{pred}'] for pred in self.predictors]
+            y_logit = intercept + np.dot(coefficients, X_current)
+            p = self.inv_logit_transform(y_logit)
+    
+            residual_var = latest_model['residual_variance']
+            y_se = np.sqrt(residual_var)
+    
+            row_dict = {'timestamp': idx, 'predicted_probability': p}
+    
+            for conf in confidence_levels:
+                z = stats.norm.ppf((1 + conf) / 2)
+                row_dict[f'ci_lower_{int(conf*100)}'] = self.inv_logit_transform(y_logit - z * y_se)
+                row_dict[f'ci_upper_{int(conf*100)}'] = self.inv_logit_transform(y_logit + z * y_se)
+    
+            results.append(row_dict)
+    
+        return pd.DataFrame(results)
 
-    def fit_full_model(self, data, predictors):
-        """
-        Complete model fitting pipeline for Phases 2 & 3
-        """
+    def fit_complete_model(self):
+        """Execute complete modeling pipeline"""
         print("=== ROLLING COVARIANCE MODEL FOR SALINITY MANAGEMENT ===")
-        print(f"Distribution family: {self.dist_family}")
-        print(f"Window length: {self.config.window_length} days")
-        print(f"Predictors: {predictors}")
-    
-        # Step 1: Clean and prepare data
-        clean_df = self.clean_data(data)
-    
-        # Step 2: Phase 2 - Fit rolling distributions
-        self.fit_rolling_distributions(clean_df)
-    
+        print(f"Configuration:")
+        print(f"  - Distribution: {self.config.distribution_family}")
+        print(f"  - Window length: {self.config.window_length} days")
+        print(f"  - Salinity threshold: {self.config.salinity_threshold}")
+        print(f"  - Data file: {self.config.data_csv}")
+        
+        # Step 1: Load and prepare data
+        self.load_and_prepare_data()
+        print(f"After loading data: {len(self.data)} rows")
+        
+        # Step 2: Fit rolling distributions (Phase 2)
+        self.fit_rolling_distributions()
+        print(f"After rolling distributions: {len(self.rolling_distributions)} rows, NaN count: {self.rolling_distributions.isna().sum().sum()}")
+        
         # Step 3: Prepare predictor data
-        self.prepare_predictor_data(clean_df, predictors)
-    
-        # Step 4: Phase 3 - Fit rolling covariance model
-        self.fit_rolling_covariance_model(predictors)
-    
-        print(f"\n=== MODEL FITTING COMPLETE ===")
-        print(f"- Distribution fits: {len(self.rolling_distributions)} time periods")
-        print(f"- Predictor data: {len(self.predictor_data)} periods")  
-        print(f"- Covariance model: {len(self.covariance_model)} periods")
-    
+        self.prepare_predictor_data()
+        print(f"After predictor prep: {len(self.predictor_data)} rows, NaN count: {self.predictor_data.isna().sum().sum()}")
+        
+        # Step 4: Fit covariance model (Phase 3)
+        self.fit_covariance_model()
+        print(f"After covariance model: {len(self.covariance_model)} rows, NaN count: {self.covariance_model.isna().sum().sum()}")
+        
+        print("\n=== MODEL FITTING COMPLETE ===")
+        print(f"Summary:")
+        print(f"  - Data points: {len(self.data)}")
+        print(f"  - Predictors: {len(self.predictors)} ({self.predictors})")
+        print(f"  - Distribution fits: {len(self.rolling_distributions)}")
+        print(f"  - Covariance model periods: {len(self.covariance_model)}")
+        
         return self
 
-def run_rolling_covariance_model(config):
-    """
-    Main execution function with error handling and detailed output
-    """
+
+def run_rolling_covariance_model(config, confidence_levels=[0.50, 0.75, 0.90, 0.95]):
+    """Main execution function with comprehensive error handling and multi-level CIs"""
+    
+    # Convert config to namespace if needed
     if isinstance(config, dict):
         config = dict_to_namespace(config)
-
-    # Validate required config parameters
-    required_params = ['data_csv', 'salinity_col', 'salinity_threshold', 
-                      'distribution_family', 'window_length']
-    missing_params = [p for p in required_params if not hasattr(config, p)]
-    if missing_params:
-        raise ValueError(f"Missing required config parameters: {missing_params}")
-
-    # Set defaults for optional parameters
-    if not hasattr(config, 'min_observations_per_window'):
-        config.min_observations_per_window = 10
-    if not hasattr(config, 'covariance_window'):
-        config.covariance_window = 60
-    if not hasattr(config, 'use_shrinkage'):
-        config.use_shrinkage = False
-    if not hasattr(config, 'risk_tolerance'):
-        config.risk_tolerance = 0.05
-
+    
+    # Validate required parameters
+    required = ['data_csv', 'salinity_col', 'salinity_threshold', 'distribution_family', 'window_length']
+    missing = [p for p in required if not hasattr(config, p)]
+    if missing:
+        raise ValueError(f"Missing required configuration parameters: {missing}")
+    
     try:
         # Initialize and fit model
         model = RollingCovarianceModel(config)
+        model.fit_complete_model()
         
-        # Load data
-        data, predictors = model.load_data(config)
-    
-        # Create binary target for evaluation
-        data['exceed_threshold'] = (data[config.salinity_col] > config.salinity_threshold).astype(int)
-        exceedance_rate = data['exceed_threshold'].mean()
-        print(f"Threshold ({config.salinity_threshold}) exceedance rate: {exceedance_rate:.3f}")
-
-        # Fit full model
-        model.fit_full_model(data, predictors)
-
-        # Generate predictions
-        print("Generating predictions...")
-        data_indexed = data.set_index('DateTime')
-        predictions_df = model.predict_exceedance_risk(data_indexed, predictors)
+        # Generate rolling distributions with multiple confidence intervals
+        rolling_with_ci = model.rolling_distributions_with_ci(confidence_levels=confidence_levels)
         
-        # Calculate minimum releases if discharge predictor available
-        discharge_predictors = [p for p in predictors 
-                              if any(k in p.lower() for k in ['discharge', 'inflow'])]
+        # Optionally, generate future predictions if needed
+        # future_predictions = model.predict_future_exceedance(future_data, confidence_levels=confidence_levels)
         
-        min_releases = None
-        if discharge_predictors:
-            discharge_pred = discharge_predictors[0]  # Use first discharge predictor
-            print(f"Calculating minimum releases using {discharge_pred}...")
-            
-            min_releases = []
-            for idx in data_indexed.index:
-                current_preds = data_indexed.loc[idx, predictors]
-                q_min = model.solve_minimum_release(
-                    current_preds, discharge_pred, config.risk_tolerance
-                )
-                min_releases.append({
-                    'timestamp': idx,
-                    'minimum_release': q_min
-                })
-            
-            min_releases = pd.DataFrame(min_releases)
-
-        # Prepare comprehensive results for R analysis
+        # Calculate basic statistics
+        exceedance_rate = (model.data[config.salinity_col] > config.salinity_threshold).mean()
+        
+        # Compile results for JSON export
         results = {
             'model_info': {
                 'distribution_family': config.distribution_family,
                 'window_length': config.window_length,
-                'covariance_window': config.covariance_window,
                 'salinity_threshold': config.salinity_threshold,
-                'risk_tolerance': config.risk_tolerance,
-                'n_predictors': len(predictors),
-                'predictor_names': predictors,
-                'exceedance_rate': float(exceedance_rate)
+                'n_predictors': len(model.predictors),
+                'predictor_names': model.predictors,
+                'observed_exceedance_rate': float(exceedance_rate),
+                'total_observations': len(model.data)
             },
-            'rolling_distributions': model.rolling_distributions.to_dict('records'),
+            'rolling_distributions': rolling_with_ci.to_dict('records'),  # full CI included
             'covariance_model': model.covariance_model.to_dict('records'),
-            'predictions': predictions_df.to_dict('records'),
-            'minimum_releases': min_releases.to_dict('records') if min_releases is not None else None,
-            'data_summary': {
-                'total_observations': len(data),
-                'distribution_fits': len(model.rolling_distributions),
-                'covariance_fits': len(model.covariance_model),
-                'prediction_periods': len(predictions_df)
+            'summary': {
+                'distribution_fits': len(rolling_with_ci),
+                'covariance_periods': len(model.covariance_model),
             }
         }
-
-        print(f"\n=== RESULTS SUMMARY ===")
-        print(f"Distribution fits: {results['data_summary']['distribution_fits']}")
-        print(f"Covariance model periods: {results['data_summary']['covariance_fits']}")
-        print(f"Predictions generated: {results['data_summary']['prediction_periods']}")
-        if min_releases is not None:
-            print(f"Minimum releases calculated: {len(min_releases)}")
-
+        
+        print(f"\n=== EXECUTION COMPLETE ===")
+        print(f"Results generated successfully!")
+        
         return results
-
+        
     except Exception as e:
         print(f"Error in model execution: {e}")
         raise

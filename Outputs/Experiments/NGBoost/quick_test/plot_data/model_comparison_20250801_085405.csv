@@ -1,4 +1,0 @@
-model_type,distribution,mean_r2,mean_rmse,mean_high_sal_r2
-NGBoost,lognormal,-0.17008704077969267,,
-linear,N/A,0.038505867793307426,0.0207723444034302,
-random_forest,N/A,-1.8375088388979441,0.030029881808072662,
