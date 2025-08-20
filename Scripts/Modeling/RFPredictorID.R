@@ -31,12 +31,14 @@ invisible(
    })
 )
 
-# RF Configuration
-SEED <- 42
 N_TREES <- 1000
-TOP_N_PREDICTORS <- 5
+#TOP_N_PREDICTORS <- 5
 
-set.seed(SEED)
+# Define seeds to test
+seed_list <- c(10, 20, 40, 50, 60)
+
+# Store results
+rf_results <- list()
 
 # Read in model data
 model_data <- as.data.frame(read_qs_files('Data/Tidied/Final/FinalModelData.qs'))
@@ -85,57 +87,81 @@ predictors <- all_predictors
 formula_str <- paste("Salinity ~", paste(predictors, collapse = " + "))
 rf_formula <- as.formula(formula_str)
 
-# Fit Random Forest
-rf_model <- ranger(
-   formula = rf_formula,
-   data = train_data,
-   num.trees = N_TREES,
-   importance = "permutation",
-   seed = SEED
-)
-
-cat(sprintf("RF training complete. Out-of-bag R²: %.4f\n", rf_model$r.squared))
-
-# Test set performance (basic check)
-test_pred <- predict(rf_model, test_data)$predictions
-test_rmse <- sqrt(mean((test_pred - test_data$Salinity)^2))
-test_r2 <- cor(test_pred, test_data$Salinity)^2
-
-cat(sprintf("Test set RMSE: %.4f, R²: %.4f\n", test_rmse, test_r2))
-
-importance_scores <- rf_model$variable.importance
-importance_df <- data.frame(
-   Variable = names(importance_scores),
-   Importance = as.numeric(importance_scores),
-   stringsAsFactors = FALSE
-) %>%
-   arrange(desc(Importance)) %>%
-   mutate(
-      Rank = row_number()
-      )
-   
-
-# Display top predictors with risk assessment
-cat(sprintf("\n=== TOP %d PREDICTORS WITH ROLLING WINDOW COMPATIBILITY ===\n", TOP_N_PREDICTORS * 2))
-
 # Simple Importance Plot ----
 plot_importance <- function(importance_df, top_n = 15) {
    top_vars <- head(importance_df, top_n)
    
-   ggplot(top_vars, aes(x = reorder(Variable, Importance), y = Importance)) +
+   ggplot(top_vars, aes(x = reorder(Variable, Importance_scaled), y = Importance_scaled)) +
       geom_col(fill = "steelblue", alpha = 0.7) +
       coord_flip() +
-      labs(title = paste("Top", top_n, "Variable Importance (Permutation)"),
-           subtitle = sprintf("RF with %d trees, OOB R² = %.3f", N_TREES, rf_model$r.squared),
-           x = "Variables", 
-           y = "Permutation Importance") +
+      labs(
+         title = paste("Top", top_n, "Variable Importance (scaled)"),
+         subtitle = sprintf("RF with %d trees", N_TREES),
+         x = "Variables", 
+         y = "Scaled Importance (0-1)"
+      ) +
       theme_bw() +
-      theme(plot.title = element_text(size = 12),
-            plot.subtitle = element_text(size = 10))
+      theme(
+         plot.title = element_text(size = 12),
+         plot.subtitle = element_text(size = 10)
+      )
 }
 
-importance_plot <- plot_importance(importance_df, top_n = 30)
-print(importance_plot)
+
+for (seed in seed_list) {
+   cat(sprintf("\n===== Running RF with seed %d =====\n", seed))
+   set.seed(seed)
+   
+   # Fit Random Forest
+   rf_model <- ranger(
+      formula = rf_formula,
+      data = train_data,
+      num.trees = N_TREES,
+      importance = "permutation",
+      seed = seed
+   )
+   
+   # Test performance
+   test_pred <- predict(rf_model, test_data)$predictions
+   test_rmse <- sqrt(mean((test_pred - test_data$Salinity)^2))
+   test_r2 <- cor(test_pred, test_data$Salinity)^2
+   
+   # Variable importance
+   importance_scores <- rf_model$variable.importance
+   importance_df <- data.frame(
+      Variable = names(importance_scores),
+      Importance = as.numeric(importance_scores),
+      stringsAsFactors = FALSE
+   ) %>%
+      arrange(desc(Importance)) %>%
+      mutate(
+         Rank = row_number(),
+         Importance_scaled = Importance / max(Importance)  # <-- scale 0-1
+      )
+   
+   # Plot
+   importance_plot <- plot_importance(importance_df, top_n = 30)
+   
+   # Store everything in results list
+   rf_results[[as.character(seed)]] <- list(
+      seed = seed,
+      model = rf_model,
+      test_rmse = test_rmse,
+      test_r2 = test_r2,
+      importance_df = importance_df,
+      plot = importance_plot
+   )
+}
+
+# Example: access a plot for a given seed
+rf_results[["10"]]$plot
+rf_results[['20']]$plot
+rf_results[['40']]$plot
+rf_results[['50']]$plot
+rf_results[['60']]$plot
+
+
+
 
 final_predictors <- c('DayOfYear', 'Norm_InflowDeficit', 'Norm_PowDischarge')
 
@@ -143,34 +169,35 @@ final_predictors <- c('DayOfYear', 'Norm_InflowDeficit', 'Norm_PowDischarge')
 required_cols <- c('DateTime', 'Year', 'Month', 'Day', 'Salinity')
 clean_data <- model_data[, c(required_cols, final_predictors), drop = FALSE]
 
+chosen_run <- rf_results[[1]]
+
 screening_results <- list(
-   selected_predictors = final_predictors,
-   full_importance_ranking = importance_df,
+   selected_predictors = chosen_run$final_predictors,
+   full_importance_ranking = chosen_run$importance_df,
    model_performance = list(
-      oob_r_squared = rf_model$r.squared,
-      test_rmse = test_rmse,
-      test_r_squared = test_r2,
-      n_trees = N_TREES,
-      n_predictors_screened = length(predictors),
-      n_selected = TOP_N_PREDICTORS
+      oob_r_squared = chosen_run$rf_model$r.squared,
+      test_rmse = chosen_run$test_rmse,
+      test_r_squared = chosen_run$test_r2,
+      n_trees = chosen_run$config$n_trees,
+      n_predictors_screened = length(chosen_run$predictors),
+      n_selected = chosen_run$config$top_n_selected
    ),
    data_summary = list(
       n_observations = nrow(model_data),
       train_size = nrow(train_data),
       test_size = nrow(test_data),
-      original_predictors = length(predictors) + length(high_missing),
+      original_predictors = length(chosen_run$predictors) + length(high_missing),
       removed_high_missing = length(high_missing),
-      final_candidate_predictors = length(predictors)
+      final_candidate_predictors = length(chosen_run$predictors)
    ),
    configuration = list(
-      seed = SEED,
-      n_trees = N_TREES,
-      top_n_selected = TOP_N_PREDICTORS,
-      missing_threshold = 30,
-      train_split = 0.7
+      seed = chosen_run$config$seed,
+      n_trees = chosen_run$config$n_trees,
+      top_n_selected = chosen_run$config$top_n_selected,
+      missing_threshold = chosen_run$config$missing_threshold,
+      train_split = chosen_run$config$train_split
    )
 )
-
 
 outputs <- list(screening_results)
 file_names <- c('RF_Predictor_Screening')
@@ -183,7 +210,24 @@ file_names <- c('CleanFinalModelData')
 write_qs_files(outputs, 'Data/Tidied/Final', file_names, 
                preset = 'archive', format = 'csv')
 
-# Save importance plot
-ggsave("Outputs/Plots/Phase1_RF/RFVariableImportance.png", 
-       importance_plot, width = 10, height = 6, dpi = 600)
+# Save importance plots
+# ggsave("Outputs/Plots/Phase1_RF/RFVariableImportance.png", 
+#        importance_plot, width = 10, height = 6, dpi = 600)
+
+# Loop over rf_results and save each plot
+for (i in seq_along(rf_results)) {
+   run <- rf_results[[i]]
+   
+   # Construct file name using seed
+   file_name <- paste0("Outputs/Plots/Phase1_RF/", "rf_importance_seed_", run$seed, ".png")
+   
+   # Save the plot
+   ggsave(
+      filename = file_name,
+      plot = run$plot,
+      width = 10,
+      height = 6,
+      dpi = 600
+   )
+}
 

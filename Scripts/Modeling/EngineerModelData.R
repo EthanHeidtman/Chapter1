@@ -153,7 +153,7 @@ mutate(
    
    # Define vulnerability thresholds based on natural inflows
    LowInflowThreshold = quantile(Inflows, 0.50, na.rm = TRUE),     # 50th percentile
-   VeryLowInflowThreshold = quantile(Inflows, 0.25, na.rm = TRUE), # 15th percentile
+   VeryLowInflowThreshold = quantile(Inflows, 0.25, na.rm = TRUE), # 25th percentile
    FlushingThreshold = quantile(Inflows, 0.75, na.rm = TRUE),      # 75th percentile
    
    # Sustained low inflow conditions (key vulnerability indicator)
@@ -223,12 +223,6 @@ mutate(
    # Clean up temporary variables
    select(-c(`1`, where(is.logical), Season, contains('Threshold')))
  
-
-# model_data <- model_data %>%
-#    relocate(Discharge, .after = Salinity) %>%
-#    relocate(FERC, where(is.logical), where(is.character), where(is.factor), 
-#             contains('Hours'), contains('Days'), contains('Frequency'), contains('SSI'), .after = Inflows) %>%
-#    mutate_if(is.logical, as.factor)
 model_data <- model_data %>%
    relocate(FERC, Salinity, Discharge, .after = DayOfYear) %>%
    group_by(Year) %>%

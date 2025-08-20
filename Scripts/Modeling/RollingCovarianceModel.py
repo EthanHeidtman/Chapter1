@@ -153,15 +153,15 @@ class RollingCovarianceModel:
         initial_len = len(self.data)
         
         # Remove rows with all missing values
-        self.data = self.data.dropna(how='all')
+        self.data = self.data.dropna(how = 'all')
         
         # Convert predictors and salinity to numeric
         for col in self.predictors + [self.config.salinity_col]:
             if col in self.data.columns:
-                self.data[col] = pd.to_numeric(self.data[col], errors='coerce')
+                self.data[col] = pd.to_numeric(self.data[col], errors = 'coerce')
         
         # Remove rows where salinity is missing
-        self.data = self.data.dropna(subset=[self.config.salinity_col])
+        self.data = self.data.dropna(subset = [self.config.salinity_col])
         
         final_len = len(self.data)
         if final_len < initial_len:

@@ -20,7 +20,6 @@ library(lubridate)
 library(purrr)
 library(future)
 library(furrr)
-#source_python('Scripts/Modeling/RollingCovarianceModel.py') 
 source('Scripts/Functions/Modeling/ExperimentHelpers.R')
 
 # Define parallelization setup
@@ -52,14 +51,12 @@ base_config <- list(
    distribution_family = NULL,
    experiment_type = NULL,
    salinity_threshold = 1.0,
-   window_length = 14
+   window_length = 14,
+   use_shrinkage = TRUE
 )
 
-
-# Distributions to test:
-dist_list <- c("burr", "gengamma", "gamma", "lognormal", "gpd", "loglogistic")
-
 # Run distribution experiments in parallel
+dist_list <- c("burr", "gengamma", "gamma", "lognormal", "gpd", "loglogistic")
 distribution_results <- future_map(
    dist_list[2 : 6],
    ~ run_one_experiment(
@@ -71,14 +68,25 @@ distribution_results <- future_map(
    .options = furrr_options(seed = TRUE)
 )
 
+# Run threshold experiments in parallel
+threshold_list <- c(0.3, 0.5, 0.75, 1.0)
+threshold_results <- future_map(
+   as.character(threshold_list),
+   ~ run_one_experiment(
+      experiment_name = .x,  # here .x is the salinity threshold as string
+      experiment_type = "ThresholdScreening",
+      base_config = modifyList(base_config, list(salinity_threshold = as.numeric(.x), distribution_family = 'gpd'))
+   ),
+   .progress = TRUE,
+   .options = furrr_options(seed = TRUE)
+)
 
 # Run rolling window size experiments in parallel
 window_sizes <- c(7, 10, 14, 30)
-
 window_results <- future_map(
    as.character(window_sizes),
    ~ run_one_experiment(
-      experiment_name = .x,  # here .x is the window length as string
+      experiment_name = .x,  # here .x is the window size as string
       experiment_type = "WindowSizeScreening",
       base_config = modifyList(base_config, list(window_length = as.numeric(.x), distribution_family = 'gpd'))
    ),
