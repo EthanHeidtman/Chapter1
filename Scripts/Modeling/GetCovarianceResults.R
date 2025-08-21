@@ -28,6 +28,7 @@ source('Scripts/Functions/Modeling/ExperimentHelpers.R')
 DATA_PATH = 'Data/Tidied/Final/CleanFinalModelData.csv'
 FERC_PATH = 'Data/Tidied/Processed/FERCFlowRequirement.csv'
 OUTPUT_PATH = 'Outputs/Experiments/CovarianceModeling'
+PLOT_PATH = 'Outputs/Plots/Phase2_RollingCovarianceModel'
 
 # Read in final cleaned model data
 data <- read.csv(DATA_PATH)

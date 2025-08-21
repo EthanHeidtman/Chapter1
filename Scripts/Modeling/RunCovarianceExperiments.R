@@ -75,7 +75,7 @@ threshold_results <- future_map(
    ~ run_one_experiment(
       experiment_name = .x,  # here .x is the salinity threshold as string
       experiment_type = "ThresholdScreening",
-      base_config = modifyList(base_config, list(salinity_threshold = as.numeric(.x), distribution_family = 'gpd'))
+      base_config = modifyList(base_config, list(salinity_threshold = as.numeric(.x), distribution_family = c('gengamma')))
    ),
    .progress = TRUE,
    .options = furrr_options(seed = TRUE)
