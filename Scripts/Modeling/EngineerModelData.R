@@ -12,7 +12,7 @@
 # =============================================================================
 
 # Source necessary functions
-dirs <- c("Scripts/Functions/Utilities")
+dirs <- c("Scripts/Utilities")
 invisible(
    lapply(dirs, function(dir) {
       files <- list.files(dir, full.names = TRUE, pattern = "\\.R$", recursive = TRUE)

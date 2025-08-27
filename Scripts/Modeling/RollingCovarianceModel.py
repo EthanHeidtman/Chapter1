@@ -36,7 +36,7 @@ def dict_to_namespace(d):
 
 class RollingCovarianceModel:
     """
-    Rolling window distribution fitting and covariance-based risk modeling
+    Rolling window distribution fitting and window-based risk modeling
     """
     
     def __init__(self, config):
@@ -59,7 +59,7 @@ class RollingCovarianceModel:
         self.predictors = None
         self.rolling_distributions = None
         self.predictor_data = None
-        self.covariance_model = None
+        self.window_model = None
         
     def _initialize_distributions(self):
         """Initialize available distributions from Distributions.py file"""
@@ -213,7 +213,7 @@ class RollingCovarianceModel:
                 results.append(result)
                 
             except Exception as e:
-                # Skip failed fits silently unless in debug mode
+                # Skip failed fi ants silently unless in debug mode
                 if getattr(self.config, 'debug', False):
                     print(f"Distribution fit failed for {end_date}: {e}")
                 continue
@@ -227,7 +227,7 @@ class RollingCovarianceModel:
         return self.rolling_distributions
     
     def prepare_predictor_data(self):
-        """Extract window-averaged predictors for covariance modeling"""
+        """Extract window-averaged predictors for window modeling"""
         print("Preparing window-averaged predictor data...")
         
         window_days = int(self.config.window_length)
@@ -282,80 +282,215 @@ class RollingCovarianceModel:
         return 1 / (1 + np.exp(-logit_clipped))
 
     def fit_covariance_model(self):
-        """Phase 3: Fit rolling covariance model in logit space"""
-        print("Phase 3: Fitting rolling covariance model...")
-        
-        # Align distribution results with predictor data
-        dist_times = pd.to_datetime(self.rolling_distributions['timestamp'])
-        dist_times_index = pd.Index(dist_times) # make dist_times an index
-        pred_times = self.predictor_data.index
-        common_times = dist_times_index.intersection(pred_times)
-        
-        if len(common_times) < 20:
-            raise ValueError("Insufficient overlapping time periods for covariance modeling")
-        
-        # Prepare aligned data
-        dist_aligned = self.rolling_distributions.set_index('timestamp').loc[common_times]
-        pred_aligned = self.predictor_data.loc[common_times, self.predictors]
-        
-        # Transform to logit space
-        eps = 1e-6
-        y_probs = dist_aligned['exceedance_probability'].values
-        y_probs = np.clip(y_probs, eps, 1 - eps)
-        y_logit = self.logit_transform(y_probs)
-        X = pred_aligned.values
-        
-        # Remove invalid observations
-        valid_mask = np.isfinite(y_logit) & np.all(np.isfinite(X), axis=1)
-        y_logit = y_logit[valid_mask]
-        X = X[valid_mask]
-        valid_times = common_times[valid_mask]
-        
-        print(f"Using {len(y_logit)} valid observations for covariance modeling")
-        
-        # Fit rolling covariance models
-        covariance_window = getattr(self.config, 'covariance_window', 60)
-        use_shrinkage = getattr(self.config, 'use_shrinkage', False)
-        
-        covariance_results = []
-        
-        for i in range(covariance_window - 1, len(valid_times)):
-            # Define rolling window
-            start_idx = i - covariance_window + 1
-            end_idx = i + 1
-            
-            y_window = y_logit[start_idx:end_idx]
-            X_window = X[start_idx:end_idx]
-            
-            try:
-                # Fit linear model: y = β₀ + βᵀx + ε
-                beta, residual_var = self._fit_linear_model(y_window, X_window, use_shrinkage)
-                
-                result = {
-                    'timestamp': valid_times[i],
-                    'intercept': float(beta[0]),
-                    'residual_variance': float(residual_var),
-                    'n_observations': len(y_window)
-                }
-                
-                # Store coefficients for each predictor
-                for j, pred_name in enumerate(self.predictors):
-                    result[f'beta_{pred_name}'] = float(beta[j + 1])
-                
-                covariance_results.append(result)
-                
-            except np.linalg.LinAlgError as e:
-                if getattr(self.config, 'debug', False):
-                    print(f"Singular matrix at {valid_times[i]}: {e}")
-                continue
-        
-        if not covariance_results:
-            raise ValueError("No successful covariance model fits!")
-            
-        self.covariance_model = pd.DataFrame(covariance_results)
-        print(f"Fitted covariance models for {len(self.covariance_model)} time periods")
-        
-        return self.covariance_model
+       """
+       Phase 3: Fit covariance-based model using distribution parameter regression.
+       
+       Model: 
+       θ₁ = α₀ + α₁×trace(Σ) + α₂×log_det(Σ) + α₃×condition(Σ) + α₄×λₘₐₓ(Σ)
+       θ₂ = β₀ + β₁×trace(Σ) + β₂×log_det(Σ) + β₃×condition(Σ) + β₄×λₘₐₓ(Σ)
+       
+       Where θ₁, θ₂ are distribution parameters and Σ is the covariance matrix.
+       """
+       print("Phase 3: Fitting covariance-based distribution parameter model...")
+       
+       # Align distribution results with predictor data
+       dist_times = pd.to_datetime(self.rolling_distributions['timestamp'])
+       dist_times_index = pd.Index(dist_times)
+       pred_times = self.predictor_data.index
+       common_times = dist_times_index.intersection(pred_times)
+       
+       if len(common_times) < 20:
+           raise ValueError("Insufficient overlapping time periods for covariance modeling")
+       
+       # Prepare aligned data
+       dist_aligned = self.rolling_distributions.set_index('timestamp').loc[common_times]
+       
+       # Extract distribution parameters
+       param_names = [col for col in dist_aligned.columns if col not in 
+                      ['timestamp', 'n_observations', 'exceedance_probability', 'distribution_family']]
+       
+       if len(param_names) < 1:
+           raise ValueError("No distribution parameters found in rolling_distributions")
+       
+       # Calculate covariance structure metrics for each window
+       covariance_results = []
+       window_days = int(self.config.window_length)
+       min_obs = getattr(self.config, 'min_observations_per_window', 10)
+       use_shrinkage = getattr(self.config, 'use_shrinkage', True)
+       
+       for timestamp in common_times:
+           try:
+               # Get rolling window of predictor data ending at this timestamp
+               end_date = pd.to_datetime(timestamp)
+               start_date = end_date - pd.Timedelta(days=window_days)
+               
+               window_mask = (self.data['DateTime'] >= start_date) & (self.data['DateTime'] <= end_date)
+               window_predictors = self.data.loc[window_mask, self.predictors].dropna()
+               
+               if len(window_predictors) < min_obs:
+                   continue
+                   
+               # Calculate covariance matrix with optional shrinkage
+               X_window = window_predictors.values
+               
+               if use_shrinkage and len(X_window) > len(self.predictors) + 5:
+                   # Use Ledoit-Wolf shrinkage for robust covariance estimation
+                   lw = LedoitWolf()
+                   cov_matrix = lw.fit(X_window).covariance_
+                   shrinkage_intensity = lw.shrinkage_
+               else:
+                   # Sample covariance matrix
+                   cov_matrix = np.cov(X_window.T, bias=False)
+                   shrinkage_intensity = 0.0
+                   
+                   # Add ridge regularization if poorly conditioned
+                   condition_num = np.linalg.cond(cov_matrix)
+                   if condition_num > 1e12:
+                       ridge_penalty = 1e-6 * np.trace(cov_matrix) / len(self.predictors)
+                       cov_matrix += ridge_penalty * np.eye(len(self.predictors))
+               
+               # Extract covariance structure metrics
+               trace_cov = np.trace(cov_matrix)
+               det_cov = np.linalg.det(cov_matrix)
+               condition_num = np.linalg.cond(cov_matrix)
+               eigenvalues = np.linalg.eigvals(cov_matrix)
+               largest_eigenval = np.max(eigenvalues)
+               
+               # Store results
+               result = {
+                   'timestamp': timestamp,
+                   'trace_covariance': float(trace_cov),
+                   'log_det_covariance': float(np.log(max(det_cov, 1e-12))),  # Avoid log(0)
+                   'condition_number': float(min(condition_num, 1e12)),        # Cap extreme values
+                   'largest_eigenvalue': float(largest_eigenval),
+                   'shrinkage_intensity': float(shrinkage_intensity),
+                   'n_observations': len(window_predictors)
+               }
+               
+               # Add distribution parameters for this timestamp
+               for param_name in param_names:
+                   result[param_name] = dist_aligned.loc[timestamp, param_name]
+               
+               covariance_results.append(result)
+               
+           except Exception as e:
+               if getattr(self.config, 'debug', False):
+                   print(f"Covariance calculation failed for {timestamp}: {e}")
+               continue
+       
+       if not covariance_results:
+           raise ValueError("No successful covariance calculations!")
+       
+       # Convert to DataFrame
+       cov_df = pd.DataFrame(covariance_results)
+       print(f"Computed covariance metrics for {len(cov_df)} windows")
+       
+       # Prepare predictor matrix (covariance structure metrics)
+       X_cols = ['trace_covariance', 'log_det_covariance', 'condition_number', 'largest_eigenvalue']
+       X = cov_df[X_cols].values
+       
+       # Remove rows with invalid covariance metrics
+       valid_mask = np.all(np.isfinite(X), axis=1)
+       X_valid = X[valid_mask]
+       cov_df_valid = cov_df[valid_mask].reset_index(drop=True)
+       
+       if len(X_valid) < 10:
+           raise ValueError("Insufficient valid covariance observations for modeling")
+       
+       # Standardize predictors for numerical stability
+       X_mean = np.mean(X_valid, axis=0)
+       X_std = np.std(X_valid, axis=0)
+       X_std = np.where(X_std < 1e-10, 1.0, X_std)  # Avoid division by zero
+       X_scaled = (X_valid - X_mean) / X_std
+       
+       # Add intercept
+       X_reg = np.column_stack([np.ones(len(X_scaled)), X_scaled])
+       
+       # Fit separate regressions for each distribution parameter
+       models = {}
+       
+       for param_name in param_names:
+           try:
+               # Extract parameter values
+               y_param = cov_df_valid[param_name].values
+               
+               # Remove invalid parameter values
+               param_valid_mask = np.isfinite(y_param)
+               if np.sum(param_valid_mask) < 10:
+                   print(f"Warning: Insufficient valid values for parameter {param_name}, skipping")
+                   continue
+                   
+               y_param_valid = y_param[param_valid_mask]
+               X_reg_valid = X_reg[param_valid_mask]
+               
+               # Fit regression: param = β₀ + β₁×trace + β₂×log_det + β₃×condition + β₄×λₘₐₓ
+               try:
+                   # Regularized least squares for numerical stability
+                   XTX = X_reg_valid.T @ X_reg_valid
+                   XTy = X_reg_valid.T @ y_param_valid
+                   ridge_lambda = 1e-6
+                   XTX_reg = XTX + ridge_lambda * np.eye(XTX.shape[0])
+                   beta = np.linalg.solve(XTX_reg, XTy)
+               except np.linalg.LinAlgError:
+                   beta = np.linalg.lstsq(X_reg_valid, y_param_valid, rcond=None)[0]
+               
+               # Calculate model diagnostics
+               y_pred = X_reg_valid @ beta
+               residuals = y_param_valid - y_pred
+               residual_var = np.var(residuals, ddof=len(beta))
+               r_squared = 1 - np.var(residuals) / np.var(y_param_valid) if np.var(y_param_valid) > 0 else 0
+               
+               # Store model for this parameter
+               models[param_name] = {
+                   'intercept': float(beta[0]),
+                   'beta_trace': float(beta[1]),
+                   'beta_log_det': float(beta[2]),
+                   'beta_condition': float(beta[3]),
+                   'beta_eigenvalue': float(beta[4]),
+                   'residual_variance': float(residual_var),
+                   'r_squared': float(r_squared),
+                   'n_observations': len(y_param_valid)
+               }
+               
+               print(f"Model for {param_name}:")
+               print(f"  R²: {r_squared:.4f}")
+               print(f"  Trace coef: {beta[1]:.4f}, Log-det coef: {beta[2]:.4f}")
+               print(f"  Condition coef: {beta[3]:.4f}, Eigenvalue coef: {beta[4]:.4f}")
+               
+           except Exception as e:
+               print(f"Failed to fit model for parameter {param_name}: {e}")
+               continue
+       
+       if not models:
+           raise ValueError("No successful parameter models fitted!")
+       
+       # Store the complete covariance model
+       self.covariance_model = pd.DataFrame([{
+           'model_type': 'distribution_parameter_regression',
+           'distribution_family': self.dist_family,
+           'n_parameters': len(models),
+           'parameter_names': list(models.keys()),
+           'n_windows': len(cov_df_valid),
+           # Store standardization parameters for future predictions
+           'X_mean_trace': float(X_mean[0]),
+           'X_std_trace': float(X_std[0]),
+           'X_mean_log_det': float(X_mean[1]),
+           'X_std_log_det': float(X_std[1]),
+           'X_mean_condition': float(X_mean[2]),
+           'X_std_condition': float(X_std[2]),
+           'X_mean_eigenvalue': float(X_mean[3]),
+           'X_std_eigenvalue': float(X_std[3])
+       }])
+       
+       # Store individual parameter models
+       self.parameter_models = models
+       
+       print(f"\nCovariance model fitting complete:")
+       print(f"  Distribution: {self.dist_family}")
+       print(f"  Parameters modeled: {list(models.keys())}")
+       print(f"  Windows used: {len(cov_df_valid)}")
+       
+       return self.covariance_model
     
     def _fit_linear_model(self, y, X, use_shrinkage=False):
         """Fit linear model with optional shrinkage"""
@@ -388,118 +523,223 @@ class RollingCovarianceModel:
         return beta, residual_var
 
     def rolling_distributions_with_ci(self, confidence_levels=[0.50, 0.75, 0.90, 0.95]):
-        """
-        Generate rolling distributions with multiple confidence intervals for every timestamp.
-        
-        Parameters
-        ----------
-        confidence_levels : list of float
-            Confidence levels to compute (e.g., [0.5, 0.75, 0.9, 0.95]).
-        
-        Returns
-        -------
-        DataFrame
-            Original rolling distribution columns plus:
-            - exceedance_probability
-            - ci_lower_{level}, ci_upper_{level} for each confidence level
-        """
-        if self.rolling_distributions is None or self.covariance_model is None:
-            raise ValueError("Must fit rolling distributions and covariance model first!")
-    
-        # Merge rolling distributions with covariance model on timestamp
-        merged = self.rolling_distributions.merge(
-            self.covariance_model,
-            on='timestamp',
-            how='left',
-            suffixes=('', '_cov')
-        )
-    
-        results = []
-    
-        for _, row in merged.iterrows():
-            try:
-                # Extract predictors
-                X_current = [row[pred] if pred in row else 0 for pred in self.predictors]
-    
-                # Linear predictor in logit space
-                intercept = row['intercept']
-                coefficients = [row[f'beta_{pred}'] for pred in self.predictors]
-                y_logit = intercept + np.dot(coefficients, X_current)
-    
-                # Predicted exceedance probability
-                p = self.inv_logit_transform(y_logit)
-    
-                # Confidence intervals for each level
-                row_dict = row.to_dict()
-                row_dict['exceedance_probability'] = p
-    
-                residual_var = row['residual_variance']
-                y_se = np.sqrt(residual_var)
-    
-                for conf in confidence_levels:
-                    z = stats.norm.ppf((1 + conf) / 2)
-                    ci_lower = self.inv_logit_transform(y_logit - z * y_se)
-                    ci_upper = self.inv_logit_transform(y_logit + z * y_se)
-                    row_dict[f'ci_lower_{int(conf*100)}'] = ci_lower
-                    row_dict[f'ci_upper_{int(conf*100)}'] = ci_upper
-    
-                results.append(row_dict)
-    
-            except Exception as e:
-                # Keep original row but set NA for probabilities if something fails
-                row_dict = row.to_dict()
-                row_dict['exceedance_probability'] = np.nan
-                for conf in confidence_levels:
-                    row_dict[f'ci_lower_{int(conf*100)}'] = np.nan
-                    row_dict[f'ci_upper_{int(conf*100)}'] = np.nan
-                results.append(row_dict)
-    
-        return pd.DataFrame(results)
+       """
+       Generate rolling distributions with confidence intervals using covariance-based parameter prediction.
+       """
+       if self.rolling_distributions is None or not hasattr(self, 'parameter_models'):
+           raise ValueError("Must fit rolling distributions and covariance model first!")
+       
+       # Get standardization parameters
+       model_info = self.covariance_model.iloc[0]
+       X_means = np.array([model_info['X_mean_trace'], model_info['X_mean_log_det'], 
+                          model_info['X_mean_condition'], model_info['X_mean_eigenvalue']])
+       X_stds = np.array([model_info['X_std_trace'], model_info['X_std_log_det'],
+                         model_info['X_std_condition'], model_info['X_std_eigenvalue']])
+       
+       results = []
+       window_days = int(self.config.window_length)
+       
+       for _, row in self.rolling_distributions.iterrows():
+           try:
+               timestamp = pd.to_datetime(row['timestamp'])
+               
+               # Calculate covariance structure for this window
+               end_date = timestamp
+               start_date = end_date - pd.Timedelta(days=window_days)
+               
+               window_mask = (self.data['DateTime'] >= start_date) & (self.data['DateTime'] <= end_date)
+               window_predictors = self.data.loc[window_mask, self.predictors].dropna()
+               
+               if len(window_predictors) < 10:
+                   # Use original values if covariance calculation fails
+                   row_dict = row.to_dict()
+                   row_dict['predicted_exceedance_probability'] = row['exceedance_probability']
+                   for conf in confidence_levels:
+                       row_dict[f'ci_lower_{int(conf*100)}'] = np.nan
+                       row_dict[f'ci_upper_{int(conf*100)}'] = np.nan
+                   results.append(row_dict)
+                   continue
+               
+               # Calculate covariance metrics
+               cov_matrix = np.cov(window_predictors.values.T, bias=False)
+               trace_cov = np.trace(cov_matrix)
+               det_cov = np.linalg.det(cov_matrix)
+               condition_num = np.linalg.cond(cov_matrix)
+               largest_eigenval = np.max(np.linalg.eigvals(cov_matrix))
+               
+               # Standardize predictors
+               X_raw = np.array([trace_cov, np.log(max(det_cov, 1e-12)), 
+                                min(condition_num, 1e12), largest_eigenval])
+               X_scaled = (X_raw - X_means) / X_stds
+               X_reg = np.concatenate([[1.0], X_scaled])  # Add intercept
+               
+               # Predict distribution parameters
+               predicted_params = {}
+               param_uncertainties = {}
+               
+               for param_name, model in self.parameter_models.items():
+                   # Point prediction
+                   coeffs = np.array([model['intercept'], model['beta_trace'], model['beta_log_det'],
+                                    model['beta_condition'], model['beta_eigenvalue']])
+                   predicted_param = X_reg @ coeffs
+                   predicted_params[param_name] = predicted_param
+                   
+                   # Prediction uncertainty
+                   param_uncertainties[param_name] = np.sqrt(model['residual_variance'])
+               
+               # Calculate exceedance probability from predicted parameters
+               try:
+                   predicted_prob = 1 - self.dist_fitter.cdf(self.config.salinity_threshold, predicted_params)
+               except:
+                   predicted_prob = row['exceedance_probability']  # Fallback
+               
+               # Store results
+               row_dict = row.to_dict()
+               row_dict['predicted_exceedance_probability'] = float(predicted_prob)
+               
+               # Add covariance metrics for diagnostics
+               row_dict['trace_covariance'] = float(trace_cov)
+               row_dict['log_det_covariance'] = float(np.log(max(det_cov, 1e-12)))
+               row_dict['condition_number'] = float(min(condition_num, 1e12))
+               row_dict['largest_eigenvalue'] = float(largest_eigenval)
+               
+               # Calculate confidence intervals using parameter uncertainty
+               # Simple approach: use residual variance to estimate prediction intervals
+               avg_residual_var = np.mean([model['residual_variance'] for model in self.parameter_models.values()])
+               prediction_se = np.sqrt(avg_residual_var)
+               
+               for conf in confidence_levels:
+                   z = stats.norm.ppf((1 + conf) / 2)
+                   
+                   # This is a simplified CI calculation - in practice you'd want to 
+                   # propagate parameter uncertainties through the distribution properly
+                   ci_factor = z * prediction_se
+                   
+                   # Use logit space for CI calculation to ensure [0,1] bounds
+                   logit_prob = np.log(max(predicted_prob, 1e-6) / max(1 - predicted_prob, 1e-6))
+                   ci_lower_logit = logit_prob - ci_factor
+                   ci_upper_logit = logit_prob + ci_factor
+                   
+                   ci_lower = 1 / (1 + np.exp(-ci_lower_logit))
+                   ci_upper = 1 / (1 + np.exp(-ci_upper_logit))
+                   
+                   row_dict[f'ci_lower_{int(conf*100)}'] = float(ci_lower)
+                   row_dict[f'ci_upper_{int(conf*100)}'] = float(ci_upper)
+               
+               results.append(row_dict)
+               
+           except Exception as e:
+               if getattr(self.config, 'debug', False):
+                   print(f"Prediction failed for {row['timestamp']}: {e}")
+               # Fallback to original values
+               row_dict = row.to_dict()
+               row_dict['predicted_exceedance_probability'] = row['exceedance_probability']
+               for conf in confidence_levels:
+                   row_dict[f'ci_lower_{int(conf*100)}'] = np.nan
+                   row_dict[f'ci_upper_{int(conf*100)}'] = np.nan
+               results.append(row_dict)
+       
+       return pd.DataFrame(results)
     
     def predict_future_exceedance(self, future_data, confidence_levels=[0.50, 0.75, 0.90, 0.95]):
-        """
-        Predict exceedance probability for new/future predictor data.
-        
-        Parameters
-        ----------
-        future_data : pd.DataFrame
-            Predictor values at future timestamps. Must include all predictors.
-        confidence_levels : list of float
-            Confidence levels for CI.
-        
-        Returns
-        -------
-        pd.DataFrame
-            Each row: timestamp, predicted probability, ci_lower_{level}, ci_upper_{level}, confidence_level
-        """
-        if self.covariance_model is None:
-            raise ValueError("Covariance model must be fitted first.")
-    
-        results = []
-        latest_model = self.covariance_model.iloc[-1]  # Use most recent fitted coefficients
-    
-        for idx in future_data.index:
-            row = future_data.loc[idx]
-            X_current = [row[pred] for pred in self.predictors]
-    
-            intercept = latest_model['intercept']
-            coefficients = [latest_model[f'beta_{pred}'] for pred in self.predictors]
-            y_logit = intercept + np.dot(coefficients, X_current)
-            p = self.inv_logit_transform(y_logit)
-    
-            residual_var = latest_model['residual_variance']
-            y_se = np.sqrt(residual_var)
-    
-            row_dict = {'timestamp': idx, 'predicted_probability': p}
-    
-            for conf in confidence_levels:
-                z = stats.norm.ppf((1 + conf) / 2)
-                row_dict[f'ci_lower_{int(conf*100)}'] = self.inv_logit_transform(y_logit - z * y_se)
-                row_dict[f'ci_upper_{int(conf*100)}'] = self.inv_logit_transform(y_logit + z * y_se)
-    
-            results.append(row_dict)
-    
-        return pd.DataFrame(results)
+       """
+       Predict exceedance probability for future data using covariance-based parameter models.
+       
+       Parameters
+       ----------
+       future_data : pd.DataFrame
+           Predictor values at future timestamps. Must include all predictors used in training.
+       """
+       if not hasattr(self, 'parameter_models'):
+           raise ValueError("Parameter models must be fitted first.")
+       
+       # Get standardization parameters
+       model_info = self.covariance_model.iloc[0]
+       X_means = np.array([model_info['X_mean_trace'], model_info['X_mean_log_det'], 
+                          model_info['X_mean_condition'], model_info['X_mean_eigenvalue']])
+       X_stds = np.array([model_info['X_std_trace'], model_info['X_std_log_det'],
+                         model_info['X_std_condition'], model_info['X_std_eigenvalue']])
+       
+       results = []
+       window_days = int(self.config.window_length)
+       
+       for idx in future_data.index:
+           try:
+               # Get rolling window of future data ending at this timestamp
+               end_date = pd.to_datetime(idx)
+               start_date = end_date - pd.Timedelta(days=window_days)
+               
+               # Extract window from future_data
+               window_mask = (future_data.index >= start_date) & (future_data.index <= end_date)
+               window_data = future_data.loc[window_mask, self.predictors].dropna()
+               
+               if len(window_data) < 10:
+                   row_dict = {'timestamp': idx, 'predicted_probability': np.nan}
+                   for conf in confidence_levels:
+                       row_dict[f'ci_lower_{int(conf*100)}'] = np.nan
+                       row_dict[f'ci_upper_{int(conf*100)}'] = np.nan
+                   results.append(row_dict)
+                   continue
+               
+               # Calculate covariance metrics
+               cov_matrix = np.cov(window_data.values.T, bias=False)
+               trace_cov = np.trace(cov_matrix)
+               det_cov = np.linalg.det(cov_matrix)
+               condition_num = np.linalg.cond(cov_matrix)
+               largest_eigenval = np.max(np.linalg.eigvals(cov_matrix))
+               
+               # Standardize and predict
+               X_raw = np.array([trace_cov, np.log(max(det_cov, 1e-12)), 
+                                min(condition_num, 1e12), largest_eigenval])
+               X_scaled = (X_raw - X_means) / X_stds
+               X_reg = np.concatenate([[1.0], X_scaled])
+               
+               # Predict distribution parameters
+               predicted_params = {}
+               for param_name, model in self.parameter_models.items():
+                   coeffs = np.array([model['intercept'], model['beta_trace'], model['beta_log_det'],
+                                    model['beta_condition'], model['beta_eigenvalue']])
+                   predicted_params[param_name] = X_reg @ coeffs
+               
+               # Calculate exceedance probability
+               predicted_prob = 1 - self.dist_fitter.cdf(self.config.salinity_threshold, predicted_params)
+               
+               # Build result
+               row_dict = {
+                   'timestamp': idx, 
+                   'predicted_probability': float(predicted_prob),
+                   'trace_covariance': float(trace_cov),
+                   'condition_number': float(min(condition_num, 1e12))
+               }
+               
+               # Add confidence intervals (simplified approach)
+               avg_residual_var = np.mean([model['residual_variance'] for model in self.parameter_models.values()])
+               prediction_se = np.sqrt(avg_residual_var)
+               
+               logit_prob = np.log(max(predicted_prob, 1e-6) / max(1 - predicted_prob, 1e-6))
+               
+               for conf in confidence_levels:
+                   z = stats.norm.ppf((1 + conf) / 2)
+                   ci_factor = z * prediction_se
+                   
+                   ci_lower = 1 / (1 + np.exp(-(logit_prob - ci_factor)))
+                   ci_upper = 1 / (1 + np.exp(-(logit_prob + ci_factor)))
+                   
+                   row_dict[f'ci_lower_{int(conf*100)}'] = float(ci_lower)
+                   row_dict[f'ci_upper_{int(conf*100)}'] = float(ci_upper)
+               
+               results.append(row_dict)
+               
+           except Exception as e:
+               if getattr(self.config, 'debug', False):
+                   print(f"Future prediction failed for {idx}: {e}")
+               row_dict = {'timestamp': idx, 'predicted_probability': np.nan}
+               for conf in confidence_levels:
+                   row_dict[f'ci_lower_{int(conf*100)}'] = np.nan
+                   row_dict[f'ci_upper_{int(conf*100)}'] = np.nan
+               results.append(row_dict)
+       
+       return pd.DataFrame(results)
 
     def fit_complete_model(self):
         """Execute complete modeling pipeline"""
@@ -524,19 +764,19 @@ class RollingCovarianceModel:
         
         # Step 4: Fit covariance model (Phase 3)
         self.fit_covariance_model()
-        print(f"After covariance model: {len(self.covariance_model)} rows, NaN count: {self.covariance_model.isna().sum().sum()}")
+        print(f"After covariance model: {len(self.window_model)} rows, NaN count: {self.window_model.isna().sum().sum()}")
         
         print("\n=== MODEL FITTING COMPLETE ===")
         print(f"Summary:")
         print(f"  - Data points: {len(self.data)}")
         print(f"  - Predictors: {len(self.predictors)} ({self.predictors})")
         print(f"  - Distribution fits: {len(self.rolling_distributions)}")
-        print(f"  - Covariance model periods: {len(self.covariance_model)}")
+        print(f"  - Covariance model periods: {len(self.window_model)}")
         
         return self
 
 
-def run_rolling_covariance_model(config, confidence_levels=[0.50, 0.75, 0.90, 0.95]):
+def run_rolling_model(config, confidence_levels=[0.50, 0.75, 0.90, 0.95]):
     """Main execution function with comprehensive error handling and multi-level CIs"""
     
     # Convert config to namespace if needed
@@ -575,10 +815,10 @@ def run_rolling_covariance_model(config, confidence_levels=[0.50, 0.75, 0.90, 0.
                 'total_observations': len(model.data)
             },
             'rolling_distributions': rolling_with_ci.to_dict('records'),  # full CI included
-            'covariance_model': model.covariance_model.to_dict('records'),
+            'window_model': model.window_model.to_dict('records'),
             'summary': {
                 'distribution_fits': len(rolling_with_ci),
-                'covariance_periods': len(model.covariance_model),
+                'covariance_periods': len(model.window_model),
             }
         }
         

@@ -1,0 +1,25 @@
+{
+  "predictors": {
+    "by_category": {
+      "tide": "Norm_TideRange24",
+      "discharge_lag": "Norm_PowLagDischarge72",
+      "discharge_rolling": "Norm_RollingPowDischarge7",
+      "inflow_lag": "Norm_PowLagInflows96",
+      "inflow_rolling": "Norm_RollingPowInflows2",
+      "stress_continuous": "Norm_ConsecutiveLowInflowHours",
+      "temporal": ["DayOfYear_cos", "DayOfYear_sin"]
+    },
+    "interactions": {
+      "main": "Norm_RollingPowDischarge7_x_DayOfYear_cos"
+    },
+    "all_predictors": ["Norm_TideRange24", "Norm_PowLagDischarge72", "Norm_RollingPowDischarge7", "Norm_PowLagInflows96", "Norm_RollingPowInflows2", "Norm_ConsecutiveLowInflowHours", "DayOfYear_cos", "DayOfYear_sin"],
+    "all_interactions": "Norm_RollingPowDischarge7_x_DayOfYear_cos",
+    "combined": ["Norm_TideRange24", "Norm_PowLagDischarge72", "Norm_RollingPowDischarge7", "Norm_PowLagInflows96", "Norm_RollingPowInflows2", "Norm_ConsecutiveLowInflowHours", "DayOfYear_cos", "DayOfYear_sin", "Norm_RollingPowDischarge7_x_DayOfYear_cos"]
+  },
+  "summary": {
+    "total_predictors": 8,
+    "total_interactions": 1,
+    "categories_with_predictors": ["tide", "discharge_lag", "discharge_rolling", "inflow_lag", "inflow_rolling", "stress_continuous", "temporal"],
+    "selection_method": "systematic_linear_testing"
+  }
+}
