@@ -32,7 +32,6 @@ invisible(
 )
 
 N_TREES <- 1000
-#TOP_N_PREDICTORS <- 5
 
 # Define seeds to test
 seed_list <- c(10, 20, 40, 50, 60)
@@ -153,15 +152,12 @@ for (seed in seed_list) {
    )
 }
 
-# Example: access a plot for a given seed
+
 rf_results[["10"]]$plot
 rf_results[['20']]$plot
 rf_results[['40']]$plot
 rf_results[['50']]$plot
 rf_results[['60']]$plot
-
-
-
 
 final_predictors <- c('DayOfYear', 'Norm_InflowDeficit', 'Norm_PowDischarge')
 
@@ -210,9 +206,6 @@ file_names <- c('CleanFinalModelData')
 write_qs_files(outputs, 'Data/Tidied/Final', file_names, 
                preset = 'archive', format = 'csv')
 
-# Save importance plots
-# ggsave("Outputs/Plots/Phase1_RF/RFVariableImportance.png", 
-#        importance_plot, width = 10, height = 6, dpi = 600)
 
 # Loop over rf_results and save each plot
 for (i in seq_along(rf_results)) {

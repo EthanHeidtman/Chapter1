@@ -19,13 +19,6 @@ renv/python/
 renv/local/
 
 # ======================
-# Stan/cmdstanr
-# ======================
-.cmdstanr/
-cmdstan/
-cmdstan-*.tar.gz
-
-# ======================
 # Session and temporary files
 # ======================
 .httr-oauth
@@ -39,9 +32,10 @@ cmdstan-*.tar.gz
 *.out
 
 # ======================
-# QS files (very large)
+# Large files
 # ======================
 *.qs
+*.json
 
 # ======================
 #  Python Artifacts

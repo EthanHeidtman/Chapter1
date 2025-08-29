@@ -24,11 +24,12 @@ library(scales)
 library(patchwork)
 library(ggh4x)
 source('Scripts/Utilities/ExperimentHelpers.R')
+source('Scripts/Plots/ComparePerformancePlots.R')
 
 DATA_PATH = 'Data/Tidied/Final/CleanFinalModelData.csv'
 FERC_PATH = 'Data/Tidied/Processed/FERCFlowRequirement.csv'
-OUTPUT_PATH = 'Outputs/Experiments/CovarianceModeling'
-PLOT_PATH = 'Outputs/Plots/Phase2_RollingCovarianceModel'
+OUTPUT_PATH = 'Outputs/Experiments/RollingWindowModeling'
+PLOT_PATH = 'Outputs/Plots/Phase2_RollingWindowModel'
 
 # Read in final cleaned model data
 data <- read.csv(DATA_PATH)
@@ -62,10 +63,19 @@ dist_data <- left_join(dist_predictions, data, by = "DateTime")
 dist_data <- dist_data %>%
    relocate(Year, Month, Day, Salinity, .after = DateTime) %>%
    relocate(33, 34, 35, .after = Salinity)
+dist_data <- dist_data %>%
+   mutate(actual_exceedance = Salinity > salinity_threshold)
+
+
+results_dist <- compare_distributions(dist_data)
+print(results_dist$summary)
+print(results_dist$plots$key_metrics)
+print(results_dist$plots$error_rates)
+
 
 # Get threshold screening results
-threshold_results <- load_covariance_results('ThresholdScreening')
-threshold_predictions <- unnest_covariance_results(threshold_results, experiment_col = 'experiment_name')
+threshold_results <- load_results('ThresholdScreening')
+threshold_predictions <- unnest_results(threshold_results, experiment_col = 'experiment_name')
 threshold_predictions <- threshold_predictions %>%
    mutate(
       DateTime = parse_date_time(timestamp, orders = c("Ymd HMS", "Ymd"))
@@ -79,6 +89,17 @@ threshold_data <- left_join(threshold_predictions, data, by = 'DateTime')
 threshold_data <- threshold_data %>%
    relocate(Year, Month, Day, Salinity, .after = DateTime) %>%
    relocate(29, 30, 31, .after = Salinity)
+threshold_data <- threshold_data %>%
+   mutate(actual_exceedance = Salinity > salinity_threshold)
+
+results_threshold <- analyze_natural_threshold_performance(threshold_data)
+print(results_threshold$metrics)
+print(results_threshold$plots$key_metrics)
+print(results_threshold$plots$probability_behavior)
+print(results_threshold$plots$calibration)
+print(results_threshold$plots$task_difficulty)
+print(results_threshold$plots$roc_curve)
+
 
 # Get window size screening results
 window_results <- load_covariance_results('WindowSizeScreening')
