@@ -29,6 +29,8 @@ combine_config <- function(base, overrides) {
 # --- Function to run one experiment ---
 run_one_experiment <- function(experiment_type, experiment_name, base_config) {
    
+   library(jsonlite)
+   
    # Load Python inside worker so reticulate session is fresh
    library(reticulate)
    source_python('Scripts/Modeling/RollingWindowModel.py') 
@@ -70,6 +72,8 @@ run_one_experiment <- function(experiment_type, experiment_name, base_config) {
 
 # ---- Function to load all results from a given experiment type ----
 load_results <- function(experiment_type, base_path = "Outputs/Experiments/RollingWindowModeling") {
+   
+   library(jsonlite)
    
    # Build path to experiment type directory
    experiment_path <- file.path(base_path, experiment_type)

@@ -14,7 +14,7 @@
 # LOAD NECESSARY PACKAGES
 # =============================================================================
 library(reticulate)
-library(jsonlite)
+#library(jsonlite)
 library(dplyr)
 library(lubridate)
 library(purrr)
@@ -69,26 +69,26 @@ distribution_results <- future_map(
 )
 
 # Run threshold experiments in parallel
-threshold_list <- c(0.2, 0.3, 0.5, 0.75, 1.0)
+threshold_list <- c(0.2, 0.3, 0.4, 0.6, 0.75, 1.0)
 threshold_results <- future_map(
    as.character(threshold_list),
    ~ run_one_experiment(
       experiment_name = .x,                        # here .x is the salinity threshold as string
       experiment_type = "ThresholdScreening",
-      base_config = modifyList(base_config, list(salinity_threshold = as.numeric(.x), distribution_family = c('gengamma')))
+      base_config = modifyList(base_config, list(salinity_threshold = as.numeric(.x), distribution_family = c('gpd')))
    ),
    .progress = TRUE,
    .options = furrr_options(seed = TRUE)
 )
 
 # Run rolling window size experiments in parallel
-window_sizes <- c(7, 10, 14, 30)
+window_sizes <- c(7, 10, 14, 30, 45, 60)
 window_results <- future_map(
    as.character(window_sizes),
    ~ run_one_experiment(
       experiment_name = .x,  # here .x is the window size as string
       experiment_type = "WindowSizeScreening",
-      base_config = modifyList(base_config, list(window_length = as.numeric(.x), distribution_family = 'gengamma'))
+      base_config = modifyList(base_config, list(window_length = as.numeric(.x), distribution_family = c('gpd'), salinity_threshold = 0.2))
    ),
    .progress = TRUE,
    .options = furrr_options(seed = TRUE)

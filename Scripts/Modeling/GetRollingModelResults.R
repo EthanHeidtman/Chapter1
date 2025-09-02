@@ -11,20 +11,15 @@
 # =============================================================================
 # LOAD NECESSARY PACKAGES
 # =============================================================================
-library(jsonlite)
 library(dplyr)
 library(purrr)
 library(tidyr)
 library(lubridate)
 library(stringr)
-library(ggplot2)
-library(viridis)
-library(gridExtra)
-library(scales)
-library(patchwork)
-library(ggh4x)
 source('Scripts/Utilities/ExperimentHelpers.R')
-source('Scripts/Plots/ComparePerformancePlots.R')
+source('Scripts/Utilities/SavePlots.R')
+source('Scripts/Plots/ModelScreeningPlots.R')
+source('Scripts/Plots/MultiPanelOverviewPlot.R')
 
 DATA_PATH = 'Data/Tidied/Final/CleanFinalModelData.csv'
 FERC_PATH = 'Data/Tidied/Processed/FERCFlowRequirement.csv'
@@ -66,11 +61,15 @@ dist_data <- dist_data %>%
 dist_data <- dist_data %>%
    mutate(actual_exceedance = Salinity > salinity_threshold)
 
+distribution_results <- plot_model_performance(dist_data, group_label = "Distribution Family")
 
-results_dist <- compare_distributions(dist_data)
-print(results_dist$summary)
-print(results_dist$plots$key_metrics)
-print(results_dist$plots$error_rates)
+filenames <- c('DistributionMetrics.png', 'DistributionProbabilisticMetrics.png', 'DistributionCalibration.png')
+plots <- list(distribution_results$key_metrics_plot, distribution_results$prob_metrics_plot, distribution_results$calibration_plot)
+save_plots(plots, pathname = PLOT_PATH, filenames)
+
+
+
+
 
 
 # Get threshold screening results
@@ -92,13 +91,44 @@ threshold_data <- threshold_data %>%
 threshold_data <- threshold_data %>%
    mutate(actual_exceedance = Salinity > salinity_threshold)
 
-results_threshold <- analyze_natural_threshold_performance(threshold_data)
-print(results_threshold$metrics)
-print(results_threshold$plots$key_metrics)
-print(results_threshold$plots$probability_behavior)
-print(results_threshold$plots$calibration)
-print(results_threshold$plots$task_difficulty)
-print(results_threshold$plots$roc_curve)
+# Generate threshold plots
+threshold_results <- plot_model_performance(threshold_data, group_var = 'salinity_threshold', group_label = 'Salinity Threshold')
+threshold_oct2016 <- plot_time_period_analysis(threshold_data, "2016-10-05", "2016-10-25", title_suffix = "October 2016 Intrusion Event", group_var = 'salinity_threshold')
+threshold_multipanel2 <- plot_multi_panel_overview(threshold_data, start_date = "2016-10-05", end_date = "2016-10-25", group_var = 'salinity_threshold', single_group = '0.2')
+threshold_multipanel3 <- plot_multi_panel_overview(threshold_data, start_date = "2016-10-05", end_date = "2016-10-25", group_var = 'salinity_threshold', single_group = '0.3')
+threshold_multipanel4 <- plot_multi_panel_overview(threshold_data, start_date = "2016-10-05", end_date = "2016-10-25", group_var = 'salinity_threshold', single_group = '0.4')
+threshold_multipanel6 <- plot_multi_panel_overview(threshold_data, start_date = "2016-10-05", end_date = "2016-10-25", group_var = 'salinity_threshold', single_group = '0.6')
+threshold_multipanel75 <- plot_multi_panel_overview(threshold_data, start_date = "2016-10-05", end_date = "2016-10-25", group_var = 'salinity_threshold', single_group = '0.75')
+threshold_multipanel1.0 <- plot_multi_panel_overview(threshold_data, start_date = "2016-10-05", end_date = "2016-10-25", group_var = 'salinity_threshold', single_group = '1')
+
+plots <- list(
+   threshold_results$key_metrics_plot,
+   threshold_results$prob_metrics_plot,
+   threshold_results$calibration_plot,
+   threshold_oct2016,
+   threshold_multipanel2,
+   threshold_multipanel3,
+   threshold_multipanel4,
+   threshold_multipanel6,
+   threshold_multipanel75,
+   threshold_multipanel1.0
+)
+
+filenames <- c(
+   'ThresholdMetrics.png',
+   'ThresholdProbabilisticMetrics.png',
+   'ThresholdCalibration.png',
+   'ThresholdOctober2016.png',
+   'ThresholdMultiPanel2.png',
+   'ThresholdMultiPanel3.png',
+   'ThresholdMultiPanel4.png',
+   'ThresholdMultiPanel6.png',
+   'ThresholdMultiPanel75.png',
+   'ThresholdMultiPanel1.0.png'
+)
+
+save_plots(plots, pathname = PLOT_PATH, filenames, height = 8, width = 10)
+
 
 
 # Get window size screening results
