@@ -227,8 +227,13 @@ model_data <- model_data %>%
    relocate(FERC, Salinity, Discharge, .after = DayOfYear) %>%
    group_by(Year) %>%
    mutate(
+<<<<<<< HEAD
       DayOfYear_sin = sin(2 * pi * DayOfYear / max(DayOfYear)),
       DayOfYear_cos = cos(2 * pi * DayOfYear / max(DayOfYear))
+=======
+      DayOfYear_sin = sin(2 * pi * DayOfYear / 365.25),
+      DayOfYear_cos = cos(2 * pi * DayOfYear / 365.25)
+>>>>>>> 136586b (Remove large files from github and tracking)
    ) %>%
    ungroup() %>%
    relocate(DayOfYear_sin, DayOfYear_cos, .after = DayOfYear)

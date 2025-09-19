@@ -36,6 +36,10 @@ renv/local/
 # ======================
 *.qs
 *.json
+<<<<<<< HEAD
+=======
+*.rds
+>>>>>>> 136586b (Remove large files from github and tracking)
 
 # ======================
 #  Python Artifacts
@@ -49,3 +53,10 @@ __pycache__/
 .envrc
 .conda/
 env/
+<<<<<<< HEAD
+=======
+
+
+# Ignore all DistributionScreening outputs
+Outputs/Experiments/
+>>>>>>> 136586b (Remove large files from github and tracking)

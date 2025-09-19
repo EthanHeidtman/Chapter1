@@ -153,11 +153,19 @@ for (seed in seed_list) {
 }
 
 
+<<<<<<< HEAD
 rf_results[["10"]]$plot
 rf_results[['20']]$plot
 rf_results[['40']]$plot
 rf_results[['50']]$plot
 rf_results[['60']]$plot
+=======
+# rf_results[["10"]]$plot
+# rf_results[['20']]$plot
+# rf_results[['40']]$plot
+# rf_results[['50']]$plot
+# rf_results[['60']]$plot
+>>>>>>> 136586b (Remove large files from github and tracking)
 
 final_predictors <- c('DayOfYear', 'Norm_InflowDeficit', 'Norm_PowDischarge')
 

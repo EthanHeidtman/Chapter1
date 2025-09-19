@@ -34,7 +34,11 @@ data <- data %>%
    ) %>%
    arrange(DateTime) %>%
    distinct(DateTime, .keep_all = TRUE) %>%
+<<<<<<< HEAD
    mutate(across(where(is.numeric), ~ifelse(is.nan(.), NA, .)))
+=======
+   mutate(across(where(is.numeric), ~ifelse(is.nan(.), NA, .))) 
+>>>>>>> 136586b (Remove large files from github and tracking)
 
 # Read in FERC minimum flow requirement 
 ferc <- read.csv(FERC_PATH)
@@ -60,6 +64,10 @@ dist_data <- dist_data %>%
    relocate(33, 34, 35, .after = Salinity)
 dist_data <- dist_data %>%
    mutate(actual_exceedance = Salinity > salinity_threshold)
+<<<<<<< HEAD
+=======
+rm(dist_results, dist_predictions)
+>>>>>>> 136586b (Remove large files from github and tracking)
 
 distribution_results <- plot_model_performance(dist_data, group_label = "Distribution Family")
 
@@ -67,10 +75,126 @@ filenames <- c('DistributionMetrics.png', 'DistributionProbabilisticMetrics.png'
 plots <- list(distribution_results$key_metrics_plot, distribution_results$prob_metrics_plot, distribution_results$calibration_plot)
 save_plots(plots, pathname = PLOT_PATH, filenames)
 
+<<<<<<< HEAD
 
 
 
 
+=======
+make_exceedance_plot <- function(df,
+                                 xvar = "Norm_InflowDeficit",
+                                 yvar = "Norm_PowDischarge",
+                                 keep_range = c("2016-10-01", "2016-10-31"),
+                                 n_per_class = 20000,
+                                 breaks = c(0.05, 0.10, 0.25, 0.50, 0.75, 0.90, 0.99),
+                                 nx = 200, ny = 200,
+                                 seed = 123) {
+   set.seed(seed)
+   
+   # Ensure logical
+   df$actual_exceedance <- as.logical(df$actual_exceedance)
+   
+   # Keep mask for forced range
+   keep_idx <- rep(FALSE, nrow(df))
+   if (!is.null(keep_range) && length(keep_range) == 2) {
+      start_dt <- as.POSIXct(as.Date(keep_range[1]))
+      end_dt   <- as.POSIXct(as.Date(keep_range[2])) + 86399
+      keep_idx <- df$DateTime >= start_dt & df$DateTime <= end_dt
+   }
+   
+   # Pool (exclude forced-inclusion)
+   df_pool <- df[!keep_idx, , drop = FALSE]
+   df_pool <- df_pool[is.finite(df_pool[[xvar]]) &
+                         is.finite(df_pool[[yvar]]) &
+                         !is.na(df_pool$actual_exceedance), , drop = FALSE]
+   
+   # Compute per-class sample sizes
+   class_counts <- df_pool %>%
+      count(actual_exceedance, name = "n_rows") %>%
+      mutate(n_sample = pmin(n_rows, n_per_class))
+   
+   # Balanced sampling
+   sampled <- df_pool %>%
+      inner_join(class_counts, by = "actual_exceedance") %>%
+      group_by(actual_exceedance) %>%
+      slice_sample(n = unique(class_counts$n_sample)) %>%
+      ungroup() %>%
+      select(-n_rows, -n_sample)
+   
+   # Forced keep data
+   keep_data <- df[keep_idx, , drop = FALSE]
+   keep_data <- keep_data[is.finite(keep_data[[xvar]]) &
+                             is.finite(keep_data[[yvar]]) &
+                             !is.na(keep_data$actual_exceedance), , drop = FALSE]
+   
+   # Final scatter data
+   df_plot <- dplyr::distinct(dplyr::bind_rows(sampled, keep_data))
+   
+   # Interpolation data
+   df_interp <- df[, c(xvar, yvar, "exceedance_probability")]
+   df_interp <- df_interp[
+      is.finite(df_interp[[xvar]]) &
+         is.finite(df_interp[[yvar]]) &
+         is.finite(df_interp[["exceedance_probability"]]),
+      , drop = FALSE
+   ]
+   
+   # Grid
+   xo <- seq(min(df_interp[[xvar]]), max(df_interp[[xvar]]), length.out = nx)
+   yo <- seq(min(df_interp[[yvar]]), max(df_interp[[yvar]]), length.out = ny)
+   
+   # Interpolation
+   interp_fit <- akima::interp(
+      x = df_interp[[xvar]],
+      y = df_interp[[yvar]],
+      z = df_interp[["exceedance_probability"]],
+      xo = xo, yo = yo,
+      duplicate = "mean",
+      extrap = FALSE
+   )
+   
+   interp_df <- expand.grid(x = interp_fit$x, y = interp_fit$y)
+   interp_df$z <- as.vector(interp_fit$z)
+   interp_df <- interp_df[is.finite(interp_df$z), , drop = FALSE]
+   
+   # Plot
+   ggplot() +
+      geom_contour_filled(
+         data = interp_df,
+         aes(x = x, y = y, z = z),
+         breaks = breaks,
+         alpha = 0.6
+      ) +
+      geom_contour(
+         data = interp_df,
+         aes(x = x, y = y, z = z),
+         breaks = breaks,
+         linewidth = 0.25,
+         color = "black"
+      ) +
+      geom_point(
+         data = df_plot,
+         aes_string(x = xvar, y = yvar, color = "actual_exceedance"),
+         size = 0.6, alpha = 0.7
+      ) +
+      scale_color_manual(
+         values = c("FALSE" = "blue", "TRUE" = "red"),
+         name = "Actual Exceed."
+      ) +
+      labs(x = xvar, y = yvar, fill = "Pred. prob") +
+      theme_minimal(base_size = 13)
+}
+
+
+
+make_exceedance_plot(
+   dist_data %>% filter(distribution_family == 'gpd'),
+   keep_range = c("2016-10-01", "2016-10-31"),
+   n_per_class = 20000,
+   xvar = 'DayOfYear',
+   yvar = 'Norm_InflowDeficit'
+)
+>>>>>>> 136586b (Remove large files from github and tracking)
 
 # Get threshold screening results
 threshold_results <- load_results('ThresholdScreening')
@@ -90,6 +214,10 @@ threshold_data <- threshold_data %>%
    relocate(29, 30, 31, .after = Salinity)
 threshold_data <- threshold_data %>%
    mutate(actual_exceedance = Salinity > salinity_threshold)
+<<<<<<< HEAD
+=======
+rm(threshold_results, threshold_predictions)
+>>>>>>> 136586b (Remove large files from github and tracking)
 
 # Generate threshold plots
 threshold_results <- plot_model_performance(threshold_data, group_var = 'salinity_threshold', group_label = 'Salinity Threshold')
@@ -130,6 +258,13 @@ filenames <- c(
 save_plots(plots, pathname = PLOT_PATH, filenames, height = 8, width = 10)
 
 
+<<<<<<< HEAD
+=======
+ggplot(threshold_data, aes(x = Norm_InflowDeficit, y = Norm_PowDischarge, color = actual_exceedance)) + 
+   geom_point(na.rm = TRUE)
+
+
+>>>>>>> 136586b (Remove large files from github and tracking)
 
 # Get window size screening results
 window_results <- load_covariance_results('WindowSizeScreening')
