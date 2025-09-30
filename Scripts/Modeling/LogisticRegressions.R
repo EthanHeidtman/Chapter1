@@ -16,12 +16,8 @@ library(tidyr)
 library(lubridate)
 library(stringr)
 library(zoo)
-source('Scripts/Utilities/ExperimentHelpers.R')
-source('Scripts/Utilities/SavePlots.R')
-source('Scripts/Plots/ModelScreeningPlots.R')
-source('Scripts/Plots/MultiPanelModelPlot.R')
-source('Scripts/Plots/EvalLogisticPerformance.R')
-source('Scripts/Plots/FacetLogisticMatrixPlot.r')
+source('Scripts/Modeling/SalinityModel.R')
+source('Scripts/Plots/LRPlottingSuite.R')
 dirs <- c("Scripts/Utilities")
 invisible(
    lapply(dirs, function(dir) {
@@ -32,12 +28,17 @@ invisible(
    })
 )
 
-DATA_PATH = 'Data/Tidied/Final/FinalModelData.qs'
+# DATA_PATH = 'Data/Tidied/Final/FinalModelData.qs'
+# OUTPUT_PATH = 'Outputs/Experiments/Phase2_LogisticRegression'
+# PLOT_PATH = 'Outputs/Plots/Phase2_LogisticRegression'
 
-# DATA_PATH = 'Data/Tidied/Final/CleanFinalModelData.csv'
-# FERC_PATH = 'Data/Tidied/Processed/FERCFlowRequirement.csv'
-OUTPUT_PATH = 'Outputs/Experiments/Phase2_LogisticRegression'
-PLOT_PATH = 'Outputs/Plots/Phase2_LogisticRegression'
+# DATA_PATH = 'Data/Tidied/Final/FinalModelData.qs'
+# OUTPUT_PATH = 'Outputs/Experiments/Phase2_WeightedLR'
+# PLOT_PATH = 'Outputs/Plots/Phase2_WeightedLR'
+
+DATA_PATH = 'Data/Tidied/Final/FinalModelData.qs'
+OUTPUT_PATH = 'Outputs/Experiments/Phase2_GAM'
+PLOT_PATH = 'Outputs/Plots/Phase2_GAM'
 
 data <- read_qs_files(DATA_PATH)
 data <- data %>%
@@ -45,105 +46,169 @@ data <- data %>%
    mutate(Date = as_date(DateTime)) %>%
    relocate(Date, .after = DateTime) %>%
    group_by(Date) %>%
-   summarise(across(c(2 : 13),  ~ mean(.x, na.rm = TRUE))) %>%
-   mutate(RollingInflows = zoo::rollmean(Inflows, k = 90, align = 'right', fill = NA, na.rm = TRUE),
-          RollingPowInflows = zoo::rollmean(PowInflows, k = 90, align = 'right', fill = NA, na.rm = TRUE)) %>%
+   summarise(across(c(2 : 13),  ~ mean(.x, na.rm = TRUE))) %>% # Compute daily mean
+   mutate(LogInflows = log(Inflows),
+          LogDischarge = log(Discharge),
+          RollingInflows = zoo::rollmean(Inflows, k = 90, align = 'right', fill = NA, na.rm = TRUE),
+          RollingPowInflows = zoo::rollmean(PowInflows, k = 90, align = 'right', fill = NA, na.rm = TRUE),
+          RollingLogInflows = zoo::rollmean(LogInflows, k = 90, align = 'right', fill = NA, na.rm = TRUE)) %>%
    mutate(across(where(is.numeric), ~ ifelse(is.nan(.x), NA, .x)))
 
+# lm <- lm(data = data, Salinity ~ LogDischarge + RollingLogInflows + DayOfYear_sin + DayOfYear_cos, na.action = na.exclude)
+# test <- data
+# test$lm_fit <- predict(lm)
+# 
+# lm_predict <- predict(lm, data = data)
+# lm_data <- cbind(data, as.data.frame(lm_predict))
+# 
+# gam <- gam(data = data, Salinity ~ s(LogDischarge) + s(RollingLogInflows) + DayOfYear_sin + DayOfYear_cos + ti(LogDischarge, RollingLogInflows), na.action = na.exclude)
+# test$gam_fit <- predict(gam)
+# 
+# month <- data %>%
+#    group_by(Year, Month) %>%
+#    summarise(across(where(is.numeric), ~ mean(.x, na.rm = TRUE)), .groups = "drop") %>%
+#    # make a Date column for the first day of each month
+#    mutate(Date = as.Date(sprintf("%04d-%02d-01", Year, Month))) %>%
+#    relocate(Date) %>%
+#    mutate(across(where(is.numeric), ~ ifelse(is.nan(.x), NA, .x))) %>%
+#    mutate_if(is.numeric, round, digits = 3)
+# 
+# sal_range  <- range(data$Salinity,   na.rm = TRUE)
+# flow_range <- range(data$LogInflows, na.rm = TRUE)
+# scale_fac  <- diff(sal_range) / diff(flow_range)
+# 
+# ggplot(month, aes(x = Date)) +
+#    # --- Salinity line (left axis) ---
+#    geom_line(aes(y = Salinity), colour = "red") +
+#    
+#    # --- Raw LogInflows (rescaled to left axis) ---
+#    geom_line(
+#       aes(y = LogInflows * scale_fac + sal_range[1] -
+#              flow_range[1] * scale_fac),
+#       colour = "blue", alpha = 0.4
+#    ) +
+#    
+#    # --- LOESS smooth for LogInflows (also rescaled) ---
+#    # geom_smooth(
+#    #    aes(y = LogDischarge * scale_fac + sal_range[1] -
+#    #           flow_range[1] * scale_fac),
+#    #    method = "loess", span = 0.5,
+#    #    se = TRUE, colour = "blue", size = 0.8
+#    # ) +
+#    
+#    # Axes
+#    scale_x_date(date_breaks = "2 months", date_labels = "%b") +
+#    scale_y_continuous(
+#       name = "Salinity (psu)",
+#       sec.axis = sec_axis(
+#          trans = ~ (. - sal_range[1] + flow_range[1] * scale_fac) / scale_fac,
+#          name  = "Log(Inflows)"
+#       )
+#    ) +
+#    facet_wrap(~Year, scales = "free_x") +
+#    theme_bw() +
+#    labs(title = "Havre de Grace Salinity and Conowingo Reservoir Inflows",
+#         x = "Date") + 
+#    theme(plot.title = element_text(size = 16, face = 'bold'),
+#          axis.title = element_text(size = 14, face = 'bold'),
+#          axis.text = element_text(size = 12))
+# 
+# 
+# ggplot(test, aes(x = Date)) +
+#    # --- Salinity line (left axis) ---
+#    geom_line(aes(y = Salinity), colour = "red") +
+#    
+#    # Modeled Salinity
+#    geom_line(aes(y = gam_fit), color = 'black') +
+#    
+#    # --- Raw LogInflows (rescaled to left axis) ---
+#    geom_line(
+#       aes(y = LogInflows * scale_fac + sal_range[1] -
+#              flow_range[1] * scale_fac),
+#       colour = "blue", alpha = 0.4
+#    ) +
+#    
+#    # --- LOESS smooth for LogInflows (also rescaled) ---
+#    geom_smooth(
+#       aes(y = LogDischarge * scale_fac + sal_range[1] -
+#              flow_range[1] * scale_fac),
+#       method = "loess", span = 0.5,
+#       se = TRUE, colour = "blue", size = 0.8
+#    ) +
+#    
+#    # Axes
+#    scale_x_date(date_breaks = "2 months", date_labels = "%b") +
+#    scale_y_continuous(
+#       name = "Salinity (psu)",
+#       sec.axis = sec_axis(
+#          trans = ~ (. - sal_range[1] + flow_range[1] * scale_fac) / scale_fac,
+#          name  = "Log(Inflows)"
+#       )
+#    ) +
+#    facet_wrap(~Year, scales = "free_x") +
+#    theme_bw() +
+#    labs(title = "Havre de Grace Salinity and Conowingo Reservoir Inflows",
+#         x = "Date") + 
+#    theme(plot.title = element_text(size = 16, face = 'bold'),
+#          axis.title = element_text(size = 14, face = 'bold'),
+#          axis.text = element_text(size = 12))
+# 
+# ggplot(test %>% filter(Year == 2016), aes(x = Date)) + 
+#    # --- Salinity line (left axis) ---
+#    geom_line(aes(y = Salinity), colour = "red") +
+#    
+#    # Modeled Salinity
+#    geom_line(aes(y = gam_fit), color = 'black', size = 1) +
+#    
+#    # --- Raw LogInflows (rescaled to left axis) ---
+#    geom_line(aes(y = LogInflows * scale_fac + sal_range[1] -
+#              flow_range[1] * scale_fac),
+#       colour = "blue", alpha = 0.4) +
+#    # --- LOESS smooth for LogInflows (also rescaled) ---
+#    geom_smooth(aes(y = LogInflows * scale_fac + sal_range[1] -
+#              flow_range[1] * scale_fac),
+#       method = "loess", span = 0.5,
+#       se = FALSE, colour = "blue", size = 1) +
+#    # Axes
+#    scale_x_date(date_breaks = "1 month", date_labels = "%b") +
+#    scale_y_continuous(name = "Salinity (psu)", sec.axis = sec_axis(
+#          trans = ~ (. - sal_range[1] + flow_range[1] * scale_fac) / scale_fac,
+#          name  = "Log(Inflows)")) +
+#    theme_bw() +
+#    labs(title = "Havre de Grace Salinity and Conowingo Reservoir Inflows: 2016", x = "Date") + 
+#    theme(plot.title = element_text(size = 16, face = 'bold'),
+#          axis.title = element_text(size = 14, face = 'bold'),
+#          axis.text = element_text(size = 12))
 
-# # Extract legend from *one* plot so it's consistent
-# legend_plot <- create_legend_plot(data_median, grid_df, "Norm_InflowDeficit", "Norm_PowDischarge", prob_breaks) + 
-#    theme(legend.position = 'bottom')
-# legend_plot <- legend_plot +
-#    guides(
-#       fill = guide_legend(),
-#       color = guide_legend()
-#    )
-# legend_grob <- cowplot::get_legend(legend_plot)
-# legend_panel <- cowplot::ggdraw(legend_grob)
 
-run_multiple_lr_analyses <- function(data, 
-                                     output_path = OUTPUT_PATH, 
-                                     plot_path = PLOT_PATH,
-                                     threshold_quantiles = c(0.2, 0.3, 0.4, 0.5, 0.6, 0.7, 0.8, 0.9, 0.95, 0.96, 0.97, 0.98, 0.99, 1.0),
-                                     predictor_combinations = list(
-                                        c('Inflows', 'Discharge', 'DayOfYear_sin', 'DayOfYear_cos'),
-                                        c('PowInflows', 'PowDischarge', 'DayOfYear_sin', 'DayOfYear_cos'),
-                                        c('RollingInflows', 'Discharge', 'DayOfYear_sin', 'DayOfYear_cos'),
-                                        c('RollingInflows', 'PowDischarge', 'DayOfYear_sin', 'DayOfYear_cos'),
-                                        c('RollingPowInflows', 'Discharge', 'DayOfYear_sin', 'DayOfYear_cos'),
-                                        c('RollingPowInflows', 'PowDischarge', 'DayOfYear_sin', 'DayOfYear_cos')
-                                     )) {
-   
-   results_summary <- data.frame()
-   all_results <- list()
-   
-   counter <- 1
-   for (thresh in threshold_quantiles) {
-      for (preds in predictor_combinations) {
-         
-         cat("Running analysis", counter, "- Threshold:", thresh, "Predictors:", paste(preds, collapse = ", "), "\n")
-         
-         # Run the analysis
-         result <- run_logistic_regression_analysis(
-            data = data,
-            threshold_quantile = thresh,
-            other_preds = preds,
-            output_path = output_path,
-            plot_path = plot_path,
-            predictor_vars = c(preds[1 : 2])
-         )
-         
-         # Store results
-         all_results[[counter]] <- result
-         
-         # Add to summary
-         results_summary <- rbind(results_summary, data.frame(
-            run_id = counter,
-            threshold_quantile = thresh,
-            threshold_value = result$threshold_value,
-            predictors = paste(preds, collapse = ", "),
-            folder_name = result$folder_name,
-            stringsAsFactors = FALSE
-         ))
-         
-         counter <- counter + 1
-      }
-   }
-   
-   # Save overall summary
-   write.csv(results_summary, file.path(output_path, "analysis_summary.csv"), row.names = FALSE)
-   saveRDS(all_results, file.path(output_path, "all_results.rds"))
-   
-   return(list(
-      summary = results_summary,
-      all_results = all_results
-   ))
-}
+# Perform LR Model Runs
+#lr_results <- run_multiple_lr_analyses(data, LR = TRUE, GAM = FALSE, weight = 1)
 
+# Weighted LR
+#weighted_lr <- run_multiple_lr_analyses(data, LR = TRUE, GAM = FALSE, weight = 5)
 
-all_results <- run_multiple_lr_analyses(data)
+# Perform GAM Model Runs
+gam_results <- run_multiple_lr_analyses(data, LR = FALSE, GAM = TRUE, weight = 1.5)
+
 
 
 grid_plot <- create_threshold_grid_from_dirs(
-   base_path = "Outputs/Experiments/Phase2_LogisticRegression",
-   folder_pattern = "threshq", 
+   data_path = "Outputs/Experiments/Phase2_GAM/all_results.rds",
+   predictor_combo = "RollingLogInflows_LogDischarge",
+   pred1_col = "RollingLogInflows",
+   pred2_col = "LogDischarge",
+   prob_col = "exceedance_probability",
+   actual_col = "actual_exceedance"
+)
+ggsave(paste0(PLOT_PATH, '/MatrixGridPlot_RollingLogInflows_LogDischarge.png'), grid_plot, width = 15, height = 11, dpi = 600)
+
+grid_plot <- create_threshold_grid_from_dirs(
+   data_path = "Outputs/Experiments/Phase2_GAM/all_results.rds",
    predictor_combo = "RollingPowInflows_PowDischarge",
-   pred1_col = "RollingPowInflows",
+   pred1_col = "RollingInflows",
    pred2_col = "PowDischarge",
    prob_col = "exceedance_probability",
    actual_col = "actual_exceedance"
 )
 ggsave(paste0(PLOT_PATH, '/MatrixGridPlot_RollingPowInflows_PowDischarge.png'), grid_plot, width = 15, height = 11, dpi = 600)
-
-grid_plot <- create_threshold_grid_from_dirs(
-   base_path = "Outputs/Experiments/Phase2_LogisticRegression",
-   folder_pattern = "threshq",  # Changed from "threshq" to catch both formats
-   predictor_combo = "PowInflows_PowDischarge",
-   pred1_col = "PowInflows",
-   pred2_col = "PowDischarge",
-   prob_col = "exceedance_probability",
-   actual_col = "actual_exceedance"
-)
-ggsave(paste0(PLOT_PATH, '/MatrixGridPlot_PowInflows_PowDischarge.png'), grid_plot, width = 15, height = 11, dpi = 600)
 

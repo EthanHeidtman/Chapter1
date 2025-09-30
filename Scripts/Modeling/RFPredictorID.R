@@ -42,9 +42,15 @@ rf_results <- list()
 # Read in model data
 model_data <- as.data.frame(read_qs_files('Data/Tidied/Final/FinalModelData.qs'))
 model_data <- model_data %>%
-   dplyr::select(1 : 5, 'Salinity', 85 : 159) %>%
+   dplyr::select(1 : 5, 'Salinity', 'Discharge' : 70) %>%
    arrange(DateTime) %>%
-   relocate(DayOfYear, .after = Salinity)
+   relocate(DayOfYear, .after = Salinity) %>%
+   mutate(Date = as_date(DateTime)) %>%
+   relocate(Date, .after = DateTime) %>%
+   group_by(Date)
+model_data <- model_data %>%
+   summarise(across(-1, ~ mean(.x, na.rm = TRUE))) %>%
+   mutate(across(where(is.numeric), ~ ifelse(is.nan(.x), NA, .x)))
 
 # Remove columns with >30% missing data
 missing_pct <- colSums(is.na(model_data)) / nrow(model_data) * 100
@@ -153,25 +159,17 @@ for (seed in seed_list) {
 }
 
 
-<<<<<<< HEAD
-rf_results[["10"]]$plot
-rf_results[['20']]$plot
-rf_results[['40']]$plot
-rf_results[['50']]$plot
-rf_results[['60']]$plot
-=======
 # rf_results[["10"]]$plot
 # rf_results[['20']]$plot
 # rf_results[['40']]$plot
 # rf_results[['50']]$plot
 # rf_results[['60']]$plot
->>>>>>> 136586b (Remove large files from github and tracking)
 
-final_predictors <- c('DayOfYear', 'Norm_InflowDeficit', 'Norm_PowDischarge')
-
-# Create clean dataset with selected predictors
-required_cols <- c('DateTime', 'Year', 'Month', 'Day', 'Salinity')
-clean_data <- model_data[, c(required_cols, final_predictors), drop = FALSE]
+# final_predictors <- c('DayOfYear', 'Norm_InflowDeficit', 'Norm_PowDischarge')
+# 
+# # Create clean dataset with selected predictors
+# required_cols <- c('DateTime', 'Year', 'Month', 'Day', 'Salinity')
+# clean_data <- model_data[, c(required_cols, final_predictors), drop = FALSE]
 
 chosen_run <- rf_results[[1]]
 
@@ -209,7 +207,7 @@ write_qs_files(outputs, 'Outputs/Experiments/Phase1_RF', file_names,
                preset = 'archive', format = 'json')
 
 # Save clean data with selected predictors for Phase 2
-outputs <- list(clean_data)
+outputs <- list(model_data)
 file_names <- c('CleanFinalModelData')
 write_qs_files(outputs, 'Data/Tidied/Final', file_names, 
                preset = 'archive', format = 'csv')
@@ -228,7 +226,9 @@ for (i in seq_along(rf_results)) {
       plot = run$plot,
       width = 10,
       height = 6,
-      dpi = 600
+      dpi = 600,
+      device = ragg::agg_png
    )
+   gc()
 }
 

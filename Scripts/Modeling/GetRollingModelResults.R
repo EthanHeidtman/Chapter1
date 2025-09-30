@@ -34,11 +34,7 @@ data <- data %>%
    ) %>%
    arrange(DateTime) %>%
    distinct(DateTime, .keep_all = TRUE) %>%
-<<<<<<< HEAD
-   mutate(across(where(is.numeric), ~ifelse(is.nan(.), NA, .)))
-=======
    mutate(across(where(is.numeric), ~ifelse(is.nan(.), NA, .))) 
->>>>>>> 136586b (Remove large files from github and tracking)
 
 # Read in FERC minimum flow requirement 
 ferc <- read.csv(FERC_PATH)
@@ -64,10 +60,7 @@ dist_data <- dist_data %>%
    relocate(33, 34, 35, .after = Salinity)
 dist_data <- dist_data %>%
    mutate(actual_exceedance = Salinity > salinity_threshold)
-<<<<<<< HEAD
-=======
 rm(dist_results, dist_predictions)
->>>>>>> 136586b (Remove large files from github and tracking)
 
 distribution_results <- plot_model_performance(dist_data, group_label = "Distribution Family")
 
@@ -75,12 +68,7 @@ filenames <- c('DistributionMetrics.png', 'DistributionProbabilisticMetrics.png'
 plots <- list(distribution_results$key_metrics_plot, distribution_results$prob_metrics_plot, distribution_results$calibration_plot)
 save_plots(plots, pathname = PLOT_PATH, filenames)
 
-<<<<<<< HEAD
 
-
-
-
-=======
 make_exceedance_plot <- function(df,
                                  xvar = "Norm_InflowDeficit",
                                  yvar = "Norm_PowDischarge",
@@ -194,7 +182,6 @@ make_exceedance_plot(
    xvar = 'DayOfYear',
    yvar = 'Norm_InflowDeficit'
 )
->>>>>>> 136586b (Remove large files from github and tracking)
 
 # Get threshold screening results
 threshold_results <- load_results('ThresholdScreening')
@@ -214,10 +201,8 @@ threshold_data <- threshold_data %>%
    relocate(29, 30, 31, .after = Salinity)
 threshold_data <- threshold_data %>%
    mutate(actual_exceedance = Salinity > salinity_threshold)
-<<<<<<< HEAD
-=======
+
 rm(threshold_results, threshold_predictions)
->>>>>>> 136586b (Remove large files from github and tracking)
 
 # Generate threshold plots
 threshold_results <- plot_model_performance(threshold_data, group_var = 'salinity_threshold', group_label = 'Salinity Threshold')
@@ -257,14 +242,6 @@ filenames <- c(
 
 save_plots(plots, pathname = PLOT_PATH, filenames, height = 8, width = 10)
 
-
-<<<<<<< HEAD
-=======
-ggplot(threshold_data, aes(x = Norm_InflowDeficit, y = Norm_PowDischarge, color = actual_exceedance)) + 
-   geom_point(na.rm = TRUE)
-
-
->>>>>>> 136586b (Remove large files from github and tracking)
 
 # Get window size screening results
 window_results <- load_covariance_results('WindowSizeScreening')

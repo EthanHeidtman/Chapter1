@@ -175,65 +175,61 @@ mutate(
    CumulativeInflowDeficit14 = zoo::rollsum(InflowDeficit, 24 * 14, fill = NA, align = "right", partial = TRUE, na.rm = TRUE),
    CumulativeInflowDeficit30 = zoo::rollsum(InflowDeficit, 24 * 30, fill = NA, align = "right", partial = TRUE, na.rm = TRUE),
    
-   # Rolling count of low flow hours (frequency of stress)
-   LowInflowHours7 = zoo::rollsum(as.numeric(IsLowInflow), 24 * 7, fill = NA, align = "right", na.rm = TRUE),
-   LowInflowHours14 = zoo::rollsum(as.numeric(IsLowInflow), 24 * 14, fill = NA, align = "right", na.rm = TRUE),
-   LowInflowHours30 = zoo::rollsum(as.numeric(IsLowInflow), 24 * 30, fill = NA, align = "right", na.rm = TRUE),
-   
-   # Time since last flushing flow (system memory)
-   HoursSinceFlush = NA_real_,
-   DaysSinceFlush = NA_real_
+   # # Rolling count of low flow hours (frequency of stress)
+   # LowInflowHours7 = zoo::rollsum(as.numeric(IsLowInflow), 24 * 7, fill = NA, align = "right", na.rm = TRUE),
+   # LowInflowHours14 = zoo::rollsum(as.numeric(IsLowInflow), 24 * 14, fill = NA, align = "right", na.rm = TRUE),
+   # LowInflowHours30 = zoo::rollsum(as.numeric(IsLowInflow), 24 * 30, fill = NA, align = "right", na.rm = TRUE),
+   # 
+   # # Time since last flushing flow (system memory)
+   # HoursSinceFlush = NA_real_,
+   # DaysSinceFlush = NA_real_
    
 ) %>%
    
    # Calculate hours since flushing flow
-   group_by(1) %>%
-   mutate(
-      FlushEvent = cumsum(IsFlushingFlow),
-      HoursSinceFlush = ifelse(IsFlushingFlow, 0, 
-                               row_number() - ifelse(any(IsFlushingFlow), 
-                                                     max(row_number()[IsFlushingFlow & FlushEvent == max(FlushEvent[IsFlushingFlow])]), 
-                                                     0)),
-      DaysSinceFlush = HoursSinceFlush / 24
-   ) %>%
-   ungroup() %>%
-   select(-FlushEvent) %>%
+   # group_by(1) %>%
+   # mutate(
+   #    FlushEvent = cumsum(IsFlushingFlow),
+   #    HoursSinceFlush = ifelse(IsFlushingFlow, 0, 
+   #                             row_number() - ifelse(any(IsFlushingFlow), 
+   #                                                   max(row_number()[IsFlushingFlow & FlushEvent == max(FlushEvent[IsFlushingFlow])]), 
+   #                                                   0)),
+   #    DaysSinceFlush = HoursSinceFlush / 24
+   # ) %>%
+   # ungroup() %>%
+   # select(-FlushEvent) %>%
    
 # =======================================================================================
 # PART 3: DROUGHT-PERSISTENCE METRICS & INDICATORS
 # =======================================================================================
 
-mutate(
-   # Maximum consecutive stress hours in recent periods
-   MaxConsecutiveStress7 = zoo::rollmax(ConsecutiveLowInflowHours, 24 * 7, fill = NA, align = "right", na.rm = TRUE),
-   MaxConsecutiveStress14 = zoo::rollmax(ConsecutiveLowInflowHours, 24 * 14, fill = NA, align = "right", na.rm = TRUE),
-   MaxConsecutiveStress30 = zoo::rollmax(ConsecutiveLowInflowHours, 24 * 30, fill = NA, align = "right", na.rm = TRUE),
-   
-   # Stress frequency (what fraction of time is stressed?)
-   StressFrequency7 = LowInflowHours7 / (24 * 7),
-   StressFrequency14 = LowInflowHours14 / (24 * 14),
-   StressFrequency30 = LowInflowHours30 / (24 * 30),
-   
-   # Standardized Streamflow Index (fit using gamma distribution). Negative = drought, positive = flood
-   SSI7 = compute_ssi(Inflows, datetime = DateTime, window_hours = 24 * 7, distribution = 'gamma'),
-   SSI14 = compute_ssi(Inflows, datetime = DateTime, window_hours = 24 * 14, distribution = 'gamma'),
-   SSI30 = compute_ssi(Inflows, datetime = DateTime, window_hours = 24 * 30, distribution = 'gamma')
-) %>%
+# mutate(
+#    # Maximum consecutive stress hours in recent periods
+#    MaxConsecutiveStress7 = zoo::rollmax(ConsecutiveLowInflowHours, 24 * 7, fill = NA, align = "right", na.rm = TRUE),
+#    MaxConsecutiveStress14 = zoo::rollmax(ConsecutiveLowInflowHours, 24 * 14, fill = NA, align = "right", na.rm = TRUE),
+#    MaxConsecutiveStress30 = zoo::rollmax(ConsecutiveLowInflowHours, 24 * 30, fill = NA, align = "right", na.rm = TRUE),
+#    
+#    # Stress frequency (what fraction of time is stressed?)
+#    StressFrequency7 = LowInflowHours7 / (24 * 7),
+#    StressFrequency14 = LowInflowHours14 / (24 * 14),
+#    StressFrequency30 = LowInflowHours30 / (24 * 30),
+#    
+#    # Standardized Streamflow Index (fit using gamma distribution). Negative = drought, positive = flood
+#    SSI7 = compute_ssi(Inflows, datetime = DateTime, window_hours = 24 * 7, distribution = 'gamma'),
+#    SSI14 = compute_ssi(Inflows, datetime = DateTime, window_hours = 24 * 14, distribution = 'gamma'),
+#    SSI30 = compute_ssi(Inflows, datetime = DateTime, window_hours = 24 * 30, distribution = 'gamma')
+# ) %>%
    
    # Clean up temporary variables
-   select(-c(`1`, where(is.logical), Season, contains('Threshold')))
+   # select(-c(`1`))
+   select(-c(where(is.logical), Season, contains('Threshold')))
  
 model_data <- model_data %>%
    relocate(FERC, Salinity, Discharge, .after = DayOfYear) %>%
    group_by(Year) %>%
    mutate(
-<<<<<<< HEAD
-      DayOfYear_sin = sin(2 * pi * DayOfYear / max(DayOfYear)),
-      DayOfYear_cos = cos(2 * pi * DayOfYear / max(DayOfYear))
-=======
       DayOfYear_sin = sin(2 * pi * DayOfYear / 365.25),
       DayOfYear_cos = cos(2 * pi * DayOfYear / 365.25)
->>>>>>> 136586b (Remove large files from github and tracking)
    ) %>%
    ungroup() %>%
    relocate(DayOfYear_sin, DayOfYear_cos, .after = DayOfYear)

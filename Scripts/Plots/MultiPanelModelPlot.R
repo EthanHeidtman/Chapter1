@@ -94,7 +94,7 @@ create_salinity_exceedance_plot <- function(data,
       theme(axis.ticks.x = element_blank()) + 
       theme(axis.text.x = element_blank())
    
-   # Panel 3+: Predictor Variables
+   # Panel 3: Predictor Variables
    predictor_plots <- list()
    
    # Variable labels mapping
