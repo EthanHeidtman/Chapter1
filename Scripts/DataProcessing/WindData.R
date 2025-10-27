@@ -31,14 +31,14 @@ meteo <- meteo %>%
           Day = day(DateTime)) %>%
    relocate(Year, Month, Day, .after = DateTime)
 
-# ocean <- ocean %>%
-#    mutate(DateTime = make_datetime(YY, MM, DD, hh, mm)) %>%
-#    dplyr::select(-c(YY, MM, DD, hh, mm)) %>%
-#    relocate(DateTime) %>%
-#    mutate(across(
-#       where(is.numeric),
-#       ~ if_else(grepl("^9+\\.?9*$", as.character(.x)), NA_real_, .x)
-#    ))
+ocean <- ocean %>%
+   mutate(DateTime = make_datetime(YY, MM, DD, hh, mm)) %>%
+   dplyr::select(-c(YY, MM, DD, hh, mm)) %>%
+   relocate(DateTime) %>%
+   mutate(across(
+      where(is.numeric),
+      ~ if_else(grepl("^9+\\.?9*$", as.character(.x)), NA_real_, .x)
+   ))
 
 daily <- meteo %>%
    mutate(Date = as_date(DateTime)) %>%

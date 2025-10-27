@@ -29,32 +29,65 @@ library(dplyr)       # For data manipulation
 library(zoo)         # For rolling computation
 library(lubridate)   # For datetime related functions
 
-# Read in final hourly data
-data <- read.csv('Data/Tidied/Processed/HourlyDataFinal.csv', 
-                 colClasses = c('NULL', NA, NA, NA, NA, NA, NA, NA, NA, NA, NA, NA, NA))
+# Directories where data are located
+dir1 <- 'Data/Tidied/Processed/HourlyDataFinal.csv'
+dir2 <- "Data/Raw/Text/SusquehannaBuoy/Meteo"
 
-data <- data %>%
+# Read in hourly discharge and salnity data
+q_sal_data <- read.csv(dir1, 
+                 colClasses = c('NULL', NA, NA, NA, NA, NA, NA, NA, NA, NA, NA, NA, NA))
+q_sal_data <- q_sal_data %>%
    dplyr::select(-c(9, 10)) %>%                              # Remove extra columns
    mutate(DateTime = as_datetime(DateTime)) %>%              # Make dates class datetime
    rename(Tide = Fitted_HdG) %>%
    filter(DateTime < as_datetime('2024-11-01 00:00:00')) %>% # Keep only dates before 
-   mutate(Season = case_when(
-      Month %in% c(12, 1, 2) ~ 'Winter',
-      Month %in% c(3, 4, 5) ~ 'Spring',
-      Month %in% c(6, 7, 8) ~ 'Summer',
-      Month %in% c(9, 10, 11) ~ 'Fall'
+   mutate_if(is.character, as.factor)
+
+# Read in meteorology data, including wind
+meteo <- combine_txt_files(dir2)
+meteo <- meteo %>%
+   mutate(DateTime = make_datetime(YY, MM, DD, hh, mm)) %>%
+   dplyr::select(-c(YY, MM, DD, hh, mm)) %>%
+   relocate(DateTime) %>%
+   mutate(across(
+      where(is.numeric),
+      ~ if_else(grepl("^9+\\.?9*$", as.character(.x)), NA_real_, .x)
    )) %>%
-   mutate_if(is.character, as.factor) %>%
-   relocate(Season, .after = DayOfYear)
+   dplyr::select(1 : 4) %>%
+   mutate(Year = year(DateTime),
+          Month = month(DateTime),
+          Day = day(DateTime)) %>%
+   relocate(Year, Month, Day, .after = DateTime)
+
+# Merge all data into 1 dataset
+data <- merge(q_sal_data, meteo, by = c('DateTime', 'Year', 'Month', 'Day'), all.x = TRUE)
+data <- data %>%
+   filter(Year > 2006 & Year < 2025) %>%
+   mutate_if(is.numeric, round, digits = 2)
+
+rm(meteo, q_sal_data)
+
+# wind <- meteo %>%
+#    mutate(
+#       # Wind direction: convert FROM (meteorological) → TO (mathematical)
+#       theta = (270 - WDIR) * pi / 180,
+#       dx = WSPD * cos(theta),
+#       dy = WSPD * sin(theta)
+#    ) %>%
+#    mutate(Year = year(DateTime),
+#           Month = month(DateTime),
+#           Day = day(DateTime)) %>%
+#    relocate(Year, Month, Day, .after = DateTime)
+
 
 ####################### MODEL DATA PREPARATION PIPELINE ##########################
 
 # Create the model data
 model_data <- data %>%
-   filter(!is.na(Salinity)) %>%                              # Keep only times with available salinity data
+   #filter(!is.na(Salinity)) %>%                              # Keep only times with available salinity data
    
 # =======================================================================================
-# PART 0: BASIC TIDE FEATURES
+# PART 1: TIDE PREDICTORS
 # =======================================================================================
 
 mutate(
@@ -62,20 +95,26 @@ mutate(
    LagTide1 = lag(Tide, 1),
    LagTide2 = lag(Tide, 2),
    LagTide4 = lag(Tide, 4),
+   LagTide6 = lag(Tide, 6),
+   LagTide12 = lag(Tide, 12),
+   LagTide24 = lag(Tide, 24),
    
-   # Basic tidal velocity (rate of change) - key for salt transport
-   TideVelocity = c(NA, diff(Tide) / 0.25), # 15-min intervals, units: m/hr
-   TideVelocity = zoo::rollmean(TideVelocity, k = 3, fill = NA, align = "center"), # Smooth
-   
-   # Flood vs Ebb tide based on velocity
-   IsFloodTide = TideVelocity > 0.01,  # Positive = incoming tide (brings salt)
-   IsEbbTide = TideVelocity < -0.01,   # Negative = outgoing tide (flushes salt)
-   IsSlackTide = abs(TideVelocity) <= 0.01,
-   
-   # Tidal acceleration (change in velocity) - indicates tidal strength
-   TideAcceleration = c(NA, diff(TideVelocity) / 0.25),
+   # # Basic tidal velocity (rate of change) - key for salt transport
+   # TideVelocity = c(NA, diff(Tide) / 0.25), # 15-min intervals, units: m/hr
+   # TideVelocity = zoo::rollmean(TideVelocity, k = 3, fill = NA, align = "center"), # Smooth
+   # 
+   # # Flood vs Ebb tide based on velocity
+   # IsFloodTide = TideVelocity > 0.01,  # Positive = incoming tide (brings salt)
+   # IsEbbTide = TideVelocity < -0.01,   # Negative = outgoing tide (flushes salt)
+   # IsSlackTide = abs(TideVelocity) <= 0.01,
+   # 
+   # # Tidal acceleration (change in velocity) - indicates tidal strength
+   # TideAcceleration = c(NA, diff(TideVelocity) / 0.25),
    
    # Tidal Range Metrics
+   TideRange3 = rollapply(Tide, width = 3,
+                           FUN = function(x) max(x, na.rm = TRUE) - min(x, na.rm = TRUE),
+                           fill = NA, align = "right"),
    TideRange6 = rollapply(Tide, width = 6, 
                           FUN = function(x) max(x, na.rm = TRUE) - min(x, na.rm = TRUE),
                           fill = NA, align = "right"),
@@ -84,8 +123,55 @@ mutate(
                            fill = NA, align = "right"),
    TideRange24 = rollapply(Tide, width = 24,
                            FUN = function(x) max(x, na.rm = TRUE) - min(x, na.rm = TRUE),
+                           fill = NA, align = "right"),
+   TideRange48 = rollapply(Tide, width = 48,
+                           FUN = function(x) max(x, na.rm = TRUE) - min(x, na.rm = TRUE),
                            fill = NA, align = "right")
 ) %>%
+   
+# =======================================================================================
+# PART 2: WIND PREDICTORS
+# =======================================================================================
+
+mutate(
+   # U (east-west) and V (north-south) wind magnitudes
+   direction_radians = WDIR * pi / 180,
+   U = -WSPD * sin(direction_radians), # east-west
+   V = -WSPD * cos(direction_radians), # north-south
+   
+   # Lagged Wind Predictors 
+   LagU1 = lag(U, 1),
+   LagU3 = lag(U, 3),
+   LagU6 = lag(U, 6),
+   LagU10 = lag(U, 10),
+   LagU12 = lag(U, 12),
+   LagU24 = lag(U, 24),
+   LagU36 = lag(U, 36),
+   
+   LagV1 = lag(V, 1),
+   LagV3 = lag(V, 3),
+   LagV6 = lag(V, 6),
+   LagV10 = lag(V, 10),
+   LagV12 = lag(V, 12),
+   LagV24 = lag(V, 24),
+   LagV36 = lag(V, 36),
+   
+   # Rolling Wind Predictors
+   RollingU3 = zoo::rollmean(U, 3, fill = NA, align = "right", na.rm = TRUE),
+   RollingU6 = zoo::rollmean(U, 6, fill = NA, align = "right", na.rm = TRUE),
+   RollingU12 = zoo::rollmean(U, 12, fill = NA, align = "right", na.rm = TRUE),
+   RollingU24 = zoo::rollmean(U, 24, fill = NA, align = "right", na.rm = TRUE),
+   RollingU48 = zoo::rollmean(U, 48, fill = NA, align = "right", na.rm = TRUE),
+   
+   RollingV3 = zoo::rollmean(V, 3, fill = NA, align = "right", na.rm = TRUE),
+   RollingV6 = zoo::rollmean(V, 6, fill = NA, align = "right", na.rm = TRUE),
+   RollingV12 = zoo::rollmean(V, 12, fill = NA, align = "right", na.rm = TRUE),
+   RollingV24 = zoo::rollmean(V, 24, fill = NA, align = "right", na.rm = TRUE),
+   RollingV48 = zoo::rollmean(V, 48, fill = NA, align = "right", na.rm = TRUE),
+   
+
+) %>%
+   select(-c(direction_radians, GST, WDIR, WSPD)) %>%
    
 # =======================================================================================
 # PART 1: BASIC DISCHARGE FEATURES
@@ -103,137 +189,87 @@ mutate(
    LagDischarge72 = lag(Discharge, 72),
    LagDischarge96 = lag(Discharge, 96),
    
-   # Lagged Marietta Inflows (account for residence time and travel)
+   # Lagged Marietta Inflows
    LagInflows12 = lag(Inflows, 12),
    LagInflows24 = lag(Inflows, 24),
    LagInflows48 = lag(Inflows, 48),
    LagInflows72 = lag(Inflows, 72),
    LagInflows96 = lag(Inflows, 96),
+   LagInflows120 = lag(Inflows, 120),
+   LagInflows144 = lag(Inflows, 144),
    
-   # Power Law Transformations (-0.5 determined to be best)
-   # compared to -0.35 and -0.40 and a log transformation of discharge
-   PowDischarge = Discharge ^ (-0.5),
-   PowLagDischarge1 = LagDischarge1 ^ (-0.5),
-   PowLagDischarge3 = LagDischarge3 ^ (-0.5),
-   PowLagDischarge6 = LagDischarge6 ^ (-0.5),
-   PowLagDischarge10 = LagDischarge10 ^ (-0.5),
-   PowLagDischarge12 = LagDischarge12 ^ (-0.5),    
-   PowLagDischarge24 = LagDischarge24 ^ (-0.5),
-   PowLagDischarge36 = LagDischarge36 ^ (-0.5),
-   PowLagDischarge48 = LagDischarge48 ^ (-0.5),
-   PowLagDischarge72 = LagDischarge72 ^ (-0.5),
-   PowLagDischarge96 = LagDischarge96 ^ (-0.5),
-   PowInflows = Inflows ^ (-0.5),
-   PowLagInflows12 = LagInflows12 ^ (-0.5),
-   PowLagInflows24 = LagInflows24 ^ (-0.5),
-   PowLagInflows48 = LagInflows48 ^ (-0.5),        
-   PowLagInflows72 = LagInflows72 ^ (-0.5),
-   PowLagInflows96 = LagInflows96 ^ (-0.5),
+   # Rolling Discharge
+   RollingDischarge3   = zoo::rollmean(Discharge, 3, fill = NA, align = "right", na.rm = TRUE),
+   RollingDischarge6   = zoo::rollmean(Discharge, 6, fill = NA, align = "right", na.rm = TRUE),
+   RollingDischarge12  = zoo::rollmean(Discharge, 12, fill = NA, align = "right", na.rm = TRUE),
+   RollingDischarge24  = zoo::rollmean(Discharge, 24, fill = NA, align = "right", na.rm = TRUE),
+   RollingDischarge48  = zoo::rollmean(Discharge, 48, fill = NA, align = "right", na.rm = TRUE),
    
-   # Rolling Averages (by # of days)
-   RollingPowDischarge0.5 = zoo::rollmean(PowDischarge, 24 * 0.5, fill = NA, align = "right", na.rm = TRUE),
-   RollingPowDischarge1   = zoo::rollmean(PowDischarge, 24 * 1, fill = NA, align = "right", na.rm = TRUE),
-   RollingPowDischarge2   = zoo::rollmean(PowDischarge, 24 * 2, fill = NA, align = "right", na.rm = TRUE),
-   RollingPowDischarge4   = zoo::rollmean(PowDischarge, 24 * 4, fill = NA, align = "right", na.rm = TRUE),
-   RollingPowDischarge7   = zoo::rollmean(PowDischarge, 24 * 7, fill = NA, align = "right", na.rm = TRUE),
-   RollingPowDischarge10  = zoo::rollmean(PowDischarge, 24 * 10, fill = NA, align = "right", na.rm = TRUE),  
-   RollingPowDischarge14  = zoo::rollmean(PowDischarge, 24 * 14, fill = NA, align = "right", na.rm = TRUE),
-   RollingPowInflows1     = zoo::rollmean(PowInflows, 24 * 1, fill = NA, align = "right", na.rm = TRUE),
-   RollingPowInflows2     = zoo::rollmean(PowInflows, 24 * 2, fill = NA, align = "right", na.rm = TRUE),     
-   RollingPowInflows7     = zoo::rollmean(PowInflows, 24 * 7, fill = NA, align = "right", na.rm = TRUE),
-   RollingPowInflows10    = zoo::rollmean(PowInflows, 24 * 10, fill = NA, align = "right", na.rm = TRUE)
-) %>% 
+   # Rolling Inflows (by # of days)
+   RollingInflows0.5 = zoo::rollmean(Inflows, 24 * 0.5, fill = NA, align = "right", na.rm = TRUE),
+   RollingInflows1   = zoo::rollmean(Inflows, 24 * 1, fill = NA, align = "right", na.rm = TRUE),
+   RollingInflows2   = zoo::rollmean(Inflows, 24 * 2, fill = NA, align = "right", na.rm = TRUE),
+   RollingInflows3   = zoo::rollmean(Inflows, 24 * 3, fill = NA, align = "right", na.rm = TRUE),
+   RollingInflows7   = zoo::rollmean(Inflows, 24 * 7, fill = NA, align = "right", na.rm = TRUE),
+   RollingInflows10  = zoo::rollmean(Inflows, 24 * 10, fill = NA, align = "right", na.rm = TRUE),
+   RollingInflows14  = zoo::rollmean(Inflows, 24 * 14, fill = NA, align = "right", na.rm = TRUE),
+   RollingInflows24  = zoo::rollmean(Inflows, 24 * 24, fill = NA, align = "right", na.rm = TRUE),
+   RollingInflows48  = zoo::rollmean(Inflows, 24 * 48, fill = NA, align = "right", na.rm = TRUE),
+   RollingInflows90  = zoo::rollmean(Inflows, 24 * 90, fill = NA, align = "right", na.rm = TRUE),
    
-# =======================================================================================
-# PART 2: STRESS METRICS (Inflow based)
-# =======================================================================================
+   # # Power Law Transformations (-0.5 determined to be best)
+   # # compared to -0.35 and -0.40 and a log transformation of discharge
+   # PowDischarge = Discharge ^ (-0.5),
+   # PowLagDischarge1 = LagDischarge1 ^ (-0.5),
+   # PowLagDischarge3 = LagDischarge3 ^ (-0.5),
+   # PowLagDischarge6 = LagDischarge6 ^ (-0.5),
+   # PowLagDischarge10 = LagDischarge10 ^ (-0.5),
+   # PowLagDischarge12 = LagDischarge12 ^ (-0.5),    
+   # PowLagDischarge24 = LagDischarge24 ^ (-0.5),
+   # PowLagDischarge36 = LagDischarge36 ^ (-0.5),
+   # PowLagDischarge48 = LagDischarge48 ^ (-0.5),
+   # PowLagDischarge72 = LagDischarge72 ^ (-0.5),
+   # PowLagDischarge96 = LagDischarge96 ^ (-0.5),
+   # PowInflows = Inflows ^ (-0.5),
+   # PowLagInflows12 = LagInflows12 ^ (-0.5),
+   # PowLagInflows24 = LagInflows24 ^ (-0.5),
+   # PowLagInflows48 = LagInflows48 ^ (-0.5),        
+   # PowLagInflows72 = LagInflows72 ^ (-0.5),
+   # PowLagInflows96 = LagInflows96 ^ (-0.5),
    
-arrange(DateTime) %>%
-mutate(
+   # # Rolling Averages (by # of days)
+   # RollingPowDischarge0.5 = zoo::rollmean(PowDischarge, 24 * 0.5, fill = NA, align = "right", na.rm = TRUE),
+   # RollingPowDischarge1   = zoo::rollmean(PowDischarge, 24 * 1, fill = NA, align = "right", na.rm = TRUE),
+   # RollingPowDischarge2   = zoo::rollmean(PowDischarge, 24 * 2, fill = NA, align = "right", na.rm = TRUE),
+   # RollingPowDischarge4   = zoo::rollmean(PowDischarge, 24 * 4, fill = NA, align = "right", na.rm = TRUE),
+   # RollingPowDischarge7   = zoo::rollmean(PowDischarge, 24 * 7, fill = NA, align = "right", na.rm = TRUE),
+   # RollingPowDischarge10  = zoo::rollmean(PowDischarge, 24 * 10, fill = NA, align = "right", na.rm = TRUE),  
+   # RollingPowDischarge14  = zoo::rollmean(PowDischarge, 24 * 14, fill = NA, align = "right", na.rm = TRUE),
+   # RollingPowInflows1     = zoo::rollmean(PowInflows, 24 * 1, fill = NA, align = "right", na.rm = TRUE),
+   # RollingPowInflows2     = zoo::rollmean(PowInflows, 24 * 2, fill = NA, align = "right", na.rm = TRUE),     
+   # RollingPowInflows7     = zoo::rollmean(PowInflows, 24 * 7, fill = NA, align = "right", na.rm = TRUE),
+   # RollingPowInflows10    = zoo::rollmean(PowInflows, 24 * 10, fill = NA, align = "right", na.rm = TRUE),
+   # RollingPowInflows12    = zoo::rollmean(PowInflows, 24 * 12, fill = NA, align = "right", na.rm = TRUE),
+   # RollingPowInflows14    = zoo::rollmean(PowInflows, 24 * 14, fill = NA, align = "right", na.rm = TRUE),
    
-   # Define vulnerability thresholds based on natural inflows
-   LowInflowThreshold = quantile(Inflows, 0.50, na.rm = TRUE),     # 50th percentile
-   VeryLowInflowThreshold = quantile(Inflows, 0.25, na.rm = TRUE), # 25th percentile
-   FlushingThreshold = quantile(Inflows, 0.75, na.rm = TRUE),      # 75th percentile
+)
    
-   # Sustained low inflow conditions (key vulnerability indicator)
-   IsLowInflow = Inflows < LowInflowThreshold,
-   IsVeryLowInflow = Inflows < VeryLowInflowThreshold,
-   IsFlushingFlow = Inflows > FlushingThreshold,
-   
-   # Duration of sustained low inflows (system vulnerability builds over time)
-   ConsecutiveLowInflowHours = sequence(rle(IsLowInflow)$lengths) * IsLowInflow,
-   ConsecutiveVeryLowInflowHours = sequence(rle(IsVeryLowInflow)$lengths) * IsVeryLowInflow,
-   
-   # Cumulative inflow deficit (how much flow is missing)
-   InflowDeficit = pmax(0, LowInflowThreshold - Inflows, na.rm = TRUE),
-   InflowDeficit = ifelse(is.na(Inflows), 0, InflowDeficit),  # Set deficit to 0 when inflows are missing
-   
-   # Cumulative stress over multiple time windows
-   CumulativeInflowDeficit3 = zoo::rollsum(InflowDeficit, 24 * 3, fill = NA, align = "right", partial = TRUE, na.rm = TRUE),
-   CumulativeInflowDeficit7 = zoo::rollsum(InflowDeficit, 24 * 7, fill = NA, align = "right", partial = TRUE, na.rm = TRUE),
-   CumulativeInflowDeficit14 = zoo::rollsum(InflowDeficit, 24 * 14, fill = NA, align = "right", partial = TRUE, na.rm = TRUE),
-   CumulativeInflowDeficit30 = zoo::rollsum(InflowDeficit, 24 * 30, fill = NA, align = "right", partial = TRUE, na.rm = TRUE),
-   
-   # # Rolling count of low flow hours (frequency of stress)
-   # LowInflowHours7 = zoo::rollsum(as.numeric(IsLowInflow), 24 * 7, fill = NA, align = "right", na.rm = TRUE),
-   # LowInflowHours14 = zoo::rollsum(as.numeric(IsLowInflow), 24 * 14, fill = NA, align = "right", na.rm = TRUE),
-   # LowInflowHours30 = zoo::rollsum(as.numeric(IsLowInflow), 24 * 30, fill = NA, align = "right", na.rm = TRUE),
-   # 
-   # # Time since last flushing flow (system memory)
-   # HoursSinceFlush = NA_real_,
-   # DaysSinceFlush = NA_real_
-   
-) %>%
-   
-   # Calculate hours since flushing flow
-   # group_by(1) %>%
-   # mutate(
-   #    FlushEvent = cumsum(IsFlushingFlow),
-   #    HoursSinceFlush = ifelse(IsFlushingFlow, 0, 
-   #                             row_number() - ifelse(any(IsFlushingFlow), 
-   #                                                   max(row_number()[IsFlushingFlow & FlushEvent == max(FlushEvent[IsFlushingFlow])]), 
-   #                                                   0)),
-   #    DaysSinceFlush = HoursSinceFlush / 24
-   # ) %>%
-   # ungroup() %>%
-   # select(-FlushEvent) %>%
-   
-# =======================================================================================
-# PART 3: DROUGHT-PERSISTENCE METRICS & INDICATORS
-# =======================================================================================
+# Remove all NaNs and Infinites from computation
+model_data[] <- lapply(model_data, function(x) {
+   x[is.nan(x) | is.infinite(x)] <- NA
+   x
+})
 
-# mutate(
-#    # Maximum consecutive stress hours in recent periods
-#    MaxConsecutiveStress7 = zoo::rollmax(ConsecutiveLowInflowHours, 24 * 7, fill = NA, align = "right", na.rm = TRUE),
-#    MaxConsecutiveStress14 = zoo::rollmax(ConsecutiveLowInflowHours, 24 * 14, fill = NA, align = "right", na.rm = TRUE),
-#    MaxConsecutiveStress30 = zoo::rollmax(ConsecutiveLowInflowHours, 24 * 30, fill = NA, align = "right", na.rm = TRUE),
-#    
-#    # Stress frequency (what fraction of time is stressed?)
-#    StressFrequency7 = LowInflowHours7 / (24 * 7),
-#    StressFrequency14 = LowInflowHours14 / (24 * 14),
-#    StressFrequency30 = LowInflowHours30 / (24 * 30),
-#    
-#    # Standardized Streamflow Index (fit using gamma distribution). Negative = drought, positive = flood
-#    SSI7 = compute_ssi(Inflows, datetime = DateTime, window_hours = 24 * 7, distribution = 'gamma'),
-#    SSI14 = compute_ssi(Inflows, datetime = DateTime, window_hours = 24 * 14, distribution = 'gamma'),
-#    SSI30 = compute_ssi(Inflows, datetime = DateTime, window_hours = 24 * 30, distribution = 'gamma')
-# ) %>%
-   
-   # Clean up temporary variables
-   # select(-c(`1`))
-   select(-c(where(is.logical), Season, contains('Threshold')))
- 
+
 model_data <- model_data %>%
    relocate(FERC, Salinity, Discharge, .after = DayOfYear) %>%
-   group_by(Year) %>%
+   mutate_if(is.numeric, round, digits = 2) %>%
    mutate(
       DayOfYear_sin = sin(2 * pi * DayOfYear / 365.25),
       DayOfYear_cos = cos(2 * pi * DayOfYear / 365.25)
    ) %>%
-   ungroup() %>%
-   relocate(DayOfYear_sin, DayOfYear_cos, .after = DayOfYear)
-   
+   relocate(DayOfYear_sin, DayOfYear_cos, .after = DayOfYear) %>%
+   filter(DateTime > '2008-11-01') # when all instruments are online and working
 
 # Normalize Predictors and Add to model_data
 preds_to_normalize <- colnames(model_data)[which(colnames(model_data) == 'Discharge') : ncol(model_data)] # Starting from the discharge column
