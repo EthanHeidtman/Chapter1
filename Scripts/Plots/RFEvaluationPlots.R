@@ -1,301 +1,3 @@
-# =============================================================================
-# Script Name:    RFPredictorID.R
-# Project:        Chapter1
-# Author:         Ethan Heidtman
-# Date Created:   2025-08-14
-# Last Updated:   2025-08-14
-# Description:    Uses a simple random forest to screen and identify the 3-5 
-#                 most important predictors for salinity prediction. Produces
-#                 basic importance plots and summary detailing the results. Then
-#                 saves the identified predictors and data for the distribution
-#                 fitting in the next phase.
-# =============================================================================
-
-# =============================================================================
-# LOAD NECESSARY PACKAGES
-# =============================================================================
-library(here)
-library(tidyverse)
-library(dplyr)
-library(lubridate)
-library(ranger)
-library(Metrics)
-library(patchwork)
-
-# Source necessary functions and utilities
-dirs <- c("Scripts/Utilities")
-invisible(
-   lapply(dirs, function(dir) {
-      files <- list.files(dir, full.names = TRUE, pattern = "\\.R$", recursive = TRUE)
-      lapply(files, function(f) {
-         sys.source(f, envir = globalenv())
-      })
-   })
-)
-
-# Read in model data
-model_data <- as.data.frame(read_qs_files('Data/Tidied/Final/FinalModelData.qs'))
-model_data <- model_data %>%
-   dplyr::select(1 : 5, 'Salinity', 'Discharge' : 81) %>%
-   arrange(DateTime) %>%
-   #relocate(DayOfYear, .after = Salinity) %>%
-   mutate(Date = as_date(DateTime)) %>%
-   relocate(Date, .after = DateTime) %>%
-   group_by(Date)
-
-
-model_data_4h <- model_data %>%
-   mutate(
-      Hour4 = floor(hour(DateTime) / 4) * 4,
-      Date4h = as.POSIXct(paste(Date, Hour4), format="%Y-%m-%d %H", tz = "UTC")
-   ) %>%
-   group_by(Date4h) %>%
-   summarise(
-      DateTime = first(DateTime),
-      across(Salinity:RollingInflows90, ~ mean(.x, na.rm = TRUE))
-   ) %>%
-   ungroup() %>%
-   mutate(Year = year(DateTime), 
-          Month = month(DateTime),
-          Day = day(DateTime)) %>%
-   relocate(Year, Month, Day, .after = DateTime) %>%
-   mutate_if(is.numeric, round, digits = 3) %>%
-   mutate(across(where(is.numeric), ~ ifelse(is.nan(.x), NA, .x)))
-
-model_data_12h <- model_data %>%
-   mutate(
-      Hour12 = floor(hour(DateTime) / 12) * 12,
-      Date12h = as.POSIXct(paste(Date, Hour12), format="%Y-%m-%d %H", tz = "UTC")
-   ) %>%
-   group_by(Date12h) %>%
-   summarise(
-      DateTime = first(DateTime),
-      across(Salinity:RollingInflows90, ~ mean(.x, na.rm = TRUE))
-   ) %>%
-   ungroup() %>%
-   mutate(Year = year(DateTime), 
-          Month = month(DateTime),
-          Day = day(DateTime)) %>%
-   relocate(Year, Month, Day, .after = DateTime) %>%
-   mutate_if(is.numeric, round, digits = 3) %>%
-   mutate(across(where(is.numeric), ~ ifelse(is.nan(.x), NA, .x)))
-
-model_data_daily <- model_data %>%
-   group_by(Date = as.Date(DateTime)) %>%
-   summarise(
-      DateTime = first(DateTime),
-      across(Salinity:RollingInflows90, ~ mean(.x, na.rm = TRUE))
-   ) %>%
-   ungroup() %>%
-   mutate(Year = year(DateTime), 
-          Month = month(DateTime),
-          Day = day(DateTime)) %>%
-   relocate(Year, Month, Day, .after = DateTime) %>%
-   mutate_if(is.numeric, round, digits = 3) %>%
-   mutate(across(where(is.numeric), ~ ifelse(is.nan(.x), NA, .x)))
-
-
-# # Impute missing data by monthly median
-# start_col <- which(names(model_data) == "Salinity")
-# cols_to_impute <- names(model_data)[start_col:ncol(model_data)]
-# model_data <- model_data %>%
-#    group_by(Month) %>%
-#    mutate(across(all_of(cols_to_impute),
-#                  ~ ifelse(is.na(.x), median(.x, na.rm = TRUE), .x))) %>%
-#    ungroup()
-
-# Make expanding fold CV scheme for RF implementation
-folds_hourly <- make_expanding_folds(model_data)
-folds_4h <- make_expanding_folds(model_data_4h)
-folds_12h <- make_expanding_folds(model_data_12h)
-folds_daily <- make_expanding_folds(model_data_daily)
-
-set.seed(123) # set the random seed
-ntree = 500  # number of trees to make
-mtry = 15     # number of predictors to sample from at each node
-
-calculate_test_importance <- function(rf_model, test_data, response_col, predictor_cols) {
-   
-   # Get baseline predictions and MSE
-   baseline_preds <- predict(rf_model, data = test_data)$predictions
-   baseline_mse <- mean((test_data[[response_col]] - baseline_preds)^2)
-   
-   # Calculate importance for each variable
-   importance_values <- numeric(length(predictor_cols))
-   names(importance_values) <- predictor_cols
-   
-   for (var in predictor_cols) {
-      # Permute this variable
-      test_permuted <- test_data
-      test_permuted[[var]] <- sample(test_permuted[[var]])
-      
-      # Get predictions with permuted variable
-      permuted_preds <- predict(rf_model, data = test_permuted)$predictions
-      permuted_mse <- mean((test_data[[response_col]] - permuted_preds)^2)
-      
-      # Importance = increase in MSE
-      importance_values[var] <- permuted_mse - baseline_mse
-   }
-   
-   return(importance_values)
-}
-
-run_rf_cv <- function(data, folds, response_col, predictor_cols, 
-                                      ntree = 500, mtry = NULL) {
-   
-   # Allow column indices
-   if (is.numeric(response_col)) response_col <- names(data)[response_col]
-   if (is.numeric(predictor_cols)) predictor_cols <- names(data)[predictor_cols]
-   
-   results <- list()
-   
-   for (i in seq_along(folds)) {
-      cat("Running fold", i, "of", length(folds), "...\n")
-      
-      train_idx <- folds[[i]]$train
-      test_idx  <- folds[[i]]$test
-      
-      train_data <- data[train_idx, ]
-      test_data  <- data[test_idx, ]
-      
-      # Remove rows with NA in response
-      train_data <- train_data[!is.na(train_data[[response_col]]), ]
-      test_data  <- test_data[!is.na(test_data[[response_col]]), ]
-      
-      # Skip if no valid data
-      if (nrow(test_data) == 0 | nrow(train_data) == 0) {
-         warning(paste("Fold", i, "has no valid train/test data — skipping"))
-         next
-      }
-      
-      # Monthly median imputation for predictors
-      for (col in predictor_cols) {
-         train_data[[col]] <- ifelse(
-            is.na(train_data[[col]]),
-            ave(train_data[[col]], train_data$Month, FUN = function(x) median(x, na.rm = TRUE)),
-            train_data[[col]]
-         )
-         test_data[[col]] <- ifelse(
-            is.na(test_data[[col]]),
-            ave(train_data[[col]], train_data$Month, FUN = function(x) median(x, na.rm = TRUE))[match(test_data$Month, train_data$Month)],
-            test_data[[col]]
-         )
-      }
-      
-      # Formula
-      rf_formula <- as.formula(
-         paste(response_col, "~", paste(predictor_cols, collapse = " + "))
-      )
-      
-      # Train ranger with OOB importance
-      cat("  Training model...\n")
-      rf_model <- ranger(
-         formula = rf_formula,
-         data = train_data,
-         num.trees = ntree,
-         mtry = mtry,
-         importance = "permutation",  # OOB importance
-         num.threads = 6,
-         write.forest = TRUE
-      )
-      
-      # Predict on test set
-      preds <- predict(rf_model, data = test_data)$predictions
-      obs <- test_data[[response_col]]
-      
-      # Metrics
-      rmse_val <- rmse(obs, preds)
-      mae_val  <- mae(obs, preds)
-      
-      # OOB Variable importance (from training)
-      oob_imp <- data.frame(
-         Variable = names(rf_model$variable.importance),
-         IncMSE_OOB = rf_model$variable.importance,
-         Fold = i,
-         row.names = NULL
-      )
-      
-      # Test set importance
-      cat("  Calculating test set importance...\n")
-      test_imp_values <- calculate_test_importance(rf_model, test_data, 
-                                                   response_col, predictor_cols)
-      
-      test_imp <- data.frame(
-         Variable = names(test_imp_values),
-         IncMSE_Test = test_imp_values,
-         Fold = i,
-         row.names = NULL
-      )
-      
-      # Combine both importance measures
-      combined_imp <- merge(oob_imp, test_imp, by = c("Variable", "Fold"))
-      
-      # Store results
-      results[[i]] <- list(
-         fold = i,
-         train_years = folds[[i]]$train_years,
-         test_years = folds[[i]]$test_years,
-         metrics = data.frame(
-            Fold = i,
-            Train_Years = paste(folds[[i]]$train_years, collapse = "-"),
-            Test_Years = paste(folds[[i]]$test_years, collapse = "-"),
-            RMSE = rmse_val,
-            MAE = mae_val
-         ),
-         importance = combined_imp,
-         importance_oob = oob_imp,
-         importance_test = test_imp
-      )
-   }
-   
-   # Combine results
-   metrics_all <- do.call(rbind, lapply(results, `[[`, "metrics"))
-   importance_all <- do.call(rbind, lapply(results, `[[`, "importance"))
-   importance_oob_all <- do.call(rbind, lapply(results, `[[`, "importance_oob"))
-   importance_test_all <- do.call(rbind, lapply(results, `[[`, "importance_test"))
-   
-   return(list(
-      folds = results,
-      metrics = metrics_all,
-      importance = importance_all,  # Combined (both OOB and Test)
-      importance_oob = importance_oob_all,  # Just OOB
-      importance_test = importance_test_all  # Just Test
-   ))
-}
-
-# Convenience function to compare OOB vs Test importance
-compare_importance_types <- function(importance_df, fold_num = NULL) {
-   
-   if (!is.null(fold_num)) {
-      importance_df <- importance_df %>% filter(Fold == fold_num)
-   }
-   
-   # Calculate correlations by fold
-   cor_by_fold <- importance_df %>%
-      group_by(Fold) %>%
-      summarise(
-         Correlation = cor(IncMSE_OOB, IncMSE_Test, use = "complete.obs"),
-         Spearman = cor(IncMSE_OOB, IncMSE_Test, method = "spearman", use = "complete.obs"),
-         .groups = "drop"
-      )
-   
-   cat("\n=== OOB vs Test Importance Correlation ===\n")
-   print(cor_by_fold)
-   
-   # Overall statistics
-   cat("\nOverall Mean Correlation:", mean(cor_by_fold$Correlation, na.rm = TRUE), "\n")
-   cat("Overall Mean Spearman:", mean(cor_by_fold$Spearman, na.rm = TRUE), "\n")
-   
-   return(cor_by_fold)
-}
-
-# RF results
-# rf_hourly <- run_rf_cv(data = model_data, folds = folds, response_col = 'Salinity', predictor_cols = 8:79, ntree = ntree, mtry = mtry)
-rf_4h <- run_rf_cv(data = model_data_4h, folds = folds_4h, response_col = 'Salinity', predictor_cols = 7:78, ntree = ntree, mtry = mtry)
-rf_12h <- run_rf_cv(data = model_data_12h, folds = folds_12h, response_col = 'Salinity', predictor_cols = 7:78, ntree = ntree, mtry = mtry)
-rf_daily <- run_rf_cv(data = model_data_daily, folds = folds_daily, response_col = 'Salinity', predictor_cols = 7:78, ntree = ntree, mtry = mtry)
-
-
 plot_error_metrics <- function(metrics_df) {
    # Reshape data for plotting
    metrics_long <- metrics_df %>%
@@ -324,7 +26,7 @@ plot_error_metrics <- function(metrics_df) {
    return(p)
 }
 
-plot_error_metrics(rf_daily$metrics)
+plot_error_metrics(rf_hourly$metrics)
 
 plot_rmse_mae_separate <- function(metrics_df) {
    # RMSE plot
@@ -363,7 +65,7 @@ plot_rmse_mae_separate <- function(metrics_df) {
    return(combined)
 }
 
-plot_rmse_mae_separate(rf_daily$metrics)
+plot_rmse_mae_separate(rf_hourly$metrics)
 
 plot_mean_importance <- function(importance_df, top_n = 20) {
    # Calculate mean importance across folds
@@ -392,9 +94,9 @@ plot_mean_importance <- function(importance_df, top_n = 20) {
    return(p)
 }
 
-plot_mean_importance(rf_daily$importance, top_n = 30)
+plot_mean_importance(rf_hourly$importance, top_n = 30)
 
-plot_importance_heatmap <- function(importance_df, top_n = 15) {
+plot_importance_heatmap <- function(importance_df, top_n = 50) {
    # Get top variables by mean importance
    top_vars <- importance_df %>%
       group_by(Variable) %>%
@@ -425,9 +127,9 @@ plot_importance_heatmap <- function(importance_df, top_n = 15) {
    return(p)
 }
 
-plot_importance_heatmap(rf_daily$importance)
+plot_importance_heatmap(rf_hourly$importance, top_n = 90)
 
-plot_importance_trajectories <- function(importance_df, top_n = 10) {
+plot_importance_trajectories <- function(importance_df, top_n = 30) {
    # Get top variables
    top_vars <- importance_df %>%
       group_by(Variable) %>%
@@ -457,7 +159,7 @@ plot_importance_trajectories <- function(importance_df, top_n = 10) {
    return(p)
 }
 
-plot_importance_trajectories(rf_daily$importance, top_n = 20)
+plot_importance_trajectories(rf_hourly$importance, top_n = 20)
 
 plot_fold_comparison <- function(importance_df, metrics_df, 
                                  test_years, top_n = 20) {
@@ -505,7 +207,7 @@ plot_fold_comparison <- function(importance_df, metrics_df,
    return(p)
 }
 
-plot_fold_comparison(rf_daily$importance, rf_daily$metrics, c(2016, 2018, 2020))
+plot_fold_comparison(rf_hourly$importance, rf_hourly$metrics, c(2016, 2018, 2020))
 
 plot_single_fold_detail <- function(importance_df, metrics_df, 
                                     test_year, top_n = 25) {
@@ -546,7 +248,7 @@ plot_single_fold_detail <- function(importance_df, metrics_df,
    return(p)
 }
 
-plot_single_fold_detail(rf_daily$importance, rf_daily$metrics, 2016)
+plot_single_fold_detail(rf_hourly$importance, rf_hourly$metrics, 2016)
 
 plot_anomalous_folds <- function(importance_df, metrics_df, 
                                  metric = "RMSE", n_folds = 3, 
@@ -614,7 +316,7 @@ plot_anomalous_folds <- function(importance_df, metrics_df,
    return(p)
 }
 
-plot_anomalous_folds(rf_daily$importance, rf_daily$metrics)
+plot_anomalous_folds(rf_hourly$importance, rf_hourly$metrics)
 
 compare_fold_to_average <- function(importance_df, test_year, top_n = 20) {
    # Calculate mean importance across all folds
@@ -664,7 +366,7 @@ compare_fold_to_average <- function(importance_df, test_year, top_n = 20) {
    return(p)
 }
 
-compare_fold_to_average(rf_daily$importance, test_year = 2016)
+compare_fold_to_average(rf_hourly$importance, test_year = 2016)
 
 plot_variable_group_trajectories <- function(importance_df, 
                                              pattern, 
@@ -700,7 +402,7 @@ plot_variable_group_trajectories <- function(importance_df,
    return(p)
 }
 
-plot_variable_group_trajectories(rf_daily$importance, pattern = 'U|V', pattern_name = 'Wind Variables')
+plot_variable_group_trajectories(rf_hourly$importance, pattern = 'U|V', pattern_name = 'Wind Variables')
 
 plot_variable_group_heatmap <- function(importance_df, 
                                         pattern, 
@@ -737,7 +439,7 @@ plot_variable_group_heatmap <- function(importance_df,
    return(p)
 }
 
-plot_variable_group_heatmap(rf_daily$importance, pattern = 'U|V', pattern_name = 'Wind Variables')
+plot_variable_group_heatmap(rf_hourly$importance, pattern = 'U|V', pattern_name = 'Wind Variables')
 
 compare_variable_groups <- function(importance_df, 
                                     patterns, 
@@ -839,7 +541,7 @@ plot_variable_rank_stability <- function(importance_df,
    return(p)
 }
 
-plot_variable_rank_stability(rf_daily$importance, pattern = 'U|V', pattern_name = 'Wind Variables')
+plot_variable_rank_stability(rf_hourly$importance, pattern = 'U|V', pattern_name = 'Wind Variables')
 
 summarize_variable_group <- function(importance_df, pattern) {
    # Filter variables matching pattern
@@ -877,7 +579,7 @@ summarize_variable_group <- function(importance_df, pattern) {
    return(summary)
 }
 
-wind_vars <- summarize_variable_group(rf_daily$importance, pattern = 'U|V')
+wind_vars <- summarize_variable_group(rf_hourly$importance, pattern = 'U|V')
 
 plot_oob_vs_test_importance <- function(importance_df, top_n = 20) {
    # Get top variables by mean OOB importance
@@ -919,7 +621,7 @@ plot_oob_vs_test_importance <- function(importance_df, top_n = 20) {
    return(p)
 }
 
-plot_oob_vs_test_importance(rf_daily$importance)
+plot_oob_vs_test_importance(rf_hourly$importance)
 
 plot_importance_correlation <- function(importance_df, fold_num = NULL) {
    
@@ -951,95 +653,5 @@ plot_importance_correlation <- function(importance_df, fold_num = NULL) {
    return(p)
 }
 
-plot_importance_correlation(rf_daily$importance)
-
-plot_importance_disagreement <- function(importance_df, top_n = 15) {
-   # Calculate ranks for each type
-   ranked <- importance_df %>%
-      group_by(Fold) %>%
-      mutate(
-         Rank_OOB = rank(-IncMSE_OOB, ties.method = "first"),
-         Rank_Test = rank(-IncMSE_Test, ties.method = "first"),
-         Rank_Diff = abs(Rank_OOB - Rank_Test)
-      ) %>%
-      ungroup()
-   
-   # Get variables with largest rank disagreements on average
-   disagreement <- ranked %>%
-      group_by(Variable) %>%
-      summarise(Mean_Rank_Diff = mean(Rank_Diff, na.rm = TRUE)) %>%
-      arrange(desc(Mean_Rank_Diff)) %>%
-      slice_head(n = top_n)
-   
-   # Get detailed data for these variables
-   plot_data <- ranked %>%
-      filter(Variable %in% disagreement$Variable) %>%
-      select(Variable, Fold, Rank_OOB, Rank_Test) %>%
-      pivot_longer(cols = c(Rank_OOB, Rank_Test),
-                   names_to = "Type",
-                   values_to = "Rank") %>%
-      mutate(Type = gsub("Rank_", "", Type),
-             Variable = factor(Variable, levels = disagreement$Variable))
-   
-   # Create plot
-   p <- ggplot(plot_data, aes(x = Fold, y = Rank, color = Type, group = Type)) +
-      geom_line(linewidth = 1, alpha = 0.8) +
-      geom_point(size = 2, alpha = 0.7) +
-      facet_wrap(~Variable, scales = "free_y") +
-      scale_y_reverse() +
-      scale_color_manual(values = c("OOB" = "#3498DB", "Test" = "#E74C3C")) +
-      labs(title = "Variables with Largest OOB vs Test Rank Disagreements",
-           subtitle = paste("Top", top_n, "variables by mean rank difference"),
-           x = "Fold",
-           y = "Importance Rank (lower = more important)",
-           color = "Type") +
-      theme_minimal(base_size = 10) +
-      theme(plot.title = element_text(face = "bold", size = 14),
-            legend.position = "bottom",
-            strip.text = element_text(face = "bold", size = 9))
-   
-   return(p)
-}
-
-plot_importance_disagreement(rf_daily$importance)
-
-
-
-
-
-
-
-
-
-
-outputs <- list(screening_results)
-file_names <- c('RF_Predictor_Screening')
-write_qs_files(outputs, 'Outputs/Experiments/Phase1_RF', file_names, 
-               preset = 'archive', format = 'json')
-
-# Save clean data with selected predictors for Phase 2
-outputs <- list(model_data)
-file_names <- c('CleanFinalModelData')
-write_qs_files(outputs, 'Data/Tidied/Final', file_names, 
-               preset = 'archive', format = 'csv')
-
-
-# Loop over rf_results and save each plot
-for (i in seq_along(rf_results)) {
-   run <- rf_results[[i]]
-   
-   # Construct file name using seed
-   file_name <- paste0("Outputs/Plots/Phase1_RF/", "rf_importance_seed_", run$seed, ".png")
-   
-   # Save the plot
-   ggsave(
-      filename = file_name,
-      plot = run$plot,
-      width = 10,
-      height = 6,
-      dpi = 600,
-      device = ragg::agg_png
-   )
-   gc()
-}
+plot_importance_correlation(rf_hourly$importance)
 
