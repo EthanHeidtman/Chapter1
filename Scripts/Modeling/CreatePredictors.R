@@ -69,19 +69,6 @@ data <- data %>%
 
 rm(meteo, q_sal_data, dir1, dir2, dirs)
 
-# wind <- meteo %>%
-#    mutate(
-#       # Wind direction: convert FROM (meteorological) → TO (mathematical)
-#       theta = (270 - WDIR) * pi / 180,
-#       dx = WSPD * cos(theta),
-#       dy = WSPD * sin(theta)
-#    ) %>%
-#    mutate(Year = year(DateTime),
-#           Month = month(DateTime),
-#           Day = day(DateTime)) %>%
-#    relocate(Year, Month, Day, .after = DateTime)
-
-
 ####################### MODEL DATA PREPARATION PIPELINE ##########################
 
 # Create the model data

@@ -88,8 +88,8 @@ run_rf_cv <- function(data, folds, response_col, predictor_cols,
       obs <- test_data[[response_col]]
       
       # Metrics
-      rmse_val <- rmse(obs, preds)
-      mae_val  <- mae(obs, preds)
+      rmse_val <- Metrics::rmse(obs, preds)
+      mae_val  <- Metrics::mae(obs, preds)
       
       # OOB Variable importance (from training)
       oob_imp <- data.frame(

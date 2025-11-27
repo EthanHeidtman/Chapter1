@@ -111,7 +111,7 @@ group_list <- list(
 top_vars <- get_top_vars_by_group(
    importance_df = rf_hourly$importance,
    group_dfs = group_list,
-   n_top = list(inflow = 3, discharge = 2, tide = 2, wind = 2, time = 2),
+   n_top = list(inflow = 2, discharge = 2, tide = 2, wind = 2, time = 2),
    importance_col = "IncMSE_OOB",
    show_importance = TRUE
 )
