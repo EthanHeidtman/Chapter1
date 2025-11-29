@@ -1,5 +1,5 @@
 # =============================================================================
-# Script Name:    RFInitialScreening.R
+# Script Name:    ScreenWithRF.R
 # Project:        Chapter1
 # Author:         Ethan Heidtman
 # Date Created:   2025-08-14
@@ -132,6 +132,11 @@ model_data_screened <- model_data %>%
 objects <- list(model_data_screened)
 file_name <- list('FinalModelDataScreened')
 write_qs_files(objects, 'Data/Tidied/Final', file_name)
+
+# Write output file
+objects <- list(rf_hourly)
+file_name <- list('RFScreening')
+write_qs_files(objects, 'Outputs/Experiments/Models', file_name)
 
 # Clear global environment
 rm(list = ls())
