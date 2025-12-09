@@ -1,12 +1,15 @@
-
-
-
-
-
 fit_gam <- function(data,
                     response = 'Salinity',
                     predictors = NULL,
                     folds = NULL,
+                    
+                    # Response transformation
+                    transform_response = "none",  # "none", "log", "sqrt"
+                    
+                    # Distribution family
+                    family_type = "gaussian",  # "gaussian", "Gamma", "Tweedie"
+                    link = "identity",  # "identity", "log"; auto-set for some families
+                    tweedie_p = 1.5,  # power parameter if using Tweedie
                     
                     # Smoothing parameters by variable type
                     k_flow_range = c(8, 15),
@@ -24,8 +27,9 @@ fit_gam <- function(data,
                     
                     # Weighting
                     use_weights = FALSE,
-                    weight_type = "quadratic",  # "linear", "quadratic", "exponential"
-                    weight_threshold = 0.3,     # start upweighting above this
+                    weight_type = "threshold",
+                    weight_threshold = 0.3,
+                    weight_multiplier = 5,
                     
                     # Basis types
                     basis_default = 'tp',
@@ -37,29 +41,71 @@ fit_gam <- function(data,
                     nthreads = 4,
                     
                     # Tuning control
-                    gam_levels = 3) {  # grid points for k tuning
+                    gam_levels = 3) {
    
    library(mgcv)
    library(dplyr)
    library(purrr)
    
+   # Set up family object
+   gam_family <- switch(
+      family_type,
+      "gaussian" = gaussian(link = link),
+      "Gamma" = Gamma(link = ifelse(link == "identity", "log", link)),
+      "Tweedie" = Tweedie(p = tweedie_p, link = ifelse(link == "identity", "log", link)),
+      stop("Unknown family_type. Use 'gaussian', 'Gamma', or 'Tweedie'")
+   )
+   
    # Prepare data
    data_clean <- data %>%
       mutate(Response = .data[[response]]) %>%
-      select(DateTime, Response, all_of(predictors)) %>%
+      dplyr::select(DateTime, Response, all_of(predictors)) %>%
       drop_na()
+   
+   # Store original response for metrics
+   data_clean$Response_original <- data_clean$Response
+   
+   # Apply transformation if requested
+   if (transform_response == "log") {
+      if (any(data_clean$Response <= 0)) {
+         stop("Cannot log-transform non-positive values. Check your data.")
+      }
+      data_clean$Response <- log(data_clean$Response)
+      cat("Applied log transformation to response.\n")
+      cat("Original range: [", round(min(data_clean$Response_original), 4), ", ",
+          round(max(data_clean$Response_original), 4), "]\n")
+      cat("Log-scale range: [", round(min(data_clean$Response), 4), ", ",
+          round(max(data_clean$Response), 4), "]\n\n")
+      
+   } else if (transform_response == "sqrt") {
+      if (any(data_clean$Response < 0)) {
+         stop("Cannot sqrt-transform negative values. Check your data.")
+      }
+      data_clean$Response <- sqrt(data_clean$Response)
+      cat("Applied sqrt transformation to response.\n\n")
+   }
+   
+   # Check for zeros/negatives if using Gamma
+   if (family_type == "Gamma") {
+      n_zeros <- sum(data_clean$Response <= 0)
+      if (n_zeros > 0) {
+         cat("WARNING: Gamma family requires positive values.\n")
+         cat("Found", n_zeros, "values <= 0. Adding small constant (0.001).\n\n")
+         data_clean <- data_clean %>%
+            mutate(Response = pmax(Response, 0.001))
+      }
+   }
    
    # Create weights
    if (use_weights) {
       data_clean <- data_clean %>%
          mutate(
             weight = case_when(
-               weight_type == "linear" ~ 
-                  pmax(1, Response / weight_threshold),
-               weight_type == "quadratic" ~ 
-                  pmax(1, (Response / weight_threshold)^2),
+               weight_type == "threshold" & Response > weight_threshold ~ weight_multiplier,
+               weight_type == "smooth" ~ 
+                  1 + (weight_multiplier - 1) * plogis((Response - weight_threshold) / 0.1),
                weight_type == "exponential" ~ 
-                  exp(pmax(0, Response - weight_threshold)),
+                  exp(pmax(0, (Response - weight_threshold) / 0.2)),
                TRUE ~ 1
             )
          )
@@ -76,7 +122,13 @@ fit_gam <- function(data,
    
    cat("=== GAM MODEL SETUP ===\n")
    cat("Sample size:", format(nrow(data_clean), big.mark = ","), "\n")
-   cat("Predictors:", length(predictors), "\n\n")
+   cat("Predictors:", length(predictors), "\n")
+   cat("Response transformation:", transform_response, "\n")
+   cat("Family:", family_type, "with", gam_family$link, "link\n")
+   if (family_type == "Tweedie") {
+      cat("Tweedie power parameter:", tweedie_p, "\n")
+   }
+   cat("\n")
    
    # Classify predictors into groups
    flow_vars <- predictors[grepl("Discharge|Inflow", predictors, ignore.case = TRUE)]
@@ -168,14 +220,15 @@ fit_gam <- function(data,
          train_idx <- folds[[j]]$train
          test_idx <- folds[[j]]$test
          
-         train_fold <- data_clean[train_idx, ] %>% select(-DateTime)
-         test_fold <- data_clean[test_idx, ] %>% select(-DateTime)
+         train_fold <- data_clean[train_idx, ] %>% dplyr::select(-DateTime)
+         test_fold <- data_clean[test_idx, ] %>% dplyr::select(-DateTime)
          
-         # Fit BAM
+         # Fit BAM with specified family
          gam_fit <- tryCatch({
             suppressWarnings(
                bam(formula, 
                    data = train_fold,
+                   family = gam_family,
                    method = method,
                    discrete = discrete,
                    nthreads = nthreads)
@@ -193,14 +246,27 @@ fit_gam <- function(data,
             ))
          }
          
-         # Predict
+         # Predict (automatically on response scale)
          preds <- predict(gam_fit, newdata = test_fold, type = "response")
          
+         # Back-transform predictions if needed
+         if (transform_response == "log") {
+            # Get residual variance for bias correction
+            sigma_sq <- summary(gam_fit)$scale
+            # Bias-corrected back-transformation
+            preds_original <- exp(preds + sigma_sq/2)
+         } else if (transform_response == "sqrt") {
+            preds_original <- preds^2
+         } else {
+            preds_original <- preds
+         }
+         
+         # Compute metrics on ORIGINAL scale
          tibble(
             fold = j,
-            rmse = sqrt(mean((test_fold$Response - preds)^2)),
-            rsq = cor(test_fold$Response, preds)^2,
-            mae = mean(abs(test_fold$Response - preds))
+            rmse = sqrt(mean((test_fold$Response_original - preds_original)^2)),
+            rsq = cor(test_fold$Response_original, preds_original)^2,
+            mae = mean(abs(test_fold$Response_original - preds_original))
          )
       })
       
@@ -248,7 +314,8 @@ fit_gam <- function(data,
    start_time <- Sys.time()
    final_gam <- bam(
       final_formula,
-      data = data_clean %>% select(-DateTime),
+      data = data_clean %>% dplyr::select(-DateTime),
+      family = gam_family,
       method = method,
       discrete = discrete,
       nthreads = nthreads,
@@ -264,7 +331,8 @@ fit_gam <- function(data,
    cat("\n")
    
    cat("Deviance explained:", round(summary(final_gam)$dev.expl * 100, 2), "%\n")
-   cat("R-squared (adj):", round(summary(final_gam)$r.sq, 4), "\n\n")
+   cat("R-squared (adj):", round(summary(final_gam)$r.sq, 4), "\n")
+   cat("AIC:", round(AIC(final_gam), 2), "\n\n")
    
    # Check basis dimensions
    cat("=== BASIS DIMENSION CHECK ===\n")
@@ -295,36 +363,48 @@ fit_gam <- function(data,
    
    cat("=== SIGNIFICANT SMOOTH TERMS (p < 0.05) ===\n")
    cat("Count:", nrow(sig_terms), "/", nrow(smooth_info), "\n")
-   print(sig_terms %>% select(term, edf, p_value))
+   print(sig_terms %>% dplyr::select(term, edf, p_value))
    cat("\n")
    
-   # Get fold-level results with best k for compatibility with your plotting
+   # Get fold-level results with best k for compatibility with plotting
    cat("Computing fold-level metrics with best k...\n")
    fold_level_results <- map_dfr(seq_along(folds), function(j) {
       
       train_idx <- folds[[j]]$train
       test_idx <- folds[[j]]$test
       
-      train_fold <- data_clean[train_idx, ] %>% select(-DateTime)
-      test_fold <- data_clean[test_idx, ] %>% select(-DateTime)
+      train_fold <- data_clean[train_idx, ] %>% dplyr::select(-DateTime, -Response_original)
+      test_fold <- data_clean[test_idx, ]
       
       gam_fit <- suppressWarnings(
          bam(final_formula, 
              data = train_fold,
+             family = gam_family,
              method = method,
              discrete = discrete,
              nthreads = nthreads)
       )
       
-      preds <- predict(gam_fit, newdata = test_fold, type = "response")
+      preds <- predict(gam_fit, newdata = test_fold %>% dplyr::select(-DateTime, -Response_original), 
+                       type = "response")
+      
+      # Back-transform predictions if needed
+      if (transform_response == "log") {
+         sigma_sq <- summary(gam_fit)$scale
+         preds_original <- exp(preds + sigma_sq/2)
+      } else if (transform_response == "sqrt") {
+         preds_original <- preds^2
+      } else {
+         preds_original <- preds
+      }
       
       tibble(
          id = paste0("Fold", j),
          .metric = c("rmse", "rsq", "mae"),
          .estimate = c(
-            sqrt(mean((test_fold$Response - preds)^2)),
-            cor(test_fold$Response, preds)^2,
-            mean(abs(test_fold$Response - preds))
+            sqrt(mean((test_fold$Response_original - preds_original)^2)),
+            cor(test_fold$Response_original, preds_original)^2,
+            mean(abs(test_fold$Response_original - preds_original))
          )
       )
    })
@@ -336,39 +416,36 @@ fit_gam <- function(data,
       list(
          fit = list(
             fit = final_gam,
-            formula = final_formula
+            formula = final_formula,
+            family = family_type
          )
       ),
       class = c("workflow", "list")
    )
    
-   # Return results (same structure as your other models)
+   # Return results
    list(
-      tune_results = fold_level_results,  # for compatibility with plotting functions
-      tune_grid = tune_results,           # k tuning results
+      tune_results = fold_level_results,
+      tune_grid = tune_results,
       best_params = tibble(
          k_flow = best_k$k_flow,
          k_physical = best_k$k_physical,
          k_temporal = k_temporal,
-         k_interaction = k_interaction
+         k_interaction = k_interaction,
+         family = family_type,
+         link = gam_family$link,
+         transform = transform_response
       ),
       final_fit = gam_workflow,
       gam_object = final_gam,
       formula = final_formula,
       smooth_info = smooth_info,
-      selected_vars = sig_terms$term,  # significant smooth terms
-      model_type = "gam"
+      selected_vars = sig_terms$term,
+      model_type = "gam",
+      # Store transformation info for prediction
+      transform_info = list(
+         type = transform_response,
+         sigma_sq = if(transform_response == "log") summary(final_gam)$scale else NULL
+      )
    )
 }
-# 
-# # Predict method for GAM workflow
-# predict.workflow <- function(object, new_data, ...) {
-#    if ("fit" %in% names(object$fit)) {
-#       if (inherits(object$fit$fit, "gam")) {
-#          preds <- predict(object$fit$fit, newdata = new_data, type = "response")
-#          return(tibble(.pred = preds))
-#       }
-#    }
-#    # Fall back to tidymodels default for non-GAM workflows
-#    NextMethod()
-# }

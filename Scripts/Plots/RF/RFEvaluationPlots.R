@@ -65,29 +65,77 @@ plot_rmse_mae_separate <- function(metrics_df) {
 }
 
 
-plot_mean_importance <- function(importance_df, top_n = 20) {
-   # Calculate mean importance across folds
+plot_mean_importance <- function(importance_df, top_vars_list, top_n_per_group = 2) {
+   
+   # Extract variable names from each category in top_vars_list
+   top_variables <- c(
+      top_vars_list$inflow$Variable,
+      top_vars_list$discharge$Variable,
+      top_vars_list$tide$Variable,
+      top_vars_list$wind$Variable,
+      top_vars_list$time$Variable
+   )
+   
+   # Calculate mean importance and SD from the full importance_df
    mean_imp <- importance_df %>%
+      filter(Variable %in% top_variables) %>%
       group_by(Variable) %>%
-      summarise(Mean_Importance = mean(IncMSE_OOB, na.rm = TRUE),
-                SD_Importance = sd(IncMSE_OOB, na.rm = TRUE)) %>%
-      arrange(desc(Mean_Importance)) %>%
-      slice_head(n = top_n)
+      summarise(avg_imp = mean(IncMSE_OOB, na.rm = TRUE),
+                sd_imp = sd(IncMSE_OOB, na.rm = TRUE)) %>%
+      ungroup()
+   
+   # Add category labels based on which list each variable came from
+   mean_imp <- mean_imp %>%
+      mutate(Category = case_when(
+         Variable %in% top_vars_list$inflow$Variable ~ "Inflow",
+         Variable %in% top_vars_list$discharge$Variable ~ "Discharge",
+         Variable %in% top_vars_list$tide$Variable ~ "Tide",
+         Variable %in% top_vars_list$wind$Variable ~ "Wind",
+         Variable %in% top_vars_list$time$Variable ~ "Time",
+         TRUE ~ "Other"
+      ))
    
    # Create plot
-   p <- ggplot(mean_imp, aes(x = reorder(Variable, Mean_Importance), 
-                             y = Mean_Importance)) +
-      geom_col(fill = "#2ECC71", alpha = 0.8) +
-      geom_errorbar(aes(ymin = Mean_Importance - SD_Importance,
-                        ymax = Mean_Importance + SD_Importance),
-                    width = 0.3, alpha = 0.6) +
+   p <- ggplot(mean_imp, aes(x = reorder(Variable, avg_imp), y = avg_imp, fill = Category)) +
+      geom_col(alpha = 0.9) +
+      geom_errorbar(aes(ymin = avg_imp - sd_imp,
+                        ymax = avg_imp + sd_imp),
+                    width = 0.3, colour = "gray30", linewidth = 0.5) +
       coord_flip() +
-      labs(title = paste("Top", top_n, "Mean Variable Importance"),
-           subtitle = "Error bars show ±1 SD across folds",
-           x = "Variable",
-           y = "Mean Importance") +
-      theme_minimal(base_size = 12) +
-      theme(plot.title = element_text(face = "bold", size = 14))
+      
+      # Color scheme matching your previous plot
+      scale_fill_manual(values = c(
+         "Inflow" = "#009bba",
+         "Discharge" = "#f58220",
+         "Tide" = "#002030",
+         "Wind" = "#fdb515",
+         "Time" = "gray50"
+      )) +
+      
+      # Labels
+      labs(
+         title = "Variable Importance for Salinity Prediction",
+         subtitle = "Error bars show ±1 SD across folds",
+         x = "Variable",
+         y = "Mean Importance (% Increase in MSE)",
+         fill = "Category"
+      ) +
+      
+      # Theme matching your previous plot
+      theme_bw() +
+      theme(
+         text = element_text(family = "Franklin Gothic ATF"),
+         plot.title = element_text(size = 30, face = 'bold'),
+         plot.subtitle = element_text(size = 28),
+         axis.title.x = element_text(size = 28, face = 'bold'),
+         axis.title.y = element_text(size = 28, face = 'bold'),
+         axis.text.x = element_text(size = 24),
+         axis.text.y = element_text(size = 24),
+         panel.grid.major.y = element_blank(),
+         panel.grid.minor = element_blank(),
+         panel.border = element_rect(colour = "black", fill = NA, linewidth = 1)
+      ) + 
+      theme(legend.position = 'none')
    
    return(p)
 }

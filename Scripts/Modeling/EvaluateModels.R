@@ -33,64 +33,91 @@ invisible(
 
 # Read in model data
 model_data <- as.data.frame(read_qs_files('Data/Tidied/Final/FinalModelDataScreened.qs'))
-model_data <- model_data %>%
-   drop_na
+model_data <- model_data %>% drop_na()
 
-#folds <- make_expanding_folds(model_data, initial_train_length = 5)
+# Discover and load all models (excluding Screening files)
+model_dir <- 'Outputs/Experiments/Models'
+model_files <- list.files(model_dir, pattern = "\\.qs$", full.names = TRUE)
+model_files <- model_files[!grepl("Screening\\.qs$", model_files)]
 
-# Read in model results 
-elastic_linear <- read_qs_files('Outputs/Experiments/Models/ElasticLinearModel.qs')
-lasso_linear <- read_qs_files('Outputs/Experiments/Models/LassoLinearModel.qs')
-ridge_linear <- read_qs_files('Outputs/Experiments/Models/RidgeLinearModel.qs')
-rf <- read_qs_files('Outputs/Experiments/Models/RFModel.qs')
-gam <- read_qs_files('Outputs/Experiments/Models/GamModel.qs')
+# Load models and generate predictions
+predictions <- lapply(model_files, function(file) {
+   model_name <- tools::file_path_sans_ext(basename(file))
+   model_obj <- read_qs_files(file)
+   
+   # Generate prediction based on model structure
+   pred <- tryCatch({
+      if (!is.null(model_obj$gam_object)) {
+         # Check if this is a transformed GAM
+         if (!is.null(model_obj$transform_info) && 
+             model_obj$transform_info$type == "log") {
+            
+            # Predict on log-scale
+            pred_log <- predict(model_obj$gam_object, 
+                                newdata = model_data, 
+                                type = "response")
+            
+            # Back-transform with bias correction
+            sigma_sq <- model_obj$transform_info$sigma_sq
+            pred_original <- exp(pred_log + sigma_sq/2)
+            
+            # Check for extreme values
+            if (any(pred_original > 10, na.rm = TRUE) || 
+                any(is.infinite(pred_original))) {
+               warning(sprintf("Model %s has extreme/infinite predictions - model is unstable", 
+                               model_name))
+            }
+            
+            pred_original
+            
+         } else if (!is.null(model_obj$transform_info) && 
+                    model_obj$transform_info$type == "sqrt") {
+            
+            # Sqrt transformation
+            pred_sqrt <- predict(model_obj$gam_object, 
+                                 newdata = model_data, 
+                                 type = "response")
+            pred_sqrt^2
+            
+         } else {
+            # No transformation
+            predict(model_obj$gam_object, 
+                    newdata = model_data, 
+                    type = "response")
+         }
+      } else {
+         # Use tidymodels final_fit (no transformation handled here)
+         predict(model_obj$final_fit, new_data = model_data)$.pred
+      }
+   }, error = function(e) {
+      warning(sprintf("Failed to predict with model %s: %s", model_name, e$message))
+      rep(NA, nrow(model_data))
+   })
+   
+   setNames(list(pred), model_name)
+})
 
-# Predict gam externally to prevent conflict with tidymodels
-gam_pred <- predict(gam$gam_object, newdata = model_data, type = "response")
+# Add all predictions to model_data
+model_data <- bind_cols(model_data, predictions)
 
-# Use the best model to predict the salinity
-model_data <- model_data %>%
-   mutate(
-      Elastic  = predict(elastic_linear$final_fit, new_data = model_data)$.pred,
-      Lasso    = predict(lasso_linear$final_fit, new_data = model_data)$.pred,
-      Ridge    = predict(ridge_linear$final_fit, new_data = model_data)$.pred,
-      RF       = predict(rf$final_fit, new_data = model_data)$.pred,
-      GAM      = gam_pred
-   ) 
+plot_salinity_with_models(
+   data = model_data,
+   date_range = c('2016-09-15', '2016-10-31'),
+   models = c("GamAllVars", 'GamNoTide', 'GamNoTideNoTime', 'GamNoInflows'),
+   highlight_start = as_datetime("2016-10-09"),
+   highlight_end = as_datetime("2016-10-25"),
+   title = "October 2016 High Salinity Event"
+)
 
-# Evaluate Oct 2016 specifically
-oct_2016 <- model_data %>%
-   filter(DateTime >= as.POSIXct("2016-10-01"),
-          DateTime <= as.POSIXct("2016-10-31"))
+plot_salinity_with_models(
+   data = model_data,
+   date_range = c('2007-01-01', '2007-12-31'),
+   models = c("GamAllVars", 'GamNoTide', 'GamNoTideNoTime', 'GamNoInflows'),
+   title = "October 2016 High Salinity Event"
+)
 
-baseline_comparison <- oct_2016 %>%
-   summarize(
-      across(c(Elastic, Lasso, Ridge, RF, GAM),
-             list(
-                rmse = ~sqrt(mean((Salinity - .x)^2)),
-                peak_error = ~max(Salinity) - max(.x),
-                max_salinity = ~max(.x)
-             ))
-   ) %>%
-   pivot_longer(everything(),
-                names_to = c("model", "metric"),
-                names_sep = "_(?=[^_]+$)") %>%
-   pivot_wider(names_from = metric, values_from = value)
 
-oct_2016 %>%
-   select(DateTime, Salinity, Lasso, RF, GAM) %>%
-   pivot_longer(c(Lasso, GAM, RF), names_to = "model", values_to = "predicted") %>%
-   ggplot(aes(x = DateTime)) +
-   geom_line(aes(y = Salinity), color = "black", linewidth = 1.2) +
-   geom_line(aes(y = predicted, color = model), linewidth = 0.9) +
-   geom_hline(yintercept = 0.5, linetype = "dashed", color = "red") +
-   facet_wrap(~model, ncol = 1) +
-   labs(
-      title = "October 2016 Salinity Event",
-      y = "Salinity (psu)"
-   ) +
-   theme_minimal() +
-   theme(legend.position = "none")
+
 
 # Get fold level metrics
 get_fold_metrics <- function(model_obj, model_name) {
@@ -198,8 +225,8 @@ p4 <- plot_all_metrics_comparison(cv_summary)
 
 # Observed vs predicted
 p5 <- plot_obs_pred(model_data)
-p6 <- plot_obs_pred(model_data, start_date = "2016-01-01", end_date = "2016-12-31")
-p7 <- plot_obs_pred(model_data, models = c("Lasso"))
+p6 <- plot_obs_pred(model_data, start_date = "2007-01-01", end_date = "2024-12-31", models = c('GAM_CONS', 'GAM_AGG', 'GAM_EXTREME', 'GAM_SMOOTH', 'Elastic', 'Ridge'))
+p7 <- plot_obs_pred(model_data, models = c( 'GamAllVars', 'GamNoTide', 'GamNoTideNoTime', 'GamNoInflows'))
 
 # Plot Time series
 p8 <- plot_timeseries(model_data, start_date = "2016-01-01", end_date = "2016-12-31")
@@ -209,10 +236,6 @@ p9 <- plot_timeseries(model_data, show_residuals = TRUE)
 diag_plots <- plot_residual_diagnostics(model_data, "GAM")
 diag_plots$residuals_vs_fitted
 diag_plots$qq_plot
-
-
-
-
 
 
 

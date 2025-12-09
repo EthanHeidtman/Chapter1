@@ -37,37 +37,105 @@ model_data <- model_data %>%
 folds <- make_expanding_folds(model_data, initial_train_length = 5)
 
 # Read in ridge output and get best predictors
-ridge_linear <- read_qs_files('Outputs/Experiments/Models/RidgeLinearModel.qs')
+ridge_linear <- read_qs_files('Outputs/Experiments/Models/Ridge.qs')
 predictors <- ridge_linear$selected_vars
-predictors <- setdiff(predictors, c('RollingV72', 'TideRange48', 'RollingDischarge24')) # Exclude less-important ones
+predictors <- setdiff(predictors, c('TideRange24', 'RollingDischarge24', 'RollingV72')) # Exclude redundant less-important ones
 
-# Fit GAM
-gam <- fit_gam(
+gam1 <- fit_gam(
    data = model_data,
    response = 'Salinity',
    predictors = predictors,
-   folds = folds,
-   k_flow_range = c(15, 30),
-   k_physical_range = c(8, 25),
+   folds = folds, 
+   family_type = 'gaussian',
+   k_flow_range = c(10, 40),
+   k_physical_range = c(5, 30),
    k_temporal = 12,
-   k_interaction = 10,
+   k_interaction = 12,
    interactions = list(
       list(vars = c('RollingInflows90', 'RollingDischarge48')),
       list(vars = c('RollingDischarge48', 'RollingV168')),
-      list(vars = c('RollingDischarge48', 'TideRange24')),
-      list(vars = c('TideRange24', 'RollingV168'))
+      list(vars = c('RollingDischarge48', 'TideRange48')),
+      list(vars = c('RollingV168', 'TideRange48'))
    ),
-   gam_levels = 4,
+   gam_levels = 7,
    nthreads = 4,
-   use_weights = TRUE,
-   weight_type = "quadratic",
-   weight_threshold = 0.4
+   use_weights = FALSE
+)
+
+
+# Remove tide predictors
+predictors <- setdiff(predictors, c('TideRange48'))
+
+gam2 <- fit_gam(
+   data = model_data,
+   response = 'Salinity',
+   predictors = predictors,
+   folds = folds, 
+   family_type = 'gaussian',
+   k_flow_range = c(10, 40),
+   k_physical_range = c(5, 30),
+   k_temporal = 12,
+   k_interaction = 12,
+   interactions = list(
+      list(vars = c('RollingInflows90', 'RollingDischarge48')),
+      list(vars = c('RollingDischarge48', 'RollingV168'))
+   ),
+   gam_levels = 7,
+   nthreads = 4,
+   use_weights = FALSE
+)
+
+
+
+# Remove time predictors
+predictors <- setdiff(predictors, c('DayCos', 'DaySin'))
+
+gam3 <- fit_gam(
+   data = model_data,
+   response = 'Salinity',
+   predictors = predictors,
+   folds = folds, 
+   family_type = 'gaussian',
+   k_flow_range = c(10, 40),
+   k_physical_range = c(5, 30),
+   k_temporal = 12,
+   k_interaction = 12,
+   interactions = list(
+      list(vars = c('RollingInflows90', 'RollingDischarge48')),
+      list(vars = c('RollingDischarge48', 'RollingV168'))
+   ),
+   gam_levels = 7,
+   nthreads = 4,
+   use_weights = FALSE
+)
+
+predictors <- ridge_linear$selected_vars
+predictors <- setdiff(predictors, c('RollingInflows90', 'TideRange24', 'RollingDischarge24', 'RollingV72')) # Exclude redundant less-important ones
+
+gam4 <- fit_gam(
+   data = model_data,
+   response = 'Salinity',
+   predictors = predictors,
+   folds = folds, 
+   family_type = 'gaussian',
+   k_flow_range = c(10, 40),
+   k_physical_range = c(5, 30),
+   k_temporal = 12,
+   k_interaction = 12,
+   interactions = list(
+      list(vars = c('RollingDischarge48', 'RollingV168')),
+      list(vars = c('RollingDischarge48', 'TideRange48')),
+      list(vars = c('RollingV168', 'TideRange48'))
+   ),
+   gam_levels = 7,
+   nthreads = 4,
+   use_weights = FALSE
 )
 
 
 # Write output files
-objects <- list(gam)
-file_names <- list('GamModel')
+objects <- list(gam1, gam2, gam3, gam4)
+file_names <- list('GamAllVars', 'GamNoTide', 'GamNoTideNoTime', 'GamNoInflows')
 write_qs_files(objects, 'Outputs/Experiments/Models', file_names)
 
 # Clear global environment

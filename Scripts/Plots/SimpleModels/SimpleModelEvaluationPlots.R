@@ -14,6 +14,141 @@ library(dplyr)
 library(tidyr)
 library(ggplot2)
 
+plot_salinity_with_models <- function(data, 
+                                      year = NULL,
+                                      date_range = NULL,
+                                      models = NULL,
+                                      highlight_start = NULL,
+                                      highlight_end = NULL,
+                                      epa_line = TRUE,
+                                      title = NULL) {
+   
+   # ---- Styling Parameters ----
+   observed_linewidth <- 0.7
+   model_linewidth <- 0.7
+   observed_alpha <- 0.8
+   model_alpha <- 1.0
+   
+   observed_color <- "#f58220"
+   model_palette <- c("#3b7ea1", "#c4820e", "#6a994e", "#bc4b51", 
+                      "#8338ec", "#fb5607", "#ffbe0b", "#06ffa5")
+   
+   # ---- Filter Data ----
+   if (!is.null(year)) {
+      plot_data <- data %>% filter(Year == year)
+   } else if (!is.null(date_range)) {
+      plot_data <- data %>% 
+         filter(DateTime >= as_datetime(date_range[1]) & 
+                   DateTime <= as_datetime(date_range[2]))
+   } else {
+      plot_data <- data
+   }
+   
+   # ---- Identify Model Columns ----
+   if (is.null(models)) {
+      non_model_cols <- c('DateTime', 'Date', 'Year', 'Month', 'Day', 'DayOfYear', 
+                          'FERC', 'Salinity', 'Inflows', 'LogInflows',
+                          grep('^Rolling|Range|Cos|Sin', names(plot_data), value = TRUE))
+      models <- setdiff(names(plot_data), non_model_cols)
+   }
+   models <- models[models %in% names(plot_data)]
+   
+   # ---- Build Aesthetic Scales ----
+   # Colors
+   color_scale <- c("Observed" = observed_color)
+   for (i in seq_along(models)) {
+      color_scale[models[i]] <- model_palette[i]
+   }
+   
+   # Line widths
+   size_scale <- c("Observed" = observed_linewidth)
+   for (model in models) {
+      size_scale[model] <- model_linewidth
+   }
+   
+   # Transparency
+   alpha_scale <- c("Observed" = observed_alpha)
+   for (model in models) {
+      alpha_scale[model] <- model_alpha
+   }
+   
+   # ---- Reshape Data ----
+   plot_data_long <- plot_data %>%
+      dplyr::select(DateTime, Salinity, all_of(models)) %>%
+      pivot_longer(cols = c(Salinity, all_of(models)), 
+                   names_to = "Series", 
+                   values_to = "Value") %>%
+      mutate(Series = ifelse(Series == "Salinity", "Observed", Series)) %>%
+      mutate(Series = factor(Series, levels = c("Observed", models)))
+   
+   # ---- Initialize Plot ----
+   p <- ggplot(plot_data_long, aes(x = DateTime, y = Value, 
+                                   color = Series, 
+                                   size = Series, 
+                                   alpha = Series))
+   
+   # ---- Add Highlight Rectangle ----
+   if (!is.null(highlight_start) && !is.null(highlight_end)) {
+      p <- p + annotate("rect",
+                        xmin = highlight_start, 
+                        xmax = highlight_end,
+                        ymin = -Inf, 
+                        ymax = Inf,
+                        fill = "#fdb515", 
+                        alpha = 0.2)
+   }
+   
+   # ---- Add EPA Reference Line ----
+   if (epa_line) {
+      p <- p + 
+         geom_hline(yintercept = 0.5, 
+                    color = '#002030', 
+                    linetype = 2) +
+         annotate("text",
+                  x = min(plot_data$DateTime),
+                  y = 0.52,
+                  label = "EPA Secondary Drinking Water Standard for TDS",
+                  hjust = 0,
+                  vjust = 0,
+                  size = 5,
+                  colour = "#002030")
+   }
+   
+   # ---- Add Time Series Lines ----
+   p <- p + geom_line()
+   
+   # ---- Apply Scales ----
+   p <- p + 
+      scale_color_manual(values = color_scale, name = "Model") +
+      scale_size_manual(values = size_scale, guide = "none") +
+      scale_alpha_manual(values = alpha_scale, guide = "none") +
+      scale_y_continuous(name = "Salinity (psu)")
+   
+   # ---- Apply Theme ----
+   p <- p +
+      theme_bw() +
+      labs(title = title %||% "Salinity and Model Predictions", 
+           x = "Date") +
+      theme(
+         text               = element_text(family = "Franklin Gothic ATF"),
+         plot.title         = element_text(size = 30, face = 'bold', color = '#002030'),
+         axis.title.x       = element_text(size = 28, face = 'bold', color = '#002030'),
+         axis.title.y.left  = element_text(size = 28, face = 'bold', colour = "#f58220"),
+         axis.text.y.left   = element_text(colour = "#f58220", size = 24),
+         axis.text.x        = element_text(size = 20),
+         panel.border       = element_rect(colour = '#002030', fill = NA, linewidth = 1),
+         legend.position    = "bottom",
+         legend.title       = element_text(size = 20, face = 'bold'),
+         legend.text        = element_text(size = 16)
+      )
+   
+   return(p)
+}
+
+
+
+
+
 plot_fold_performance <- function(fold_metrics, metric = "rmse") {
    
    metric_labels <- list(
@@ -74,7 +209,7 @@ plot_cv_summary <- function(cv_summary, metric = "rmse") {
 plot_obs_pred <- function(data, 
                           start_date = NULL, 
                           end_date = NULL, 
-                          models = c("Elastic", "Lasso", "Ridge", 'RF', 'GAM'),
+                          models = c("Elastic", "Lasso", "Ridge", 'RF', 'GamAllVars', 'GamNoTide', 'GamNoTideNoTime', 'GamNoInflows'),
                           show_metrics = TRUE,
                           alpha = 0.3,
                           point_size = 0.5) {
@@ -89,15 +224,18 @@ plot_obs_pred <- function(data,
    
    # Reshape for plotting
    plot_data_long <- plot_data %>%
-      select(DateTime, Salinity, Elastic, Lasso, Ridge, RF, GAM) %>%
-      pivot_longer(cols = c(Elastic, Lasso, Ridge, RF, GAM),
+      dplyr::select(DateTime, Salinity, Elastic, Lasso, Ridge, RF, GamAllVars, GamNoTide, GamNoTideNoTime, GamNoInflows) %>%
+      pivot_longer(cols = c(Elastic, Lasso, Ridge, RF, GamAllVars, GamNoTide, GamNoTideNoTime, GamNoInflows),
                    names_to = "model", values_to = "predicted") %>%
       mutate(model = case_when(
          model == "Elastic" ~ "Elastic",
          model == "Lasso" ~ "Lasso",
          model == "Ridge" ~ "Ridge",
          model == 'RF' ~ 'RF',
-         model == 'GAM' ~ 'GAM'
+         model == 'GamAllVars' ~ 'GamAllVars',
+         model == 'GamNoTide' ~ 'GamNoTide',
+         model == 'GamNoTideNoTime' ~ 'GamNoTideNoTime',
+         model == 'GamNoInflows' ~ 'GamNoInflows',
       )) %>%
       filter(model %in% models)
    
