@@ -130,7 +130,7 @@ plot_salinity_with_models <- function(data,
       labs(title = title %||% "Salinity and Model Predictions", 
            x = "Date") +
       theme(
-         text               = element_text(family = "Franklin Gothic ATF"),
+         #text               = element_text(family = "Franklin Gothic ATF"),
          plot.title         = element_text(size = 30, face = 'bold', color = '#002030'),
          axis.title.x       = element_text(size = 28, face = 'bold', color = '#002030'),
          axis.title.y.left  = element_text(size = 28, face = 'bold', colour = "#f58220"),

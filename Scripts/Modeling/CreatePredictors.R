@@ -74,7 +74,7 @@ rm(meteo, q_sal_data, dir1, dir2, dirs)
 # Create the model data
 model_data <- data %>%
    #filter(!is.na(Salinity)) %>%                              # Keep only times with available salinity data
-   
+
 # =======================================================================================
 # PART 1: TIDE PREDICTORS
 # =======================================================================================
@@ -115,8 +115,8 @@ mutate(
 mutate(
    # U (east-west) and V (north-south) wind magnitudes
    direction_radians = WDIR * pi / 180,
-   U = -WSPD * sin(direction_radians), # east-west, cross estuary
-   V = -WSPD * cos(direction_radians), # north-south, along estuary
+   U = -WSPD * sin(direction_radians), # east-west, cross estuary: (+) = wind toward the east, (-) = wind toward the west
+   V = -WSPD * cos(direction_radians), # north-south, along estuary: (+) = wind toward the north, (-) = wind toward the south
    
    # Lagged Wind Predictors 
    LagU1 = lag(U, 1),

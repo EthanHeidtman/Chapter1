@@ -124,7 +124,7 @@ plot_mean_importance <- function(importance_df, top_vars_list, top_n_per_group =
       # Theme matching your previous plot
       theme_bw() +
       theme(
-         text = element_text(family = "Franklin Gothic ATF"),
+         #text = element_text(family = "Franklin Gothic ATF"),
          plot.title = element_text(size = 30, face = 'bold'),
          plot.subtitle = element_text(size = 28),
          axis.title.x = element_text(size = 28, face = 'bold'),

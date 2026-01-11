@@ -17,6 +17,7 @@ library(tidyverse)
 library(dplyr)
 library(lubridate)
 library(ggplot2)
+library(ggthemes)
 
 # Source necessary functions 
 dirs <- c("Scripts/Utilities", 'Scripts/Plots/RF')
@@ -39,14 +40,15 @@ model_data <- model_data %>%
    arrange(DateTime) %>%
    mutate(Date = as_date(DateTime)) %>%
    relocate(Date, .after = DateTime) %>%
-   filter(Date > '2007-03-29') 
+   filter(Date > '2007-03-29') %>%
+   dplyr::select(-contains('Inflows'))
 
 # Group predictors into clusters
-inflow_cluster <- model_data %>% dplyr::select(c('Salinity', contains('Inflows')))
+#inflow_cluster <- model_data %>% dplyr::select(c('Salinity', contains('Inflows')))
 discharge_cluster <- model_data %>% dplyr::select(c('Salinity', contains('Discharge')))
 tide_cluster <- model_data %>% dplyr::select(c('Salinity', contains('Tide')))
 wind_cluster <- model_data %>% dplyr::select(c('Salinity', contains(c('U', 'V', 'Gust', 'Wind'))))
-#time_cluster <- model_data %>% dplyr::select(c('Salinity', contains(c('Sin', 'Cos'))))
+time_cluster <- model_data %>% dplyr::select(c('Salinity', contains(c('Sin', 'Cos'))))
 
 
 # Function to collect the top variables from each group
@@ -93,7 +95,6 @@ get_top_vars_by_group <- function(importance_df, group_dfs, n_top = 2,
 
 # Define the list of groups
 group_list <- list(
-   inflow = inflow_cluster,
    discharge = discharge_cluster,
    tide = tide_cluster,
    wind = wind_cluster
@@ -103,7 +104,7 @@ group_list <- list(
 top_vars <- get_top_vars_by_group(
    importance_df = rf$importance,
    group_dfs = group_list,
-   n_top = list(inflow = 3, discharge = 3, tide = 3, wind = 3),
+   n_top = list(discharge = 3, tide = 3, wind = 3, time = 2),
    importance_col = "IncMSE_OOB",
    show_importance = TRUE
 )

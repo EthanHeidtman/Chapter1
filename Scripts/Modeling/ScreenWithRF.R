@@ -36,10 +36,52 @@ model_data <- model_data %>%
    arrange(DateTime) %>%
    mutate(Date = as_date(DateTime)) %>%
    relocate(Date, .after = DateTime) %>%
-   filter(Date > '2007-03-29') 
+   filter(Date > '2007-03-29') %>%
+   dplyr::select(-contains('Inflows'))
+
+# model_data %>%
+#    mutate(
+#       tide_category = cut(TideRange24, breaks = quantile(TideRange24, c(0, 0.33, 0.67, 1), na.rm = TRUE)),
+#       season = quarter(DateTime)
+#    ) %>%
+#    ggplot(aes(x = RollingDischarge48, y = Salinity)) +
+#    geom_point(alpha = 0.3)
+#    facet_grid(tide_category ~ season) +
+#    geom_hline(yintercept = 0.5, color = "red", linetype = "dashed") +
+#    scale_x_log10() +
+#    scale_y_log10()
+# 
+# model_data %>%
+#    mutate(salinity_regime = case_when(
+#       Salinity < 0.2 ~ "Low (<0.2)",
+#       Salinity < 0.5 ~ "Moderate (0.2-0.5)",
+#       TRUE ~ "High (>0.5)"
+#    )) %>%
+#    ggplot(aes(x = RollingDischarge48, color = salinity_regime)) +
+#    stat_ecdf(size = 1.2) +
+#    scale_x_log10() +
+#    labs(title = "Flow distribution by salinity regime",
+#         x = "Discharge (cfs)", y = "Cumulative probability")
+# 
+# model_data %>%
+#    mutate(is_oct2016 = (year(DateTime) == 2016 & month(DateTime) == 10)) %>%
+#    ggplot(aes(x = DateTime, y = Salinity)) +
+#    geom_line(alpha = 0.5) +
+#    geom_point(data = . %>% filter(is_oct2016), color = "red", size = 2) +
+#    geom_hline(yintercept = 0.5, linetype = "dashed")
+# 
+# # What were the conditions?
+# oct2016_conditions <- model_data %>%
+#    filter(year(DateTime) == 2015) %>%
+#    summarize(
+#       mean_discharge = mean(RollingDischarge48),
+#       mean_tide = mean(TideRange24),
+#       mean_wind = mean(V),  # if you have it
+#       mean_inflow = mean(RollingInflows90)
+#    )
 
 # Group predictors into clusters
-inflow_cluster <- model_data %>% dplyr::select(c('Salinity', contains('Inflows')))
+#inflow_cluster <- model_data %>% dplyr::select(c('Salinity', contains('Inflows')))
 discharge_cluster <- model_data %>% dplyr::select(c('Salinity', contains('Discharge')))
 tide_cluster <- model_data %>% dplyr::select(c('Salinity', contains('Tide')))
 wind_cluster <- model_data %>% dplyr::select(c('Salinity', contains(c('U', 'V', 'Gust', 'Wind'))))
@@ -54,7 +96,7 @@ ntree = 500   # number of trees to create
 mtry = 10     # number of predictors to sample at each node (~ sqrt(predictors))
 
 # Run the RF across expanding window scheme
-rf_hourly <- run_rf_cv(data = model_data, folds = folds_hourly, response_col = 'Salinity', predictor_cols = 9 : 92, ntree = ntree, mtry = mtry)
+rf_hourly <- run_rf_cv(data = model_data, folds = folds_hourly, response_col = 'Salinity', predictor_cols = 9 : ncol(model_data), ntree = ntree, mtry = mtry)
 
 # Function to collect the top variables from each group
 get_top_vars_by_group <- function(importance_df, group_dfs, n_top = 2, 
@@ -100,7 +142,6 @@ get_top_vars_by_group <- function(importance_df, group_dfs, n_top = 2,
 
 # Define the list of groups
 group_list <- list(
-   inflow = inflow_cluster,
    discharge = discharge_cluster,
    tide = tide_cluster,
    wind = wind_cluster,
@@ -111,7 +152,7 @@ group_list <- list(
 top_vars <- get_top_vars_by_group(
    importance_df = rf_hourly$importance,
    group_dfs = group_list,
-   n_top = list(inflow = 2, discharge = 2, tide = 2, wind = 2, time = 2),
+   n_top = list(discharge = 2, tide = 2, wind = 2, time = 2),
    importance_col = "IncMSE_OOB",
    show_importance = TRUE
 )

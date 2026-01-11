@@ -37,7 +37,9 @@ invisible(
 # Read in model data
 model_data <- as.data.frame(read_qs_files('Data/Tidied/Final/FinalModelDataScreened.qs'))
 model_data <- model_data %>%
-   drop_na
+   drop_na %>%
+   dplyr::select(-contains('Inflows'))
+   
 
 # Create expanding folds for cross validation and make into proper form for tidymodels
 folds <- make_expanding_folds(model_data, initial_train_length = 5)

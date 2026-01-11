@@ -18,9 +18,11 @@ library(tidyverse)
 library(tidymodels)
 library(patchwork)
 library(tidyr)
+library(mgcv)
 
 # Source necessary functions 
 source('Scripts/Plots/SimpleModels/SimpleModelEvaluationPlots.R')
+source('Scripts/Plots/MultiPanelModelPlot.R')
 dirs <- c("Scripts/Utilities")
 invisible(
    lapply(dirs, function(dir) {
@@ -33,7 +35,9 @@ invisible(
 
 # Read in model data
 model_data <- as.data.frame(read_qs_files('Data/Tidied/Final/FinalModelDataScreened.qs'))
-model_data <- model_data %>% drop_na()
+model_data <- model_data %>% 
+   drop_na() %>%
+   mutate(LogRollingDischarge24 = log(RollingDischarge24)) 
 
 # Discover and load all models (excluding Screening files)
 model_dir <- 'Outputs/Experiments/Models'
@@ -48,50 +52,55 @@ predictions <- lapply(model_files, function(file) {
    # Generate prediction based on model structure
    pred <- tryCatch({
       if (!is.null(model_obj$gam_object)) {
-         # Check if this is a transformed GAM
-         if (!is.null(model_obj$transform_info) && 
-             model_obj$transform_info$type == "log") {
+         
+         # Extract transformation info
+         transform_info <- model_obj$transform_info
+         family_type <- transform_info$family
+         manual_transform <- transform_info$manual_transform
+         
+         # Predict using type="response" (automatically handles link functions)
+         pred_response <- predict(model_obj$gam_object, 
+                                  newdata = model_data, 
+                                  type = "response")
+         
+         # Back-transform ONLY if Gaussian with manual transformation
+         if (family_type == "gaussian" && manual_transform == "log") {
             
-            # Predict on log-scale
-            pred_log <- predict(model_obj$gam_object, 
-                                newdata = model_data, 
-                                type = "response")
-            
-            # Back-transform with bias correction
-            sigma_sq <- model_obj$transform_info$sigma_sq
-            pred_original <- exp(pred_log + sigma_sq/2)
+            # Back-transform from log scale with bias correction
+            sigma_sq <- transform_info$sigma_sq
+            pred_original <- exp(pred_response + sigma_sq/2)
             
             # Check for extreme values
             if (any(pred_original > 10, na.rm = TRUE) || 
                 any(is.infinite(pred_original))) {
-               warning(sprintf("Model %s has extreme/infinite predictions - model is unstable", 
+               warning(sprintf("Model %s has extreme/infinite predictions - model may be unstable", 
                                model_name))
             }
             
             pred_original
             
-         } else if (!is.null(model_obj$transform_info) && 
-                    model_obj$transform_info$type == "sqrt") {
+         } else if (family_type == "gaussian" && manual_transform == "sqrt") {
             
-            # Sqrt transformation
-            pred_sqrt <- predict(model_obj$gam_object, 
-                                 newdata = model_data, 
-                                 type = "response")
-            pred_sqrt^2
+            # Back-transform from sqrt scale
+            pred_response^2
             
          } else {
-            # No transformation
-            predict(model_obj$gam_object, 
-                    newdata = model_data, 
-                    type = "response")
+            # For Gamma/Tweedie: type="response" already gives original scale
+            # For Gaussian with no transform: already on original scale
+            pred_response
          }
-      } else {
-         # Use tidymodels final_fit (no transformation handled here)
+         
+      } else if (!is.null(model_obj$final_fit)) {
+         # Fallback to tidymodels structure if gam_object doesn't exist
          predict(model_obj$final_fit, new_data = model_data)$.pred
+         
+      } else {
+         stop("Model object missing both gam_object and final_fit")
       }
+      
    }, error = function(e) {
       warning(sprintf("Failed to predict with model %s: %s", model_name, e$message))
-      rep(NA, nrow(model_data))
+      rep(NA_real_, nrow(model_data))
    })
    
    setNames(list(pred), model_name)
@@ -103,7 +112,9 @@ model_data <- bind_cols(model_data, predictions)
 plot_salinity_with_models(
    data = model_data,
    date_range = c('2016-09-15', '2016-10-31'),
-   models = c("GamAllVars", 'GamNoTide', 'GamNoTideNoTime', 'GamNoInflows'),
+   models = c('Gam10',      # Gamma, log discharge
+              'Gam11', 'Gam12', 'Gam13', 'Gam14', 'Gam15',  # Gaussian, raw discharge,
+              'Gam16', 'Gam17', 'Gam18', 'Gam19', 'Gam20'),
    highlight_start = as_datetime("2016-10-09"),
    highlight_end = as_datetime("2016-10-25"),
    title = "October 2016 High Salinity Event"
@@ -111,11 +122,21 @@ plot_salinity_with_models(
 
 plot_salinity_with_models(
    data = model_data,
-   date_range = c('2007-01-01', '2007-12-31'),
-   models = c("GamAllVars", 'GamNoTide', 'GamNoTideNoTime', 'GamNoInflows'),
+   date_range = c('2016-01-01', '2020-12-31'),
+   models = c('Gam1', 'Gam2', 'Gam3', 'Gam4', 'Gam5', 'Gam6', 'Gam7', 'Gam8', 'Gam9', 'Gam10'),
    title = "October 2016 High Salinity Event"
 )
 
+
+create_salinity_predictor_plot(
+   data = model_data,
+   date_range = c('2016-09-30', '2016-10-31'),
+   models = c('Gam1', 'Gam2', 'Gam3', 'Gam4', 'Gam5', 'Gam6', 'Gam7', 'Gam8', 'Gam9', 'Gam10'),
+   predictors = c('LogRollingDischarge24', 'TideRange24', 'RollingV168', 'RollingU168'),
+   highlight_start = as_datetime("2016-10-01"),
+   highlight_end = as_datetime("2016-10-31"),
+   title = "October 2016 Saltwater Intrusion Event"
+)
 
 
 
