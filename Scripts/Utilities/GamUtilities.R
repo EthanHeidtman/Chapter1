@@ -1,30 +1,140 @@
+create_ar_start <- function(datetime_vec, max_gap_hours = NULL, max_gap_days = NULL) {
+   
+   is_posix <- inherits(datetime_vec, "POSIXct")
+   is_date <- inherits(datetime_vec, "Date")
+   
+   if (!is_posix && !is_date) {
+      stop("datetime_vec must be POSIXct or Date")
+   }
+   
+   # Set defaults based on input type
+   if (is_posix && is.null(max_gap_hours)) {
+      max_gap_hours <- 2
+   }
+   if (is_date && is.null(max_gap_days)) {
+      max_gap_days <- 1
+   }
+   
+   if (!all(diff(datetime_vec) > 0)) {
+      stop("Datetimes must be sorted in increasing order")
+   }
+   
+   if (is_posix) {
+      if (is.null(max_gap_hours)) {
+         stop("max_gap_hours must be specified for POSIXct input")
+      }
+      time_diffs <- c(Inf, as.numeric(diff(datetime_vec), units = "hours"))
+      threshold <- max_gap_hours
+   } else {
+      if (is.null(max_gap_days)) {
+         stop("max_gap_days must be specified for Date input")
+      }
+      time_diffs <- c(Inf, as.numeric(diff(datetime_vec)))
+      threshold <- max_gap_days
+   }
+   
+   ar_start <- time_diffs > threshold
+   ar_start[1] <- TRUE
+   
+   return(ar_start)
+}
+
+# Function to calculate initial rho for autocorrelation 
+calculate_rho_from_residuals <- function(model_object, ar_start) {
+   
+   residuals <- residuals(model_object)
+   
+   if (length(residuals) != length(ar_start)) {
+      stop("Length mismatch: residuals (", length(residuals), 
+           ") vs ar_start (", length(ar_start), ")")
+   }
+   
+   breaks <- which(ar_start)
+   n_segments <- length(breaks)
+   
+   rho_estimates <- numeric(n_segments)
+   segment_lengths <- numeric(n_segments)
+   
+   
+   for (i in 1:n_segments) {
+      start_idx <- breaks[i]
+      end_idx <- if (i < n_segments) breaks[i + 1] - 1 else length(residuals)
+      
+      segment <- residuals[start_idx:end_idx]
+      n_obs <- length(segment)
+      segment_lengths[i] <- n_obs
+      
+      if (n_obs >= 10) {
+         # FIXED: Use proper indexing
+         lagged <- segment[-length(segment)]  # y[1:(n-1)]
+         current <- segment[-1]                # y[2:n]
+         
+         rho_estimates[i] <- cor(current, lagged, use = "complete.obs")
+         
+      } else {
+         rho_estimates[i] <- NA
+         if (i <= 5) {
+            
+         }
+      }
+   }
+   
+   # Remove invalid
+   valid <- !is.na(rho_estimates) & is.finite(rho_estimates)
+   
+   
+   # Weighted average
+   weighted_rho <- weighted.mean(rho_estimates[valid], segment_lengths[valid])
+   weighted_rho <- max(min(weighted_rho, 0.95), -0.95)
+   
+   # cat("\nRho statistics across", sum(valid), "valid segments:\n")
+   # cat("  Min:    ", round(min(rho_estimates, na.rm = TRUE), 3), "\n")
+   # cat("  Median: ", round(median(rho_estimates, na.rm = TRUE), 3), "\n")
+   # cat("  Max:    ", round(max(rho_estimates, na.rm = TRUE), 3), "\n")
+   # cat("  SD:     ", round(sd(rho_estimates, na.rm = TRUE), 3), "\n")
+   # cat("  Weighted mean:", round(weighted_rho, 3), "\n\n")
+   # 
+   # Warning for high variation
+   rho_sd <- sd(rho_estimates, na.rm = TRUE)
+   if (rho_sd > 0.3) {
+      warning("Large variation in rho across segments (SD = ", round(rho_sd, 3), ").\n",
+              "AR(1) may not be appropriate for all segments.")
+   }
+   
+   return(weighted_rho)
+}
+   
+   
+# Function to fit_gam
+# Function to fit_gam
 fit_gam <- function(data,
                     response = 'Salinity',
                     predictors = NULL,
                     folds = NULL,
+                    high_salinity_threshold = 0.15,
                     
                     # Response transformation (ONLY for Gaussian family)
                     transform_response = "none",  # "none", "log", "sqrt"
                     
                     # Distribution family
                     family_type = "gaussian",  # "gaussian", "Gamma", "Tweedie"
-                    link = NULL,  # NULL = auto-select, or specify: "identity", "log"
-                    tweedie_p = 1.5,  # power parameter if using Tweedie
+                    link = NULL,  # NULL = auto-select
+                    tweedie_p = 1.5,
                     
                     # Smoothing parameters by variable type
                     k_flow_range = c(8, 15),
                     k_physical_range = c(6, 12),
                     k_temporal_range = c(12, 12),  
-                    k_interaction_range = c(6, 6), 
+                    k_lagged_range = c(1, 3),
+                    k_interaction_range = c(6, 6),  
                     
                     # Interactions
                     interactions = list(),
                     
-                    # Weighting
-                    use_weights = FALSE,
-                    weight_type = "threshold",
-                    weight_threshold = 0.3,
-                    weight_multiplier = 5,
+                    # AR(1) parameters
+                    use_ar1 = FALSE,
+                    rho = NULL,          # Fixed rho value
+                    ar_start = NULL,     # Logical vector marking series breaks
                     
                     # Basis types
                     basis_default = 'tp',
@@ -34,6 +144,7 @@ fit_gam <- function(data,
                     method = 'fREML',
                     discrete = TRUE,
                     nthreads = 4,
+                    gam_select = TRUE,
                     
                     # Tuning control
                     gam_levels = 3) {
@@ -43,220 +154,204 @@ fit_gam <- function(data,
    library(purrr)
    
    # ============================================================================
-   # VALIDATION: Check that transformation and family are compatible
+   # VALIDATION: AR(1) parameters
+   # ============================================================================
+   
+   if (use_ar1) {
+      if (is.null(rho)) {
+         stop("use_ar1 = TRUE requires rho to be specified (e.g., 0.5).")
+      }
+      if (is.null(ar_start)) {
+         stop("use_ar1 = TRUE requires ar_start to be specified.")
+      }
+      if (!is.logical(ar_start)) {
+         stop("ar_start must be a logical vector (TRUE/FALSE).")
+      }
+      if (abs(rho) >= 1) {
+         stop("rho must be in (-1, 1). Got: ", rho)
+      }
+      if (length(ar_start) != nrow(data)) {
+         stop("ar_start length (", length(ar_start), ") must match data rows (", 
+              nrow(data), ").")
+      }
+      
+      cat("=== AR(1) CONFIGURATION ===\n")
+      cat("Fixed rho:", round(rho, 4), "\n")
+      cat("Number of series segments:", sum(ar_start), "\n\n")
+   }
+   
+   # ============================================================================
+   # VALIDATION: Family and transformation compatibility
    # ============================================================================
    
    if (transform_response != "none" && family_type != "gaussian") {
-      stop("Manual response transformation (transform_response) should ONLY be used with 'gaussian' family.\n",
-           "Gamma and Tweedie families handle transformations internally via the link function.\n",
-           "Set transform_response = 'none' and use family_type = 'Gamma' with link = 'log'.")
+      stop("Manual transformation only allowed with 'gaussian' family.\n",
+           "Use appropriate link function instead.")
    }
    
    # ============================================================================
-   # SET UP FAMILY OBJECT with appropriate link functions
+   # SET UP FAMILY OBJECT
    # ============================================================================
    
-   # Auto-select link if not specified
    if (is.null(link)) {
-      link <- switch(
-         family_type,
-         "gaussian" = "identity",
-         "Gamma" = "log",
-         "Tweedie" = "log"
-      )
-      cat("Auto-selected link function:", link, "for", family_type, "family\n\n")
+      link <- switch(family_type,
+                     "gaussian" = "identity",
+                     "Gamma" = "log",
+                     "Tweedie" = "log")
+      cat("Auto-selected link:", link, "for", family_type, "family\n\n")
    }
    
-   # Validate link choices
    if (family_type == "Gamma" && link == "identity") {
-      warning("Identity link with Gamma family can produce negative predictions.\n",
-              "Strongly recommend using link = 'log'. Proceeding with identity anyway...\n")
+      warning("Identity link with Gamma can produce negative predictions. ",
+              "Consider link = 'log'.\n")
    }
    
-   # Create family object
-   gam_family <- switch(
-      family_type,
-      "gaussian" = gaussian(link = link),
-      "Gamma" = Gamma(link = link),
-      "Tweedie" = Tweedie(p = tweedie_p, link = link),
-      stop("Unknown family_type. Use 'gaussian', 'Gamma', or 'Tweedie'")
-   )
+   gam_family <- switch(family_type,
+                        "gaussian" = gaussian(link = link),
+                        "Gamma" = Gamma(link = link),
+                        "Tweedie" = Tweedie(p = tweedie_p, link = link),
+                        stop("Unknown family_type"))
    
    # ============================================================================
    # PREPARE DATA
    # ============================================================================
    
-   # Select and clean data
-   data_clean <- data %>%
-      mutate(Response = .data[[response]]) %>%
-      dplyr::select(DateTime, Response, all_of(predictors)) %>%
-      drop_na()
+   # Identify complete cases
+   data_subset <- data %>%
+      select(DateTime, all_of(response), all_of(predictors))
    
-   # Store original response for metrics (always compute metrics on original scale)
-   data_clean$Response_original <- data_clean$Response
+   complete_rows <- complete.cases(data_subset)
+   
+   # Subset ar_start for complete cases
+   ar_start_clean <- if (use_ar1) ar_start[complete_rows] else NULL
+   
+   # Clean data
+   data_clean <- data_subset %>%
+      filter(complete_rows) %>%
+      mutate(
+         Response = .data[[response]],
+         Response_original = .data[[response]]
+      )
+   
+   cat("=== DATA PREPARATION ===\n")
+   cat("Original rows:", format(nrow(data), big.mark = ","), "\n")
+   cat("After removing NAs:", format(nrow(data_clean), big.mark = ","), "\n")
+   cat("Response range: [", round(min(data_clean$Response), 4), ", ",
+       round(max(data_clean$Response), 4), "]\n")
+   if (use_ar1) {
+      cat("AR segments:", sum(ar_start_clean), "\n")
+   }
+   cat("\n")
    
    # ============================================================================
-   # APPLY MANUAL TRANSFORMATION (only for Gaussian family)
+   # APPLY MANUAL TRANSFORMATION (Gaussian only)
    # ============================================================================
    
    if (family_type == "gaussian" && transform_response == "log") {
       if (any(data_clean$Response <= 0)) {
-         stop("Cannot log-transform non-positive values. Check your data.")
+         stop("Cannot log-transform non-positive values.")
       }
       data_clean$Response <- log(data_clean$Response)
-      cat("Applied log transformation to response (Gaussian family).\n")
-      cat("Original range: [", round(min(data_clean$Response_original), 4), ", ",
-          round(max(data_clean$Response_original), 4), "]\n")
+      cat("Applied log transformation\n")
       cat("Log-scale range: [", round(min(data_clean$Response), 4), ", ",
           round(max(data_clean$Response), 4), "]\n\n")
       
    } else if (family_type == "gaussian" && transform_response == "sqrt") {
       if (any(data_clean$Response < 0)) {
-         stop("Cannot sqrt-transform negative values. Check your data.")
+         stop("Cannot sqrt-transform negative values.")
       }
       data_clean$Response <- sqrt(data_clean$Response)
-      cat("Applied sqrt transformation to response (Gaussian family).\n")
-      cat("Original range: [", round(min(data_clean$Response_original), 4), ", ",
-          round(max(data_clean$Response_original), 4), "]\n")
-      cat("Sqrt-scale range: [", round(min(data_clean$Response), 4), ", ",
-          round(max(data_clean$Response), 4), "]\n\n")
+      cat("Applied sqrt transformation\n\n")
    }
    
    # ============================================================================
    # CHECK DATA REQUIREMENTS for non-Gaussian families
    # ============================================================================
    
-   if (family_type == "Gamma") {
-      n_nonpositive <- sum(data_clean$Response <= 0)
-      if (n_nonpositive > 0) {
-         cat("WARNING: Gamma family requires strictly positive values.\n")
-         cat("Found", n_nonpositive, "values <= 0. Adding small constant (0.001).\n\n")
-         data_clean <- data_clean %>%
-            mutate(
-               Response = pmax(Response, 0.001),
-               Response_original = pmax(Response_original, 0.001)
-            )
-      }
+   if (family_type == "Gamma" && any(data_clean$Response <= 0)) {
+      n_bad <- sum(data_clean$Response <= 0)
+      cat("WARNING: Gamma requires positive values. Found", n_bad, 
+          "values ≤ 0. Adding 0.001.\n\n")
+      data_clean$Response <- pmax(data_clean$Response, 0.001)
+      data_clean$Response_original <- pmax(data_clean$Response_original, 0.001)
    }
    
-   if (family_type == "Tweedie") {
-      n_negative <- sum(data_clean$Response < 0)
-      if (n_negative > 0) {
-         cat("WARNING: Tweedie family requires non-negative values.\n")
-         cat("Found", n_negative, "negative values. Setting to 0.001.\n\n")
-         data_clean <- data_clean %>%
-            mutate(
-               Response = pmax(Response, 0.001),
-               Response_original = pmax(Response_original, 0.001)
-            )
-      }
+   if (family_type == "Tweedie" && any(data_clean$Response < 0)) {
+      n_bad <- sum(data_clean$Response < 0)
+      cat("WARNING: Tweedie requires non-negative values. Found", n_bad,
+          "negative values. Setting to 0.001.\n\n")
+      data_clean$Response <- pmax(data_clean$Response, 0.001)
+      data_clean$Response_original <- pmax(data_clean$Response_original, 0.001)
    }
    
    # ============================================================================
-   # CREATE WEIGHTS
-   # ============================================================================
-   
-   if (use_weights) {
-      # Note: weights apply to TRANSFORMED response if using Gaussian + transform
-      weight_target <- data_clean$Response
-      
-      data_clean <- data_clean %>%
-         mutate(
-            weight = case_when(
-               weight_type == "threshold" & weight_target > weight_threshold ~ weight_multiplier,
-               weight_type == "smooth" ~ 
-                  1 + (weight_multiplier - 1) * plogis((weight_target - weight_threshold) / 0.1),
-               weight_type == "exponential" ~ 
-                  exp(pmax(0, (weight_target - weight_threshold) / 0.2)),
-               TRUE ~ 1
-            )
-         )
-      
-      cat("Weight statistics:\n")
-      cat("  Range:", round(min(data_clean$weight), 2), "to", 
-          round(max(data_clean$weight), 2), "\n")
-      cat("  Median:", round(median(data_clean$weight), 2), "\n")
-      cat("  Mean:", round(mean(data_clean$weight), 2), "\n\n")
-   } else {
-      data_clean$weight <- 1
-   }
-   
-   # ============================================================================
-   # CLASSIFY PREDICTORS INTO GROUPS
+   # CLASSIFY PREDICTORS
    # ============================================================================
    
    flow_vars <- predictors[grepl("Discharge|Inflow|LogDischarge|LogInflow", 
                                  predictors, ignore.case = TRUE)]
-   physical_vars <- predictors[grepl("Tide|RollingV|Wind", predictors, ignore.case = TRUE)]
-   temporal_vars <- predictors[grepl("Sin|Cos|quarter|month", predictors, ignore.case = TRUE)]
-   other_vars <- setdiff(predictors, c(flow_vars, physical_vars, temporal_vars))
+   physical_vars <- predictors[grepl("Tide|RollingV|RollingU|Wind", 
+                                     predictors, ignore.case = TRUE)]
+   physical_vars <- physical_vars[!grepl("Sign", physical_vars)]
+   temporal_vars <- predictors[grepl("Sin|Cos|quarter|month", 
+                                     predictors, ignore.case = TRUE)]
+   lagged_vars <- predictors[grepl("^Salinity_lag|^lag.*Salinity", 
+                                   predictors, ignore.case = TRUE)]
+   other_vars <- setdiff(predictors, c(flow_vars, physical_vars, temporal_vars, lagged_vars))
+   other_vars <- other_vars[!grepl('Sign', other_vars)]
    
-   # ============================================================================
-   # SMART K TUNING GRID CREATION
-   # ============================================================================
-   
-   # Determine which variable types are actually present
    has_flow <- length(flow_vars) > 0
    has_physical <- length(physical_vars) > 0
    has_temporal <- length(temporal_vars) > 0
+   has_lagged <- length(lagged_vars) > 0
    has_other <- length(other_vars) > 0
    has_interactions <- length(interactions) > 0
    
-   # Create sequences for each k type (only if that type exists)
+   # ============================================================================
+   # CREATE K TUNING GRID
+   # ============================================================================
+   
    k_sequences <- list()
    
    if (has_flow) {
       k_sequences$k_flow <- unique(round(seq(k_flow_range[1], k_flow_range[2], 
                                              length.out = gam_levels)))
-   } else {
-      k_sequences$k_flow <- k_flow_range[1]  # Dummy value, won't be used
    }
-   
    if (has_physical || has_other) {
-      k_sequences$k_physical <- unique(round(seq(k_physical_range[1], k_physical_range[2], 
+      k_sequences$k_physical <- unique(round(seq(k_physical_range[1], 
+                                                 k_physical_range[2], 
                                                  length.out = gam_levels)))
-   } else {
-      k_sequences$k_physical <- k_physical_range[1]  # Dummy value
    }
-   
    if (has_temporal) {
-      k_sequences$k_temporal <- unique(round(seq(k_temporal_range[1], k_temporal_range[2], 
+      k_sequences$k_temporal <- unique(round(seq(k_temporal_range[1], 
+                                                 k_temporal_range[2], 
                                                  length.out = gam_levels)))
-   } else {
-      k_sequences$k_temporal <- k_temporal_range[1]  # Dummy value
    }
-   
+   if (has_lagged) {
+      k_sequences$k_lagged <- unique(round(seq(k_lagged_range[1], 
+                                               k_lagged_range[2], 
+                                               length.out = gam_levels)))
+   }
    if (has_interactions) {
-      k_sequences$k_interaction <- unique(round(seq(k_interaction_range[1], k_interaction_range[2], 
+      k_sequences$k_interaction <- unique(round(seq(k_interaction_range[1], 
+                                                    k_interaction_range[2], 
                                                     length.out = gam_levels)))
-   } else {
-      k_sequences$k_interaction <- k_interaction_range[1]  # Dummy value
    }
    
-   # Build tuning grid only for variable types that exist
-   active_k_types <- c()
-   if (has_flow) active_k_types <- c(active_k_types, "k_flow")
-   if (has_physical || has_other) active_k_types <- c(active_k_types, "k_physical")
-   if (has_temporal) active_k_types <- c(active_k_types, "k_temporal")
-   if (has_interactions) active_k_types <- c(active_k_types, "k_interaction")
-   
-   if (length(active_k_types) == 0) {
+   if (length(k_sequences) == 0) {
       stop("No predictors or interactions specified!")
    }
    
-   # Create grid from only the active k types
-   k_grid <- expand.grid(k_sequences[active_k_types]) %>%
-      distinct()
+   k_grid <- expand.grid(k_sequences) %>% distinct()
    
-   # Add dummy columns for inactive k types (needed for formula building)
+   # Add dummy columns for missing types
    if (!has_flow) k_grid$k_flow <- k_flow_range[1]
    if (!has_physical && !has_other) k_grid$k_physical <- k_physical_range[1]
    if (!has_temporal) k_grid$k_temporal <- k_temporal_range[1]
+   if (!has_lagged) k_grid$k_lagged <- k_lagged_range[1]
    if (!has_interactions) k_grid$k_interaction <- k_interaction_range[1]
    
-   # Reorder columns
-   k_grid <- k_grid %>%
-      select(k_flow, k_physical, k_temporal, k_interaction)
+   k_grid <- k_grid %>% select(k_flow, k_physical, k_temporal, k_lagged, k_interaction)
    
    # ============================================================================
    # MODEL SETUP SUMMARY
@@ -264,76 +359,83 @@ fit_gam <- function(data,
    
    cat("=== GAM MODEL SETUP ===\n")
    cat("Sample size:", format(nrow(data_clean), big.mark = ","), "\n")
+   cat("Response:", response, "\n")
    cat("Predictors:", length(predictors), "\n")
    cat("Family:", family_type, "with", link, "link\n")
    if (family_type == "gaussian" && transform_response != "none") {
-      cat("Response transformation:", transform_response, "(manual)\n")
-   } else if (family_type != "gaussian") {
-      cat("Response transformation: handled by", link, "link function\n")
+      cat("Response transformation:", transform_response, "\n")
    }
    if (family_type == "Tweedie") {
-      cat("Tweedie power parameter:", tweedie_p, "\n")
+      cat("Tweedie power:", tweedie_p, "\n")
+   }
+   if (use_ar1) {
+      cat("AR(1): enabled (rho =", round(rho, 4), ")\n")
    }
    cat("\n")
    
    cat("Variable groups:\n")
-   if (has_flow) {
-      cat("  Flow (k =", paste(unique(k_sequences$k_flow), collapse = ", "), "):", 
-          paste(flow_vars, collapse = ", "), "\n")
-   }
-   if (has_physical) {
-      cat("  Physical (k =", paste(unique(k_sequences$k_physical), collapse = ", "), "):", 
-          paste(physical_vars, collapse = ", "), "\n")
-   }
-   if (has_temporal) {
-      cat("  Temporal (k =", paste(unique(k_sequences$k_temporal), collapse = ", "), "):", 
-          paste(temporal_vars, collapse = ", "), "\n")
-   }
-   if (has_other) {
-      cat("  Other (k =", paste(unique(k_sequences$k_physical), collapse = ", "), "):", 
-          paste(other_vars, collapse = ", "), "\n")
-   }
-   if (has_interactions) {
-      cat("  Interactions (k =", paste(unique(k_sequences$k_interaction), collapse = ", "), "):",
-          length(interactions), "specified\n")
-   }
+   if (has_flow) cat("  Flow:", paste(flow_vars, collapse = ", "), "\n")
+   if (has_physical) cat("  Physical:", paste(physical_vars, collapse = ", "), "\n")
+   if (has_temporal) cat("  Temporal:", paste(temporal_vars, collapse = ", "), "\n")
+   if (has_lagged) cat("  Lagged:", paste(lagged_vars, collapse = ", "), "\n")
+   if (has_other) cat("  Other:", paste(other_vars, collapse = ", "), "\n")
+   if (has_interactions) cat("  Interactions:", length(interactions), "\n")
    cat("\n")
    
-   cat("Tuning", nrow(k_grid), "k combinations across", length(active_k_types), 
-       "active parameter types\n")
-   cat("Active parameters:", paste(active_k_types, collapse = ", "), "\n")
+   active_k_types <- names(k_sequences)
+   cat("Tuning", nrow(k_grid), "k combinations\n")
    print(k_grid %>% select(all_of(active_k_types)))
    cat("\n")
    
    # ============================================================================
-   # FUNCTION TO BUILD GAM FORMULA
+   # BUILD FORMULA FUNCTION
    # ============================================================================
    
-   build_gam_formula <- function(k_flow, k_physical, k_temporal, k_interaction) {
+   build_gam_formula <- function(k_flow, k_physical, k_temporal, k_lagged, k_interaction) {
       
       terms <- c()
       
       # Flow variables
       if (has_flow) {
-         terms <- c(terms, paste0("s(", flow_vars, ", k=", k_flow, ", bs='", basis_default, "')"))
+         terms <- c(terms, paste0("s(", flow_vars, ", k=", k_flow, 
+                                  ", bs='", basis_default, "')"))
       }
       
       # Physical variables
       if (has_physical) {
-         terms <- c(terms, paste0("s(", physical_vars, ", k=", k_physical, ", bs='", basis_default, "')"))
+         phys_vars_copy <- physical_vars
+         
+         if ("RollingV168" %in% phys_vars_copy && "WindSign" %in% predictors) {
+            terms <- c(terms, 
+                       paste0("s(RollingV168, by=WindSign, k=", k_physical, 
+                              ", bs='", basis_default, "')"))
+            phys_vars_copy <- setdiff(phys_vars_copy, "RollingV168")
+         }
+         if (length(phys_vars_copy) > 0) {
+            terms <- c(terms, paste0("s(", phys_vars_copy, ", k=", k_physical, 
+                                     ", bs='", basis_default, "')"))
+         }
       }
       
-      # Temporal variables (cyclical)
+      # Temporal variables
       if (has_temporal) {
-         terms <- c(terms, paste0("s(", temporal_vars, ", k=", k_temporal, ", bs='", basis_cyclical, "')"))
+         terms <- c(terms, paste0("s(", temporal_vars, ", k=", k_temporal, 
+                                  ", bs='", basis_cyclical, "')"))
+      }
+      
+      # Lagged variables
+      if (has_lagged) {
+         terms <- c(terms, paste0("s(", lagged_vars, ", k=", k_lagged, 
+                                  ", bs='", basis_default, "')"))
       }
       
       # Other variables
       if (has_other) {
-         terms <- c(terms, paste0("s(", other_vars, ", k=", k_physical, ", bs='", basis_default, "')"))
+         terms <- c(terms, paste0("s(", other_vars, ", k=", k_physical, 
+                                  ", bs='", basis_default, "')"))
       }
       
-      # Add interactions (tensor products)
+      # Interactions
       if (has_interactions) {
          for (int in interactions) {
             if (all(int$vars %in% predictors)) {
@@ -348,177 +450,255 @@ fit_gam <- function(data,
    }
    
    # ============================================================================
-   # CROSS-VALIDATION ACROSS K VALUES
+   # HELPER FUNCTION: Fit and evaluate on fold
    # ============================================================================
    
-   cat("Running CV across k values...\n")
-   tune_results <- map_dfr(1:nrow(k_grid), function(i) {
+   fit_fold <- function(formula, train_idx, test_idx, fold_num) {
       
-      k_flow <- k_grid$k_flow[i]
-      k_physical <- k_grid$k_physical[i]
-      k_temporal <- k_grid$k_temporal[i]
-      k_interaction <- k_grid$k_interaction[i]
+      # Subset data
+      train_data <- data_clean[train_idx, ] %>% 
+         select(-DateTime, -Response_original)
+      test_data <- data_clean[test_idx, ]
       
-      # Only print active k values
-      k_string <- paste(
-         if (has_flow) paste0("k_flow=", k_flow) else NULL,
-         if (has_physical || has_other) paste0("k_physical=", k_physical) else NULL,
-         if (has_temporal) paste0("k_temporal=", k_temporal) else NULL,
-         if (has_interactions) paste0("k_interaction=", k_interaction) else NULL,
-         sep = ", "
+      # Build bam arguments
+      bam_args <- list(
+         formula = formula,
+         data = train_data,
+         family = gam_family,
+         method = method,
+         discrete = discrete,
+         nthreads = nthreads,
+         select = gam_select
       )
-      cat("  ", k_string)
       
-      formula <- build_gam_formula(k_flow, k_physical, k_temporal, k_interaction)
+      # Add AR(1) parameters if needed
+      if (use_ar1) {
+         # Create AR.start for this training fold
+         fold_ar_start <- ar_start_clean[train_idx]
+         fold_ar_start[1] <- TRUE  # First obs must be series start
+         
+         bam_args$rho <- rho
+         bam_args$AR.start <- fold_ar_start
+      }
       
-      # CV for this k combination
-      fold_results <- map_dfr(seq_along(folds), function(j) {
-         
-         train_idx <- folds[[j]]$train
-         test_idx <- folds[[j]]$test
-         
-         train_fold <- data_clean[train_idx, ] %>% dplyr::select(-DateTime)
-         test_fold <- data_clean[test_idx, ] %>% dplyr::select(-DateTime)
-         
-         # Fit BAM with specified family
-         gam_fit <- tryCatch({
-            suppressWarnings(
-               bam(formula, 
-                   data = train_fold,
-                   family = gam_family,
-                   method = method,
-                   discrete = discrete,
-                   nthreads = nthreads)
-            )
-         }, error = function(e) {
-            return(NULL)
-         })
-         
-         if (is.null(gam_fit)) {
-            return(tibble(
-               fold = j,
-               rmse = NA_real_,
-               rsq = NA_real_,
-               mae = NA_real_
-            ))
-         }
-         
-         # =====================================================================
-         # PREDICT AND BACK-TRANSFORM (if needed)
-         # =====================================================================
-         
-         preds <- predict(gam_fit, newdata = test_fold, type = "response")
-         
-         # Back-transform ONLY if we manually transformed (Gaussian + log/sqrt)
-         if (family_type == "gaussian" && transform_response == "log") {
-            sigma_sq <- summary(gam_fit)$scale
-            preds_original <- exp(preds + sigma_sq/2)
-            
-         } else if (family_type == "gaussian" && transform_response == "sqrt") {
-            preds_original <- preds^2
-            
-         } else {
-            preds_original <- preds
-         }
-         
-         # Compute metrics on ORIGINAL scale
-         tibble(
-            fold = j,
-            rmse = sqrt(mean((test_fold$Response_original - preds_original)^2)),
-            rsq = cor(test_fold$Response_original, preds_original)^2,
-            mae = mean(abs(test_fold$Response_original - preds_original))
-         )
+      # Fit model
+      gam_fit <- tryCatch({
+         suppressWarnings(do.call(bam, bam_args))
+      }, error = function(e) {
+         cat("    [Fold", fold_num, "error:", e$message, "]\n")
+         return(NULL)
       })
       
-      # Aggregate across folds
-      result <- fold_results %>%
+      if (is.null(gam_fit)) {
+         return(list(
+            rmse = NA_real_, rsq = NA_real_, mae = NA_real_,
+            high_rmse = NA_real_, high_rsq = NA_real_, high_mae = NA_real_,
+            n_high_sal = 0L, failed = TRUE
+         ))
+      }
+      
+      # Predict
+      preds <- tryCatch({
+         predict(gam_fit, 
+                 newdata = test_data %>% select(-DateTime, -Response_original), 
+                 type = "response")
+      }, error = function(e) {
+         cat("    [Fold", fold_num, "prediction error:", e$message, "]\n")
+         return(NULL)
+      })
+      
+      if (is.null(preds) || any(!is.finite(preds))) {
+         return(list(
+            rmse = NA_real_, rsq = NA_real_, mae = NA_real_,
+            high_rmse = NA_real_, high_rsq = NA_real_, high_mae = NA_real_,
+            n_high_sal = 0L, failed = TRUE
+         ))
+      }
+      
+      # Back-transform if needed
+      if (family_type == "gaussian" && transform_response == "log") {
+         sigma_sq <- summary(gam_fit)$scale
+         preds_original <- exp(preds + sigma_sq/2)
+      } else if (family_type == "gaussian" && transform_response == "sqrt") {
+         preds_original <- preds^2
+      } else {
+         # Gamma/Tweedie with log link: already on original scale
+         preds_original <- preds
+      }
+      
+      if (any(!is.finite(preds_original))) {
+         return(list(
+            rmse = NA_real_, rsq = NA_real_, mae = NA_real_,
+            high_rmse = NA_real_, high_rsq = NA_real_, high_mae = NA_real_,
+            n_high_sal = 0L, failed = TRUE
+         ))
+      }
+      
+      # Calculate overall metrics
+      overall_rmse <- sqrt(mean((test_data$Response_original - preds_original)^2))
+      overall_rsq <- cor(test_data$Response_original, preds_original)^2
+      overall_mae <- mean(abs(test_data$Response_original - preds_original))
+      
+      # Calculate high salinity metrics
+      high_idx <- test_data$Response_original > high_salinity_threshold
+      n_high <- sum(high_idx)
+      
+      if (n_high > 1) {
+         high_rmse <- sqrt(mean((test_data$Response_original[high_idx] - 
+                                    preds_original[high_idx])^2))
+         high_rsq <- cor(test_data$Response_original[high_idx], 
+                         preds_original[high_idx])^2
+         high_mae <- mean(abs(test_data$Response_original[high_idx] - 
+                                 preds_original[high_idx]))
+      } else {
+         high_rmse <- NA_real_
+         high_rsq <- NA_real_
+         high_mae <- NA_real_
+      }
+      
+      list(
+         rmse = overall_rmse,
+         rsq = overall_rsq,
+         mae = overall_mae,
+         high_rmse = high_rmse,
+         high_rsq = high_rsq,
+         high_mae = high_mae,
+         n_high_sal = n_high,
+         failed = FALSE
+      )
+   }
+   
+   # ============================================================================
+   # CROSS-VALIDATION
+   # ============================================================================
+   
+   cat("Running CV...\n")
+   
+   tune_results <- map_dfr(1:nrow(k_grid), function(i) {
+      
+      k_vals <- k_grid[i, ]
+      formula <- build_gam_formula(k_vals$k_flow, k_vals$k_physical, 
+                                   k_vals$k_temporal, k_vals$k_lagged,
+                                   k_vals$k_interaction)
+      
+      # Print active k values
+      active_k_str <- paste(
+         sapply(active_k_types, function(k) paste0(k, "=", k_vals[[k]])),
+         collapse = ", "
+      )
+      cat("  ", active_k_str)
+      
+      # Evaluate across folds
+      fold_results <- map_dfr(seq_along(folds), function(j) {
+         res <- fit_fold(formula, folds[[j]]$train, folds[[j]]$test, j)
+         tibble(fold = j, !!!res)
+      })
+      
+      # Aggregate results
+      summary <- fold_results %>%
          summarize(
-            k_flow = k_flow,
-            k_physical = k_physical,
-            k_temporal = k_temporal,
-            k_interaction = k_interaction,
             mean_rmse = mean(rmse, na.rm = TRUE),
             mean_rsq = mean(rsq, na.rm = TRUE),
             mean_mae = mean(mae, na.rm = TRUE),
             sd_rmse = sd(rmse, na.rm = TRUE),
-            n_failed = sum(is.na(rmse))
+            mean_high_rmse = mean(high_rmse, na.rm = TRUE),
+            mean_high_rsq = mean(high_rsq, na.rm = TRUE),
+            mean_high_mae = mean(high_mae, na.rm = TRUE),
+            sd_high_rmse = sd(high_rmse, na.rm = TRUE),
+            total_high_sal = sum(n_high_sal, na.rm = TRUE),
+            n_failed = sum(failed)
          )
       
-      cat(" → RMSE:", round(result$mean_rmse, 4), "\n")
+      cat(" → RMSE:", round(summary$mean_rmse, 4), ", High-Sal RMSE: ", round(summary$mean_high_rmse, 4))
+      if (summary$n_failed > 0) {
+         cat(" [", summary$n_failed, "failed]")
+      }
+      cat("\n")
       
-      return(result)
+      bind_cols(k_vals, summary)
    })
    
-   cat("\n=== K TUNING RESULTS ===\n")
-   print(tune_results %>% arrange(mean_rmse) %>% select(all_of(c(active_k_types, "mean_rmse", "mean_rsq"))))
+   cat("\n=== CV RESULTS ===\n")
+   print(tune_results %>% 
+            arrange(mean_rmse) %>% 
+            select(all_of(c(active_k_types, "mean_rmse", "mean_rsq", "n_failed"))))
    cat("\n")
    
    # ============================================================================
-   # SELECT BEST K VALUES
+   # SELECT BEST K
    # ============================================================================
    
-   # Select best k combination (break ties by choosing first - simplest due to ordering)
-   best_k <- tune_results %>%
-      slice_min(mean_rmse, n = 1, with_ties = FALSE)
+   valid_results <- tune_results %>% filter(n_failed < length(folds))
+   
+   if (nrow(valid_results) == 0) {
+      stop("All k configurations failed. Check data and AR setup.")
+   }
+   
+   best_k <- valid_results %>% slice_min(mean_rmse, n = 1, with_ties = FALSE)
    
    cat("=== BEST K VALUES ===\n")
-   if (has_flow) cat("k_flow:", best_k$k_flow, "\n")
-   if (has_physical || has_other) cat("k_physical:", best_k$k_physical, "\n")
-   if (has_temporal) cat("k_temporal:", best_k$k_temporal, "\n")
-   if (has_interactions) cat("k_interaction:", best_k$k_interaction, "\n")
-   cat("Mean CV RMSE:", round(best_k$mean_rmse, 4), "\n")
-   cat("Mean CV R²:", round(best_k$mean_rsq, 4), "\n\n")
+   for (k_type in active_k_types) {
+      cat(k_type, ":", best_k[[k_type]], "\n")
+   }
+   cat("CV RMSE:", round(best_k$mean_rmse, 4), "±", round(best_k$sd_rmse, 4), "\n")
+   cat("CV R²:", round(best_k$mean_rsq, 4), "\n\n")
    
    # ============================================================================
    # FIT FINAL MODEL
    # ============================================================================
    
-   cat("Fitting final BAM with best k values...\n")
+   cat("Fitting final model...\n")
    final_formula <- build_gam_formula(best_k$k_flow, best_k$k_physical, 
-                                      best_k$k_temporal, best_k$k_interaction)
+                                      best_k$k_temporal, best_k$k_lagged,
+                                      best_k$k_interaction)
    
-   cat("Formula:\n")
    print(final_formula)
    cat("\n")
    
-   start_time <- Sys.time()
-   final_gam <- bam(
-      final_formula,
-      data = data_clean %>% dplyr::select(-DateTime),
+   # Build final bam arguments
+   final_bam_args <- list(
+      formula = final_formula,
+      data = data_clean %>% select(-DateTime, -Response_original),
       family = gam_family,
       method = method,
       discrete = discrete,
-      nthreads = nthreads,
-      weights = data_clean$weight
+      nthreads = nthreads
    )
-   end_time <- Sys.time()
    
-   cat("Fitting time:", round(difftime(end_time, start_time, units = "secs"), 2), "seconds\n\n")
+   if (use_ar1) {
+      final_bam_args$rho <- rho
+      final_bam_args$AR.start <- ar_start_clean
+   }
+   
+   start_time <- Sys.time()
+   final_gam <- do.call(bam, final_bam_args)
+   fit_time <- difftime(Sys.time(), start_time, units = "secs")
+   
+   cat("Fit time:", round(fit_time, 2), "sec\n\n")
    
    # ============================================================================
    # MODEL SUMMARY
    # ============================================================================
    
-   cat("=== FINAL MODEL SUMMARY ===\n")
+   cat("=== MODEL SUMMARY ===\n")
    print(summary(final_gam))
    cat("\n")
    
    cat("Deviance explained:", round(summary(final_gam)$dev.expl * 100, 2), "%\n")
-   cat("R-squared (adj):", round(summary(final_gam)$r.sq, 4), "\n")
+   cat("Adjusted R²:", round(summary(final_gam)$r.sq, 4), "\n")
    cat("AIC:", round(AIC(final_gam), 2), "\n\n")
    
    # ============================================================================
-   # CHECK BASIS DIMENSIONS
+   # BASIS CHECK
    # ============================================================================
    
-   cat("=== BASIS DIMENSION CHECK ===\n")
-   cat("(If k-index < 1 and p < 0.05, increase k for that term)\n\n")
-   k_check <- k.check(final_gam, n.rep = 0)
-   print(k_check)
+   cat("=== BASIS CHECK ===\n")
+   cat("(Increase k if k-index < 1 and p < 0.05)\n\n")
+   print(k.check(final_gam, n.rep = 0))
    cat("\n")
    
    # ============================================================================
-   # EXTRACT SMOOTH INFORMATION
+   # SMOOTH TERMS
    # ============================================================================
    
    s_table <- summary(final_gam)$s.table
@@ -528,88 +708,41 @@ fit_gam <- function(data,
       ref_df = s_table[, "Ref.df"],
       F_stat = s_table[, "F"],
       p_value = s_table[, "p-value"]
-   ) %>%
-      arrange(desc(edf))
+   ) %>% arrange(desc(edf))
    
-   cat("=== SMOOTH TERMS (sorted by complexity) ===\n")
-   cat("(edf = effective degrees of freedom)\n\n")
+   cat("=== SMOOTH TERMS ===\n")
    print(smooth_info, n = Inf)
    cat("\n")
    
-   # Significant terms
-   sig_terms <- smooth_info %>%
-      filter(p_value < 0.05)
-   
-   cat("=== SIGNIFICANT SMOOTH TERMS (p < 0.05) ===\n")
-   cat("Count:", nrow(sig_terms), "/", nrow(smooth_info), "\n")
-   print(sig_terms %>% dplyr::select(term, edf, p_value))
-   cat("\n")
+   sig_terms <- smooth_info %>% filter(p_value < 0.05)
+   cat("Significant (p < 0.05):", nrow(sig_terms), "/", nrow(smooth_info), "\n\n")
    
    # ============================================================================
-   # GET FOLD-LEVEL RESULTS WITH BEST K
+   # FOLD-LEVEL RESULTS
    # ============================================================================
    
-   cat("Computing fold-level metrics with best k...\n")
+   cat("Computing fold-level results...\n")
    fold_level_results <- map_dfr(seq_along(folds), function(j) {
-      
-      train_idx <- folds[[j]]$train
-      test_idx <- folds[[j]]$test
-      
-      train_fold <- data_clean[train_idx, ] %>% dplyr::select(-DateTime, -Response_original)
-      test_fold <- data_clean[test_idx, ]
-      
-      gam_fit <- suppressWarnings(
-         bam(final_formula, 
-             data = train_fold,
-             family = gam_family,
-             method = method,
-             discrete = discrete,
-             nthreads = nthreads)
-      )
-      
-      preds <- predict(gam_fit, newdata = test_fold %>% dplyr::select(-DateTime, -Response_original), 
-                       type = "response")
-      
-      # Back-transform if needed
-      if (family_type == "gaussian" && transform_response == "log") {
-         sigma_sq <- summary(gam_fit)$scale
-         preds_original <- exp(preds + sigma_sq/2)
-      } else if (family_type == "gaussian" && transform_response == "sqrt") {
-         preds_original <- preds^2
-      } else {
-         preds_original <- preds
-      }
+      res <- fit_fold(final_formula, folds[[j]]$train, folds[[j]]$test, j)
       
       tibble(
          id = paste0("Fold", j),
-         .metric = c("rmse", "rsq", "mae"),
-         .estimate = c(
-            sqrt(mean((test_fold$Response_original - preds_original)^2)),
-            cor(test_fold$Response_original, preds_original)^2,
-            mean(abs(test_fold$Response_original - preds_original))
-         )
+         .metric = c("rmse", "rsq", "mae", "high_rmse", "high_rsq", "high_mae"),
+         .estimate = c(res$rmse, res$rsq, res$mae, 
+                       res$high_rmse, res$high_rsq, res$high_mae)
       )
    })
-   
    cat("Done.\n\n")
    
    # ============================================================================
-   # CREATE OUTPUT STRUCTURE
+   # RETURN RESULTS
    # ============================================================================
    
-   # Create tidymodels-compatible workflow structure
    gam_workflow <- structure(
-      list(
-         fit = list(
-            fit = final_gam,
-            formula = final_formula,
-            family = family_type
-         )
-      ),
+      list(fit = list(fit = final_gam, formula = final_formula, family = family_type)),
       class = c("workflow", "list")
    )
    
-   # Return comprehensive results
    list(
       tune_results = fold_level_results,
       tune_grid = tune_results,
@@ -617,10 +750,13 @@ fit_gam <- function(data,
          k_flow = best_k$k_flow,
          k_physical = best_k$k_physical,
          k_temporal = best_k$k_temporal,
+         k_lagged = best_k$k_lagged,
          k_interaction = best_k$k_interaction,
          family = family_type,
          link = link,
-         transform = if(family_type == "gaussian") transform_response else "via_link"
+         transform = if(family_type == "gaussian") transform_response else "via_link",
+         use_ar1 = use_ar1,
+         rho = if(use_ar1) rho else NA_real_
       ),
       final_fit = gam_workflow,
       gam_object = final_gam,
@@ -628,16 +764,16 @@ fit_gam <- function(data,
       smooth_info = smooth_info,
       selected_vars = sig_terms$term,
       model_type = "gam",
-      # Store transformation info for prediction
       transform_info = list(
          family = family_type,
          link = link,
          manual_transform = if(family_type == "gaussian") transform_response else "none",
          sigma_sq = if(family_type == "gaussian" && transform_response == "log") {
             summary(final_gam)$scale
-         } else {
-            NULL
-         }
-      )
+         } else NULL
+      ),
+      ar_info = if(use_ar1) {
+         list(rho = rho, n_segments = sum(ar_start_clean))
+      } else NULL
    )
 }

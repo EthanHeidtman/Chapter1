@@ -69,6 +69,7 @@ plot_mean_importance <- function(importance_df, top_vars_list, top_n_per_group =
    
    # Extract variable names from each category in top_vars_list
    top_variables <- c(
+      top_vars_list$salinity$Variable,
       top_vars_list$inflow$Variable,
       top_vars_list$discharge$Variable,
       top_vars_list$tide$Variable,
@@ -87,6 +88,7 @@ plot_mean_importance <- function(importance_df, top_vars_list, top_n_per_group =
    # Add category labels based on which list each variable came from
    mean_imp <- mean_imp %>%
       mutate(Category = case_when(
+         Variable %in% top_vars_list$salinity$Variable ~ 'Salinity',
          Variable %in% top_vars_list$inflow$Variable ~ "Inflow",
          Variable %in% top_vars_list$discharge$Variable ~ "Discharge",
          Variable %in% top_vars_list$tide$Variable ~ "Tide",
@@ -105,6 +107,7 @@ plot_mean_importance <- function(importance_df, top_vars_list, top_n_per_group =
       
       # Color scheme matching your previous plot
       scale_fill_manual(values = c(
+         'Salinity' = 'forestgreen',
          "Inflow" = "#009bba",
          "Discharge" = "#f58220",
          "Tide" = "#002030",
@@ -124,7 +127,7 @@ plot_mean_importance <- function(importance_df, top_vars_list, top_n_per_group =
       # Theme matching your previous plot
       theme_bw() +
       theme(
-         #text = element_text(family = "Franklin Gothic ATF"),
+         # text = element_text(family = "Franklin Gothic ATF"),
          plot.title = element_text(size = 30, face = 'bold'),
          plot.subtitle = element_text(size = 28),
          axis.title.x = element_text(size = 28, face = 'bold'),

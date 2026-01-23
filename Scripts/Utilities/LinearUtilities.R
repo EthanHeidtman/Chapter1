@@ -2,19 +2,21 @@ fit_model <- function(data,
                       threshold = NULL,
                       response = 'Salinity',
                       predictors = NULL,
-                      model_type = 'logistic',  # 'logistic', 'linear', 'rf
+                      model_type = 'logistic',
                       folds = folds,
+                      
+                      # Threshold evaluation (for regression models)
+                      eval_threshold = NULL,  # NEW: threshold for subset evaluation
                       
                       # Elastic net hyperparameters
                       penalty_range = c(0.001, 1),
-                      mixture_range = c(0, 1),  # 0=ridge, 1=lasso, 0.5=elastic net
+                      mixture_range = c(0, 1),
                       standardize = TRUE,
                       
                       # Random forest hyperparameters
                       mtry_range = NULL, 
                       trees = 500,
                       min_n_range = c(10, 20),
-                      
                       
                       # Tuning control
                       penalty_levels = 20,
@@ -32,7 +34,7 @@ fit_model <- function(data,
    }
    
    if (is.null(predictors)) {
-      predictors <- setdiff(names(data)[10:ncol(data)], response)
+      predictors <- names(data)[(which(names(data) == 'Salinity') + 1) : (ncol(data) - 1)]
    }
    
    data_clean <- data %>%
@@ -57,7 +59,7 @@ fit_model <- function(data,
       model_spec <- logistic_reg(penalty = tune(), mixture = tune()) %>%
          set_engine("glmnet") %>%
          set_mode("classification")
-      metrics <- metric_set(roc_auc, accuracy)
+      metrics <- metric_set(roc_auc, accuracy, sensitivity, specificity)
       best_metric <- "roc_auc"
       
       rec <- if (standardize) {
@@ -77,7 +79,7 @@ fit_model <- function(data,
       model_spec <- linear_reg(penalty = tune(), mixture = tune()) %>%
          set_engine("glmnet") %>%
          set_mode("regression")
-      metrics <- metric_set(rmse, rsq)
+      metrics <- metric_set(rmse, rsq, mae)
       best_metric <- "rmse"
       
       rec <- if (standardize) {
@@ -94,7 +96,6 @@ fit_model <- function(data,
       )
       
    } else if (model_type == "rf") {
-      # Set mtry range based on number of predictors
       if (is.null(mtry_range)) {
          mtry_range <- c(floor(sqrt(length(predictors))), length(predictors))
       }
@@ -107,10 +108,9 @@ fit_model <- function(data,
          set_engine("ranger", importance = "permutation") %>%
          set_mode("regression")
       
-      metrics <- metric_set(rmse, rsq)
+      metrics <- metric_set(rmse, rsq, mae)
       best_metric <- "rmse"
       
-      # Random forest doesn't require normalization
       rec <- recipe(Response ~ ., data = data_clean %>% select(-DateTime))
       
       grid <- grid_regular(
@@ -150,9 +150,170 @@ fit_model <- function(data,
       cat("trees:", trees, "\n")
    }
    
-   # Finalize and fit
+   # Finalize workflow
    final_wf <- finalize_workflow(wf, best)
+   
+   # ===== NEW: Generate fold-level predictions and metrics =====
+   fold_predictions <- map_dfr(seq_along(cv_folds$splits), function(i) {
+      split <- cv_folds$splits[[i]]
+      fold_id <- cv_folds$id[i]
+      
+      # Fit on training fold
+      fold_fit <- fit(final_wf, data = analysis(split) %>% select(-DateTime))
+      
+      # Predict on test fold
+      test_data <- assessment(split)
+      if (model_type == "logistic") {
+         preds <- predict(fold_fit, new_data = test_data, type = "prob") %>%
+            bind_cols(predict(fold_fit, new_data = test_data)) %>%
+            bind_cols(test_data %>% select(DateTime, Response))
+      } else {
+         preds <- predict(fold_fit, new_data = test_data) %>%
+            bind_cols(test_data %>% select(DateTime, Response))
+      }
+      
+      preds %>% mutate(fold = fold_id)
+   })
+   
+   # Calculate overall metrics
+   if (model_type == "logistic") {
+      overall_metrics <- fold_predictions %>%
+         metrics(truth = Response, .pred_Violation, estimate = .pred_class)
+   } else {
+      overall_metrics <- fold_predictions %>%
+         metrics(truth = Response, estimate = .pred)
+   }
+   
+   # Calculate fold-level metrics for plotting
+   if (model_type == "logistic") {
+      fold_metrics <- fold_predictions %>%
+         group_by(fold) %>%
+         metrics(truth = Response, .pred_Violation, estimate = .pred_class) %>%
+         ungroup()
+   } else {
+      fold_metrics <- fold_predictions %>%
+         group_by(fold) %>%
+         metrics(truth = Response, estimate = .pred) %>%
+         ungroup()
+   }
+   
+   # ===== NEW: Threshold-based evaluation for regression =====
+   threshold_metrics_overall <- NULL
+   threshold_metrics_folds <- NULL
+   
+   if (model_type %in% c("linear", "rf") && !is.null(eval_threshold)) {
+      
+      # Filter to observations above threshold
+      above_threshold <- fold_predictions %>%
+         filter(Response > eval_threshold)
+      
+      if (nrow(above_threshold) > 0) {
+         # Overall metrics for high values
+         threshold_metrics_overall <- above_threshold %>%
+            metrics(truth = Response, estimate = .pred) %>%
+            mutate(subset = paste0("above_", eval_threshold))
+         
+         # Fold-level metrics for high values
+         threshold_metrics_folds <- above_threshold %>%
+            group_by(fold) %>%
+            metrics(truth = Response, estimate = .pred) %>%
+            ungroup() %>%
+            mutate(subset = paste0("above_", eval_threshold))
+         
+         cat("\n=== METRICS FOR VALUES >", eval_threshold, "===\n")
+         cat("N observations:", nrow(above_threshold), "\n")
+         print(threshold_metrics_overall)
+      } else {
+         warning("No observations above threshold ", eval_threshold)
+      }
+   }
+   
+   # Fit final model on all data
    final_fit <- fit(final_wf, data = data_clean %>% select(-DateTime))
+   
+   # Extract prepped recipe from fitted workflow
+   prepped_rec <- extract_recipe(final_fit, estimated = TRUE)
+   
+   # Get formula - now that recipe is prepped
+   model_formula <- formula(prepped_rec)
+   
+   # Extract final model details
+   model_details <- list(
+      formula = model_formula,
+      response_var = response,
+      n_predictors = length(predictors),
+      predictor_names = predictors,
+      sample_size = nrow(data_clean),
+      model_type = model_type,
+      standardized = standardize
+   )
+   
+   # Add model-specific details
+   if (model_type %in% c("logistic", "linear")) {
+      glmnet_fit <- extract_fit_engine(final_fit)
+      
+      # Get lambda sequence and degrees of freedom
+      lambda_seq <- glmnet_fit$lambda
+      df_seq <- glmnet_fit$df
+      
+      model_details$penalty_lambda <- best$penalty
+      model_details$mixture_alpha <- best$mixture
+      model_details$n_lambda_tried <- length(lambda_seq)
+      model_details$lambda_range <- range(lambda_seq)
+      model_details$df_at_best <- df_seq[which.min(abs(lambda_seq - best$penalty))]
+      
+      # Classification-specific
+      if (model_type == "logistic") {
+         model_details$classification_threshold <- threshold
+         model_details$response_levels <- levels(data_clean$Response)
+      }
+      
+   } else if (model_type == "rf") {
+      rf_fit <- extract_fit_engine(final_fit)
+      
+      model_details$mtry <- best$mtry
+      model_details$min_n <- best$min_n
+      model_details$num_trees <- trees
+      model_details$oob_error <- if (!is.null(rf_fit$prediction.error)) {
+         rf_fit$prediction.error
+      } else {
+         NA
+      }
+      model_details$oob_rsq <- if (!is.null(rf_fit$r.squared)) {
+         rf_fit$r.squared
+      } else {
+         NA
+      }
+   }
+   
+   # Add evaluation threshold if used
+   if (!is.null(eval_threshold)) {
+      model_details$eval_threshold <- eval_threshold
+   }
+   
+   # Print model summary
+   cat("\n=== FINAL MODEL DETAILS ===\n")
+   cat("Formula:", deparse(model_formula), "\n")
+   cat("Response:", response, "\n")
+   cat("N predictors:", length(predictors), "\n")
+   cat("Sample size:", nrow(data_clean), "\n")
+   cat("Model type:", model_type, "\n")
+   if (model_type %in% c("logistic", "linear")) {
+      cat("Penalty (λ):", best$penalty, "\n")
+      cat("Mixture (α):", best$mixture, "\n")
+      cat("Active variables:", model_details$df_at_best, "\n")
+   } else if (model_type == "rf") {
+      cat("mtry:", best$mtry, "\n")
+      cat("min_n:", best$min_n, "\n")
+      cat("trees:", trees, "\n")
+      if (!is.na(model_details$oob_rsq)) {
+         cat("OOB R²:", round(model_details$oob_rsq, 4), "\n")
+      }
+   }
+   
+   # Print overall metrics
+   cat("\n=== OVERALL METRICS (ALL FOLDS) ===\n")
+   print(overall_metrics)
    
    # Extract variable importance or coefficients
    if (model_type %in% c("logistic", "linear")) {
@@ -161,7 +322,7 @@ fit_model <- function(data,
       coefs_vec <- as.vector(coefs)
       names(coefs_vec) <- rownames(coefs)
       
-      coefs_vec <- coefs_vec[-1]  # remove intercept
+      coefs_vec <- coefs_vec[-1]
       selected_idx <- which(coefs_vec != 0)
       selected <- names(coefs_vec)[selected_idx]
       
@@ -184,13 +345,21 @@ fit_model <- function(data,
          final_fit = final_fit,
          selected_vars = selected,
          coefficients = coefs_vec[selected_idx],
-         model_type = model_type
+         model_type = model_type,
+         
+         # Model details
+         model_details = model_details,
+         
+         # NEW: Metrics for plotting
+         fold_predictions = fold_predictions,
+         overall_metrics = overall_metrics,
+         fold_metrics = fold_metrics,
+         threshold_metrics_overall = threshold_metrics_overall,
+         threshold_metrics_folds = threshold_metrics_folds
       ))
       
    } else if (model_type == "rf") {
       rf_fit <- extract_fit_engine(final_fit)
-      
-      # ranger stores importance in the fit object directly
       var_imp <- rf_fit$variable.importance
       
       imp_df <- data.frame(
@@ -206,7 +375,17 @@ fit_model <- function(data,
          best_params = best,
          final_fit = final_fit,
          var_importance = imp_df,
-         model_type = model_type
+         model_type = model_type,
+         
+         # Model details
+         model_details = model_details,
+         
+         # NEW: Metrics for plotting
+         fold_predictions = fold_predictions,
+         overall_metrics = overall_metrics,
+         fold_metrics = fold_metrics,
+         threshold_metrics_overall = threshold_metrics_overall,
+         threshold_metrics_folds = threshold_metrics_folds
       ))
    }
 }

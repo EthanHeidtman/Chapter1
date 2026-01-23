@@ -33,19 +33,44 @@ invisible(
    })
 )
 
-# Read in model data
-model_data <- as.data.frame(read_qs_files('Data/Tidied/Final/FinalModelDataScreened.qs'))
-model_data <- model_data %>% 
+hourly_data <- as.data.frame(read_qs_files('Data/Tidied/Final/FinalHourlyDataScreened.qs'))
+#daily_data <- as.data.frame(read_qs_files('Data/Tidied/Final/FinalDailyDataScreened.qs'))
+
+# Tidy hourly data
+hourly_data <- hourly_data %>%
    drop_na() %>%
-   mutate(LogRollingDischarge24 = log(RollingDischarge24)) 
+   mutate(LogRollingDischarge24 = log(RollingDischarge24)) %>%
+   relocate(LogRollingDischarge24, .after = RollingDischarge24) %>%
+   #dplyr::select(-c('RollingDischarge48')) %>%
+   mutate(WindSign = factor(RollingV168 >= 0))
+
+# Tidy daily data
+# daily_data <- daily_data %>%
+#    drop_na() %>%
+#    mutate(LogRollingDischarge48 = log(RollingDischarge48)) %>%
+#    relocate(LogRollingDischarge48, .after = RollingDischarge48) %>%
+#    mutate(WindSign = factor(RollingV168 >= 0)) %>%
+#    rename(DateTime = Date) %>%
+#    mutate_if(is.numeric, round, digits = 3)
+
 
 # Discover and load all models (excluding Screening files)
-model_dir <- 'Outputs/Experiments/Models'
-model_files <- list.files(model_dir, pattern = "\\.qs$", full.names = TRUE)
-model_files <- model_files[!grepl("Screening\\.qs$", model_files)]
+hourly_dir <- 'Outputs/Experiments/Models/HourlyGAM/RawDischarge'
+hourly_files <- list.files(c(hourly_dir, 'Outputs/Experiments/Models/Linear'), pattern = "\\.qs$", full.names = TRUE, recursive = TRUE)
+hourly_files <- hourly_files[!grepl("Screening\\.qs$", hourly_files)]
+hourly_files <- hourly_files[!grepl("Daily\\.qs$", hourly_files)]
+
+# daily_dir <- 'Outputs/Experiments/Models/DailyGAM'
+# daily_files <- list.files(c(daily_dir, 'Outputs/Experiments/Models/Linear'), pattern = "\\.qs$", full.names = TRUE, recursive = TRUE)
+# daily_files <- daily_files[!grepl("Screening\\.qs$", daily_files)]
+# daily_files <- daily_files[!grepl("Hourly\\.qs$", daily_files)]
+
+elastic <- read_qs_files(hourly_files[12])
+gam10 <- read_qs_files(hourly_files[2])
+gam_nosal <- read_qs_files(hourly_files[11])
 
 # Load models and generate predictions
-predictions <- lapply(model_files, function(file) {
+hourly_predictions <- lapply(hourly_files, function(file) {
    model_name <- tools::file_path_sans_ext(basename(file))
    model_obj <- read_qs_files(file)
    
@@ -60,7 +85,7 @@ predictions <- lapply(model_files, function(file) {
          
          # Predict using type="response" (automatically handles link functions)
          pred_response <- predict(model_obj$gam_object, 
-                                  newdata = model_data, 
+                                  newdata = hourly_data, 
                                   type = "response")
          
          # Back-transform ONLY if Gaussian with manual transformation
@@ -91,8 +116,8 @@ predictions <- lapply(model_files, function(file) {
          }
          
       } else if (!is.null(model_obj$final_fit)) {
-         # Fallback to tidymodels structure if gam_object doesn't exist
-         predict(model_obj$final_fit, new_data = model_data)$.pred
+         # Fallback to tidymodels structure if gam_object doesn't exist   
+         predict(model_obj$final_fit, new_data = hourly_data)$.pred
          
       } else {
          stop("Model object missing both gam_object and final_fit")
@@ -100,40 +125,39 @@ predictions <- lapply(model_files, function(file) {
       
    }, error = function(e) {
       warning(sprintf("Failed to predict with model %s: %s", model_name, e$message))
-      rep(NA_real_, nrow(model_data))
+      rep(NA_real_, nrow(hourly_data))
    })
    
    setNames(list(pred), model_name)
 })
 
-# Add all predictions to model_data
-model_data <- bind_cols(model_data, predictions)
+# Add all predictions
+hourly_data <- bind_cols(hourly_data, hourly_predictions)
+#daily_data <- bind_cols(daily_data, daily_predictions)
 
 plot_salinity_with_models(
-   data = model_data,
+   data = hourly_data,
    date_range = c('2016-09-15', '2016-10-31'),
-   models = c('Gam10',      # Gamma, log discharge
-              'Gam11', 'Gam12', 'Gam13', 'Gam14', 'Gam15',  # Gaussian, raw discharge,
-              'Gam16', 'Gam17', 'Gam18', 'Gam19', 'Gam20'),
+   models = c('ElasticHourly', 'Gam10', 'GamNoSal'),
    highlight_start = as_datetime("2016-10-09"),
    highlight_end = as_datetime("2016-10-25"),
    title = "October 2016 High Salinity Event"
 )
 
 plot_salinity_with_models(
-   data = model_data,
-   date_range = c('2016-01-01', '2020-12-31'),
-   models = c('Gam1', 'Gam2', 'Gam3', 'Gam4', 'Gam5', 'Gam6', 'Gam7', 'Gam8', 'Gam9', 'Gam10'),
+   data = daily_data,
+   date_range = c('2015-09-01', '2015-10-31'),
+   models = c('Gam5', 'Gam6', 'Gam7', 'Gam8', 'Gam9', 'Gam11'),
    title = "October 2016 High Salinity Event"
 )
 
 
 create_salinity_predictor_plot(
-   data = model_data,
-   date_range = c('2016-09-30', '2016-10-31'),
-   models = c('Gam1', 'Gam2', 'Gam3', 'Gam4', 'Gam5', 'Gam6', 'Gam7', 'Gam8', 'Gam9', 'Gam10'),
-   predictors = c('LogRollingDischarge24', 'TideRange24', 'RollingV168', 'RollingU168'),
-   highlight_start = as_datetime("2016-10-01"),
+   data = hourly_data,
+   date_range = c('2016-10-05', '2016-10-31'),
+   models = c('Gam9'),
+   predictors = c('RollingDischarge48', 'LagTide4', 'RollingV168'),
+   highlight_start = as_datetime("2016-10-05"),
    highlight_end = as_datetime("2016-10-31"),
    title = "October 2016 Saltwater Intrusion Event"
 )

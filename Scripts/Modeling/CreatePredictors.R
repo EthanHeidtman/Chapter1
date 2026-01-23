@@ -73,7 +73,14 @@ rm(meteo, q_sal_data, dir1, dir2, dirs)
 
 # Create the model data
 model_data <- data %>%
-   #filter(!is.na(Salinity)) %>%                              # Keep only times with available salinity data
+   
+mutate(
+   # Lagged Salinity Features
+   LagSalinity1 = lag(Salinity, 1),
+   LagSalinity2 = lag(Salinity, 2),
+   LagSalinity4 = lag(Salinity, 4)
+) %>%
+  
 
 # =======================================================================================
 # PART 1: TIDE PREDICTORS

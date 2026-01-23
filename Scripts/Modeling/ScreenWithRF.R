@@ -39,56 +39,42 @@ model_data <- model_data %>%
    filter(Date > '2007-03-29') %>%
    dplyr::select(-contains('Inflows'))
 
-# model_data %>%
-#    mutate(
-#       tide_category = cut(TideRange24, breaks = quantile(TideRange24, c(0, 0.33, 0.67, 1), na.rm = TRUE)),
-#       season = quarter(DateTime)
-#    ) %>%
-#    ggplot(aes(x = RollingDischarge48, y = Salinity)) +
-#    geom_point(alpha = 0.3)
-#    facet_grid(tide_category ~ season) +
-#    geom_hline(yintercept = 0.5, color = "red", linetype = "dashed") +
-#    scale_x_log10() +
-#    scale_y_log10()
-# 
-# model_data %>%
-#    mutate(salinity_regime = case_when(
-#       Salinity < 0.2 ~ "Low (<0.2)",
-#       Salinity < 0.5 ~ "Moderate (0.2-0.5)",
-#       TRUE ~ "High (>0.5)"
-#    )) %>%
-#    ggplot(aes(x = RollingDischarge48, color = salinity_regime)) +
-#    stat_ecdf(size = 1.2) +
-#    scale_x_log10() +
-#    labs(title = "Flow distribution by salinity regime",
-#         x = "Discharge (cfs)", y = "Cumulative probability")
-# 
-# model_data %>%
-#    mutate(is_oct2016 = (year(DateTime) == 2016 & month(DateTime) == 10)) %>%
-#    ggplot(aes(x = DateTime, y = Salinity)) +
-#    geom_line(alpha = 0.5) +
-#    geom_point(data = . %>% filter(is_oct2016), color = "red", size = 2) +
-#    geom_hline(yintercept = 0.5, linetype = "dashed")
-# 
-# # What were the conditions?
-# oct2016_conditions <- model_data %>%
-#    filter(year(DateTime) == 2015) %>%
-#    summarize(
-#       mean_discharge = mean(RollingDischarge48),
-#       mean_tide = mean(TideRange24),
-#       mean_wind = mean(V),  # if you have it
-#       mean_inflow = mean(RollingInflows90)
-#    )
+hourly_data <- model_data
+daily_data <- model_data %>%
+   group_by(Date) %>%
+   summarise(
+      # Keep calendar fields (constant within day)
+      Year      = first(Year),
+      Month     = first(Month),
+      Day       = first(Day),
+      DayOfYear = first(DayOfYear),
+      
+      # Mean of all remaining numeric variables
+      across(
+         where(is.numeric),
+         ~ mean(.x, na.rm = TRUE),
+         .names = "{.col}"
+      ),
+      
+      .groups = "drop"
+   ) %>%
+   # Remove unwanted terms
+   select(
+      -HourSin, -HourCos,
+      -MonthSin, -MonthCos
+   )
 
+   
 # Group predictors into clusters
-#inflow_cluster <- model_data %>% dplyr::select(c('Salinity', contains('Inflows')))
+salinity_cluster <- model_data %>% dplyr::select(c(contains('Salinity')))
 discharge_cluster <- model_data %>% dplyr::select(c('Salinity', contains('Discharge')))
 tide_cluster <- model_data %>% dplyr::select(c('Salinity', contains('Tide')))
 wind_cluster <- model_data %>% dplyr::select(c('Salinity', contains(c('U', 'V', 'Gust', 'Wind'))))
 time_cluster <- model_data %>% dplyr::select(c('Salinity', contains(c('Sin', 'Cos'))))
 
 # Make expanding fold CV scheme for RF implementation
-folds_hourly <- make_expanding_folds(model_data, initial_train_length = 6)
+folds_hourly <- make_expanding_folds(hourly_data, initial_train_length = 6)
+folds_daily <- make_expanding_folds(daily_data, date_col = 'Date', initial_train_length = 6)
 
 # Random Forest hyperparameters
 set.seed(123) 
@@ -96,7 +82,8 @@ ntree = 500   # number of trees to create
 mtry = 10     # number of predictors to sample at each node (~ sqrt(predictors))
 
 # Run the RF across expanding window scheme
-rf_hourly <- run_rf_cv(data = model_data, folds = folds_hourly, response_col = 'Salinity', predictor_cols = 9 : ncol(model_data), ntree = ntree, mtry = mtry)
+rf_hourly <- run_rf_cv(data = hourly_data, folds = folds_hourly, response_col = 'Salinity', predictor_cols = 9 : ncol(hourly_data), ntree = ntree, mtry = mtry)
+rf_daily <- run_rf_cv(data = daily_data, folds = folds_daily, response_col = 'Salinity', predictor_cols = 8 : ncol(daily_data), ntree = ntree, mtry = mtry)
 
 # Function to collect the top variables from each group
 get_top_vars_by_group <- function(importance_df, group_dfs, n_top = 2, 
@@ -142,6 +129,7 @@ get_top_vars_by_group <- function(importance_df, group_dfs, n_top = 2,
 
 # Define the list of groups
 group_list <- list(
+   salinity = salinity_cluster,
    discharge = discharge_cluster,
    tide = tide_cluster,
    wind = wind_cluster,
@@ -149,35 +137,53 @@ group_list <- list(
 )
 
 # Collect the top variables for each group
-top_vars <- get_top_vars_by_group(
+top_vars_hourly <- get_top_vars_by_group(
    importance_df = rf_hourly$importance,
    group_dfs = group_list,
-   n_top = list(discharge = 2, tide = 2, wind = 2, time = 2),
+   n_top = list(salinity = 2, discharge = 2, tide = 2, wind = 2, time = 2),
    importance_col = "IncMSE_OOB",
    show_importance = TRUE
 )
 
-if ("Variable" %in% names(top_vars[[1]])) {
+top_vars_daily <- get_top_vars_by_group(
+   importance_df = rf_daily$importance,
+   group_dfs = group_list,
+   n_top = list(salinity = 2, discharge = 2, tide = 2, wind = 2, time = 2),
+   importance_col = "IncMSE_OOB",
+   show_importance = TRUE
+)
+
+if ("Variable" %in% names(top_vars_hourly[[1]])) {
    # If show_importance = TRUE (dataframes with Variable and avg_imp)
-   selected_vars <- unlist(lapply(top_vars, function(x) x$Variable), use.names = FALSE)
+   selected_vars_hourly <- unlist(lapply(top_vars_hourly, function(x) x$Variable), use.names = FALSE)
 } else {
    # If show_importance = FALSE (just character vectors)
-   selected_vars <- unlist(top_vars, use.names = FALSE)
+   selected_vars_hourly <- unlist(top_vars_hourly, use.names = FALSE)
+}
+
+if ("Variable" %in% names(top_vars_daily[[1]])) {
+   # If show_importance = TRUE (dataframes with Variable and avg_imp)
+   selected_vars_daily <- unlist(lapply(top_vars_daily, function(x) x$Variable), use.names = FALSE)
+} else {
+   # If show_importance = FALSE (just character vectors)
+   selected_vars_daily <- unlist(top_vars_daily, use.names = FALSE)
 }
 
 # Collect only the screened model variables
-model_data_screened <- model_data %>%
-   dplyr::select(c(1 : 8), all_of(selected_vars))
+hourly_data_screened <- hourly_data %>%
+   dplyr::select(c(1 : 8), all_of(selected_vars_hourly))
+daily_data_screened <- daily_data %>%
+   dplyr::select(c(1 : 7), all_of(selected_vars_daily))
 
 # Write output file
-objects <- list(model_data_screened)
-file_name <- list('FinalModelDataScreened')
+objects <- list(hourly_data_screened, daily_data_screened)
+file_name <- list('FinalHourlyDataScreened', 'FinalDailyDataScreened')
 write_qs_files(objects, 'Data/Tidied/Final', file_name)
 
 # Write output file
-objects <- list(rf_hourly)
-file_name <- list('RFScreening')
-write_qs_files(objects, 'Outputs/Experiments/Models', file_name)
+objects <- list(rf_hourly, rf_daily)
+file_name <- list('RFHourlyScreening', 'RFDailyScreening')
+write_qs_files(objects, 'Outputs/Experiments/Models/RF', file_name)
 
 # Clear global environment
 rm(list = ls())
