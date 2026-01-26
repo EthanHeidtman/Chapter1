@@ -65,9 +65,14 @@ hourly_files <- hourly_files[!grepl("Daily\\.qs$", hourly_files)]
 # daily_files <- daily_files[!grepl("Screening\\.qs$", daily_files)]
 # daily_files <- daily_files[!grepl("Hourly\\.qs$", daily_files)]
 
-elastic <- read_qs_files(hourly_files[12])
-gam10 <- read_qs_files(hourly_files[2])
-gam_nosal <- read_qs_files(hourly_files[11])
+# elastic <- read_qs_files(hourly_files[12])
+# ridge <- read_qs_files(hourly_files[14])
+# lasso <- read_qs_files(hourly_files[13])
+#gam10 <- read_qs_files(hourly_files[2])
+#gam_nosal <- read_qs_files(hourly_files[11])
+gam6 <- read_qs_files(hourly_files[7])
+
+# test <- lm(Salinity ~ LagSalinity1, hourly_data)
 
 # Load models and generate predictions
 hourly_predictions <- lapply(hourly_files, function(file) {
@@ -135,19 +140,33 @@ hourly_predictions <- lapply(hourly_files, function(file) {
 hourly_data <- bind_cols(hourly_data, hourly_predictions)
 #daily_data <- bind_cols(daily_data, daily_predictions)
 
+
+# resid_gam <- residuals(gam6$gam_object)
+# # Plot ACF and PACF
+# acf(resid_gam, main = "ACF of GAM Residuals")
+# pacf(resid_gam, main = "PACF of GAM Residuals")
+# plot(fitted(gam6$gam_object), resid_gam,
+#      xlab="Fitted values", ylab="Residuals",
+#      main="Residuals vs Fitted")
+# abline(h=0, col="red")
+# qqnorm(resid_gam); qqline(resid_gam, col="red")
+# plot(gam6$gam_object, residuals=TRUE, pch=20, cex=0.3)
+
+
+
 plot_salinity_with_models(
    data = hourly_data,
    date_range = c('2016-09-15', '2016-10-31'),
-   models = c('ElasticHourly', 'Gam10', 'GamNoSal'),
+   models = c('ElasticHourly'),
    highlight_start = as_datetime("2016-10-09"),
    highlight_end = as_datetime("2016-10-25"),
    title = "October 2016 High Salinity Event"
 )
 
 plot_salinity_with_models(
-   data = daily_data,
-   date_range = c('2015-09-01', '2015-10-31'),
-   models = c('Gam5', 'Gam6', 'Gam7', 'Gam8', 'Gam9', 'Gam11'),
+   data = hourly_data,
+   date_range = c('2016-10-08', '2016-10-12'),
+   models = c('Gam2', 'Gam5', 'Gam10', 'GamNoSal'),
    title = "October 2016 High Salinity Event"
 )
 
@@ -161,128 +180,3 @@ create_salinity_predictor_plot(
    highlight_end = as_datetime("2016-10-31"),
    title = "October 2016 Saltwater Intrusion Event"
 )
-
-
-
-# Get fold level metrics
-get_fold_metrics <- function(model_obj, model_name) {
-   if (model_obj$model_type %in% c("logistic", "linear")) {
-      # Linear models have penalty and mixture
-      collect_metrics(model_obj$tune_results, summarize = FALSE) %>%
-         filter(penalty == model_obj$best_params$penalty,
-                mixture == model_obj$best_params$mixture) %>%
-         mutate(model = model_name) %>%
-         select(model, id, .metric, .estimate)
-   } else if (model_obj$model_type == "rf") {
-      # RF has mtry and min_n
-      collect_metrics(model_obj$tune_results, summarize = FALSE) %>%
-         filter(mtry == model_obj$best_params$mtry,
-                min_n == model_obj$best_params$min_n) %>%
-         mutate(model = model_name) %>%
-         select(model, id, .metric, .estimate)
-   }
-}
-
-fold_metrics <- bind_rows(
-   get_fold_metrics(elastic_linear, "Elastic"),
-   get_fold_metrics(lasso_linear, "Lasso"),
-   get_fold_metrics(ridge_linear, "Ridge"),
-   get_fold_metrics(rf, 'RF'),
-   get_fold_metrics(gam, 'GAM')
-)
-
-# Get metrics across all folds
-cv_summary <- fold_metrics %>%
-   group_by(model, .metric) %>%
-   summarize(
-      mean = mean(.estimate),
-      std_err = sd(.estimate) / sqrt(n()),
-      min = min(.estimate),
-      max = max(.estimate),
-      .groups = "drop"
-   )
-
-# Get best hyperparameters - separate for linear and RF
-best_params_linear <- bind_rows(
-   elastic_linear$best_params %>% mutate(model = "Elastic"),
-   lasso_linear$best_params %>% mutate(model = "Lasso"),
-   ridge_linear$best_params %>% mutate(model = "Ridge")
-) %>%
-   select(model, penalty, mixture)
-
-best_params_rf <- rf$best_params %>%
-   mutate(model = "RF") %>%
-   select(model, mtry, min_n)
-
-# Combine into one table (with NAs for non-applicable params)
-best_params <- bind_rows(
-   best_params_linear %>% mutate(mtry = NA_real_, min_n = NA_real_),
-   best_params_rf %>% mutate(penalty = NA_real_, mixture = NA_real_)
-) %>%
-   select(model, penalty, mixture, mtry, min_n)
-
-# Variable selection info - RF has importance instead of selection
-var_selection <- tibble(
-   model = c("Elastic", "Lasso", "Ridge", "RF"),
-   n_selected = c(
-      length(elastic_linear$selected_vars),
-      length(lasso_linear$selected_vars),
-      length(ridge_linear$selected_vars),
-      nrow(rf$var_importance)  
-   ),
-   selected_vars = list(
-      elastic_linear$selected_vars,
-      lasso_linear$selected_vars,
-      ridge_linear$selected_vars,
-      rf$var_importance$Variable  # all variables
-   )
-)
-
-# Variable importance for RF (top 10)
-var_importance_rf <- rf$var_importance %>%
-   head(10)
-
-# Get full dataset prediction metrics
-insample_metrics <- model_data %>%
-   summarize(
-      across(c(Elastic, Lasso, Ridge, RF, GAM),
-             list(
-                rmse = ~sqrt(mean((Salinity - .x)^2)),
-                mae = ~mean(abs(Salinity - .x)),
-                rsq = ~cor(Salinity, .x)^2
-             ))
-   ) %>%
-   pivot_longer(everything(), 
-                names_to = c("pred", "metric"), 
-                names_sep = "_(?=[^_]+$)") %>%
-   mutate(model = pred) %>%
-   select(model, metric, value) %>%
-   pivot_wider(names_from = metric, values_from = value)
-
-
-# Fold Performance
-p1 <- plot_fold_performance(fold_metrics, 'rmse')
-p2 <- plot_fold_performance(fold_metrics, 'rsq')
-
-# Across-fold performance
-p3 <- plot_cv_summary(cv_summary, metric = "rsq")
-p4 <- plot_all_metrics_comparison(cv_summary)
-
-# Observed vs predicted
-p5 <- plot_obs_pred(model_data)
-p6 <- plot_obs_pred(model_data, start_date = "2007-01-01", end_date = "2024-12-31", models = c('GAM_CONS', 'GAM_AGG', 'GAM_EXTREME', 'GAM_SMOOTH', 'Elastic', 'Ridge'))
-p7 <- plot_obs_pred(model_data, models = c( 'GamAllVars', 'GamNoTide', 'GamNoTideNoTime', 'GamNoInflows'))
-
-# Plot Time series
-p8 <- plot_timeseries(model_data, start_date = "2016-01-01", end_date = "2016-12-31")
-p9 <- plot_timeseries(model_data, show_residuals = TRUE)
-
-# Diagnostic plots
-diag_plots <- plot_residual_diagnostics(model_data, "GAM")
-diag_plots$residuals_vs_fitted
-diag_plots$qq_plot
-
-
-
-
-

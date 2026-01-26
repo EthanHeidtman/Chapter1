@@ -112,7 +112,7 @@ fit_gam <- function(data,
                     predictors = NULL,
                     folds = NULL,
                     high_salinity_threshold = 0.15,
-                    
+                   
                     # Response transformation (ONLY for Gaussian family)
                     transform_response = "none",  # "none", "log", "sqrt"
                     
@@ -425,8 +425,9 @@ fit_gam <- function(data,
       
       # Lagged variables
       if (has_lagged) {
-         terms <- c(terms, paste0("s(", lagged_vars, ", k=", k_lagged, 
-                                  ", bs='", basis_default, "')"))
+         terms <- c(terms, lagged_vars)
+         # terms <- c(terms, paste0("s(", lagged_vars, ", k=", k_lagged, 
+         #                          ", bs='", basis_default, "')"))
       }
       
       # Other variables
@@ -701,21 +702,27 @@ fit_gam <- function(data,
    # SMOOTH TERMS
    # ============================================================================
    
-   s_table <- summary(final_gam)$s.table
-   smooth_info <- tibble(
-      term = rownames(s_table),
-      edf = s_table[, "edf"],
-      ref_df = s_table[, "Ref.df"],
-      F_stat = s_table[, "F"],
-      p_value = s_table[, "p-value"]
-   ) %>% arrange(desc(edf))
-   
-   cat("=== SMOOTH TERMS ===\n")
-   print(smooth_info, n = Inf)
-   cat("\n")
-   
-   sig_terms <- smooth_info %>% filter(p_value < 0.05)
-   cat("Significant (p < 0.05):", nrow(sig_terms), "/", nrow(smooth_info), "\n\n")
+   if ('k_flow' %in% active_k_types) {
+      s_table <- summary(final_gam)$s.table
+      smooth_info <- tibble(
+         term = rownames(s_table),
+         edf = s_table[, "edf"],
+         ref_df = s_table[, "Ref.df"],
+         F_stat = s_table[, "F"],
+         p_value = s_table[, "p-value"]
+      ) %>% arrange(desc(edf))
+      
+      cat("=== SMOOTH TERMS ===\n")
+      print(smooth_info, n = Inf)
+      cat("\n")
+      
+      sig_terms <- smooth_info %>% filter(p_value < 0.05)
+      cat("Significant (p < 0.05):", nrow(sig_terms), "/", nrow(smooth_info), "\n\n")
+      
+   } else  {
+      smooth_info <- NULL
+      sig_terms <- NULL
+   }
    
    # ============================================================================
    # FOLD-LEVEL RESULTS
@@ -761,8 +768,8 @@ fit_gam <- function(data,
       final_fit = gam_workflow,
       gam_object = final_gam,
       formula = final_formula,
-      smooth_info = smooth_info,
-      selected_vars = sig_terms$term,
+      smooth_info = if (!is.null(smooth_info)) smooth_info else NULL,
+      selected_vars = if (!is.null(sig_terms)) sig_terms$term else NULL,
       model_type = "gam",
       transform_info = list(
          family = family_type,

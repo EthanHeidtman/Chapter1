@@ -1,9 +1,7 @@
 # =============================================================================
-# Script Name:    BuildModels.R
+# Script Name:    BuildBaseModels.R
 # Project:        Chapter1
 # Author:         Ethan Heidtman
-# Date Created:   2025-11-25
-# Last Updated:   2025-11-25
 # Description:    Takes the output of ScreenWithRF.R and creates regularized 
 #                 statistical models to further screen predictors and predict
 #                 salinity exceedance or raw salinity values.

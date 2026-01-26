@@ -1,9 +1,7 @@
 # =============================================================================
-# Script Name:    BuildGAM.R
+# Script Name:    BuildHourlyGAM.R
 # Project:        Chapter1
 # Author:         Ethan Heidtman
-# Date Created:   2025-11-25
-# Last Updated:   2025-11-25
 # Description:    
 # =============================================================================
 
@@ -62,10 +60,39 @@ gam1 <- fit_gam(
    transform_response = 'none',
    link = NULL,
    high_salinity_threshold = 0.15, # 70th %
-   k_lagged_range = c(1, 5),
+   k_lagged_range = c(1, 1),
    gam_levels = 6,
    nthreads = 4,
 )
+
+# residuals <- gam1$final_fit$fit$fit$residuals
+# test <- cbind(hourly_data, residuals)
+# preds <- predictors[!grepl('Log', predictors)]
+# preds <- preds[grepl(paste(c('Discharge', 'Day', 'Tide', 'V', 'WindSign'), collapse = '|'), preds)]
+# gam2 <- fit_gam(
+#    data = test,
+#    predictors = preds,
+#    folds = folds,
+#    response = 'residuals',
+#    family_type = 'gaussian',
+#    transform_response = 'none',
+#    link = NULL,
+#    high_salinity_threshold = 0.15, # 70th %
+#    k_lagged_range = c(1, 1),
+#    k_flow_range = c(1, 50),
+#    k_temporal_range = c(1, 20),
+#    k_physical_range = c(1, 20),
+#    k_interaction_range = c(3, 6),
+#    interactions = list(
+#       list(vars = c('RollingV168', 'RollingDischarge48')),
+#       list(vars = c('RollingV168', 'TideRange48')),
+#       list(vars = c('RollingDischarge48', 'LagTide48')),
+#       list(vars = c('RollingDischarge48', 'RollingV168', 'TideRange48'))
+#    ),
+#    gam_levels = 2,
+#    nthreads = 4
+# )
+
 
 # GAM 2: just raw discharge
 preds2 <- predictors[!grepl("Log", predictors)]
@@ -78,9 +105,9 @@ gam2 <- fit_gam(
    transform_response = 'none',
    link = NULL,
    high_salinity_threshold = 0.15, # 70th %
-   k_lagged_range = c(1, 5),
+   k_lagged_range = c(1, 1),
    k_flow_range = c(1, 50),
-   gam_levels = 6,
+   gam_levels = 10,
    nthreads = 4
 )
 
@@ -95,7 +122,7 @@ gam3 <- fit_gam(
    transform_response = 'none',
    link = NULL,
    high_salinity_threshold = 0.15, # 70th %
-   k_lagged_range = c(1, 3),
+   k_lagged_range = c(1, 1),
    k_flow_range = c(1, 50),
    k_temporal_range = c(1, 20),
    gam_levels = 3,
@@ -113,7 +140,7 @@ gam4 <- fit_gam(
    transform_response = 'none',
    link = NULL,
    high_salinity_threshold = 0.15, # 70th %
-   k_lagged_range = c(1, 3),
+   k_lagged_range = c(1, 1),
    k_flow_range = c(1, 50),
    k_temporal_range = c(1, 20),
    k_physical_range = c(1, 20),
@@ -131,11 +158,11 @@ gam5 <- fit_gam(
    family_type = 'gaussian',
    transform_response = 'none',
    link = NULL,
-   k_lagged_range = c(1, 3),
+   k_lagged_range = c(1, 1),
    k_flow_range = c(1, 50),
    k_temporal_range = c(1, 20),
    k_physical_range = c(1, 20),
-   gam_levels  = 3,
+   gam_levels  = 5,
    nthreads = 4
 )
 
@@ -149,11 +176,11 @@ gam6 <- fit_gam(
    family_type = 'gaussian',
    transform_response = 'none',
    link = NULL,
-   k_lagged_range = c(1, 3),
+   k_lagged_range = c(1, 1),
    k_flow_range = c(1, 50),
    k_temporal_range = c(1, 20),
    k_physical_range = c(1, 20),
-   gam_levels  = 3,
+   gam_levels  = 5,
    nthreads = 4
 )
 
@@ -166,7 +193,7 @@ gam7 <- fit_gam(
    family_type = 'gaussian',
    transform_response = 'none',
    link = NULL,
-   k_lagged_range = c(1, 3),
+   k_lagged_range = c(1, 1),
    k_flow_range = c(1, 50),
    k_temporal_range = c(1, 20),
    k_physical_range = c(1, 20),
@@ -186,7 +213,7 @@ gam8 <- fit_gam(
    family_type = 'gaussian',
    transform_response = 'none',
    link = NULL,
-   k_lagged_range = c(1, 3),
+   k_lagged_range = c(1, 1),
    k_flow_range = c(1, 50),
    k_temporal_range = c(1, 20),
    k_physical_range = c(1, 20),
@@ -207,7 +234,7 @@ gam9 <- fit_gam(
    family_type = 'gaussian',
    transform_response = 'none',
    link = NULL,
-   k_lagged_range = c(1, 3),
+   k_lagged_range = c(1, 1),
    k_flow_range = c(1, 50),
    k_temporal_range = c(1, 20),
    k_physical_range = c(1, 20),
@@ -229,7 +256,7 @@ gam10 <- fit_gam(
    family_type = 'gaussian',
    transform_response = 'none',
    link = NULL,
-   k_lagged_range = c(1, 3),
+   k_lagged_range = c(1, 1),
    k_flow_range = c(1, 50),
    k_temporal_range = c(1, 20),
    k_physical_range = c(1, 20),
@@ -254,7 +281,7 @@ gam_nosal <- fit_gam(
    family_type = 'gaussian',
    transform_response = 'none',
    link = NULL,
-   k_lagged_range = c(1, 3),
+   k_lagged_range = c(1, 1),
    k_flow_range = c(1, 50),
    k_temporal_range = c(1, 20),
    k_physical_range = c(1, 20),

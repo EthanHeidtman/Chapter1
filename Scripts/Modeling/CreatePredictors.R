@@ -2,8 +2,6 @@
 # Script Name:    EngineerModelData.R
 # Project:        Chapter1
 # Author:         Ethan Heidtman
-# Date Created:   2025-06-01
-# Last Updated:   2025-07-16
 # Description:    Loads raw hourly data, tidies columns, and then creates a 
 #                 large number of variables that I think might predict salinity.
 #                 Categories include tide, discharge, inflows, stress/drought. 
@@ -46,7 +44,7 @@ q_sal_data <- q_sal_data %>%
 # Read in meteorology data, including wind
 meteo <- combine_txt_files(dir2)
 meteo <- meteo %>%
-   mutate(DateTime = make_datetime(YY, MM, DD, hh, mm)) %>%
+   mutate(DateTime = make_datetime(YY, MM, DD, hh, mm)) %>% # Make a datetime column
    dplyr::select(-c(YY, MM, DD, hh, mm)) %>%
    relocate(DateTime) %>%
    mutate(across(
@@ -73,15 +71,20 @@ rm(meteo, q_sal_data, dir1, dir2, dirs)
 
 # Create the model data
 model_data <- data %>%
-   
+
+# =======================================================================================
+# PART 0: SALINITY PREDICTORS
+# ======================================================================================= 
+      
 mutate(
+   
    # Lagged Salinity Features
    LagSalinity1 = lag(Salinity, 1),
    LagSalinity2 = lag(Salinity, 2),
    LagSalinity4 = lag(Salinity, 4)
+   
 ) %>%
   
-
 # =======================================================================================
 # PART 1: TIDE PREDICTORS
 # =======================================================================================
@@ -113,6 +116,7 @@ mutate(
                            fill = NA, align = "right"),
    
    TidalVelocity = Tide - lag(Tide, 1)
+   
 ) %>%
    
 # =======================================================================================
@@ -120,6 +124,7 @@ mutate(
 # =======================================================================================
 
 mutate(
+   
    # U (east-west) and V (north-south) wind magnitudes
    direction_radians = WDIR * pi / 180,
    U = -WSPD * sin(direction_radians), # east-west, cross estuary: (+) = wind toward the east, (-) = wind toward the west
@@ -177,6 +182,7 @@ mutate(
 # PART 3: BASIC DISCHARGE FEATURES
 # =======================================================================================
 mutate(
+   
    # Lagged Conowingo Discharges
    LagDischarge1 = lag(Discharge, 1),
    LagDischarge3 = lag(Discharge, 3),
@@ -216,6 +222,7 @@ mutate(
 # PART 4: TEMPORAL FEATURES
 # =======================================================================================
 mutate(
+   
    # Cyclical encoding for smooth seasonality
    MonthSin = sin(2 * pi * Month / 12),
    MonthCos = cos(2 * pi * Month / 12),
@@ -226,7 +233,9 @@ mutate(
    Hour = lubridate::hour(DateTime),
    HourSin = sin(2 * pi * Hour / 24),
    HourCos = cos(2 * pi * Hour / 24)
+   
 ) %>%
+   
    select(-Hour)  # Drop after encoding
    
 # Remove all NaNs and Infinites from computation
@@ -242,7 +251,7 @@ model_data <- model_data %>%
    relocate(Salinity, .after = DayOfYear) %>%
    relocate(FERC, .after = DayOfYear)
 
-# Normalize Predictors and Add to model_data
+# Normalize predictors and Add to model_data
 preds_to_normalize <- colnames(model_data)[which(colnames(model_data) == 'Discharge') : ncol(model_data)] # Starting from the discharge column
 
 # Apply the normalization function
