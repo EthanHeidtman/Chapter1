@@ -10,15 +10,8 @@
 # =============================================================================
 
 # Source necessary functions
-dirs <- c("Scripts/Utilities")
-invisible(
-   lapply(dirs, function(dir) {
-      files <- list.files(dir, full.names = TRUE, pattern = "\\.R$", recursive = TRUE)
-      lapply(files, function(f) {
-         sys.source(f, envir = globalenv())
-      })
-   })
-)
+source('Scripts/Utilities/LoadTextFiles.R')
+source('Scripts/Utilities/WriteQS.R')
 
 # Load necessary packages
 library(here)        # For directory referencing
@@ -79,9 +72,7 @@ model_data <- data %>%
 mutate(
    
    # Lagged Salinity Features
-   LagSalinity1 = lag(Salinity, 1),
-   LagSalinity2 = lag(Salinity, 2),
-   LagSalinity4 = lag(Salinity, 4)
+   LagSalinity = Salinity
    
 ) %>%
   
@@ -170,10 +161,10 @@ mutate(
    MaxGust24 = rollapply(Gust, width = 24, FUN = function(x) max(x, na.rm = TRUE), fill = NA, align = "right"),
    MaxGust72 = rollapply(Gust, width = 72, FUN = function(x) max(x, na.rm = TRUE), fill = NA, align = "right"),
    
-   # Wind Magnitude Predictors
-   WindSpeed = WSPD,
-   RollingWindSpeed24 = zoo::rollmean(WSPD, 24, fill = NA, align = "right", na.rm = TRUE),
-   RollingWindSpeed72 = zoo::rollmean(WSPD, 72, fill = NA, align = "right", na.rm = TRUE),
+   # # Wind Magnitude Predictors
+   # WindSpeed = WSPD,
+   # RollingWindSpeed24 = zoo::rollmean(WSPD, 24, fill = NA, align = "right", na.rm = TRUE),
+   # RollingWindSpeed72 = zoo::rollmean(WSPD, 72, fill = NA, align = "right", na.rm = TRUE),
    
 ) %>%
    select(-c(direction_radians, WDIR, WSPD)) %>%
@@ -195,12 +186,12 @@ mutate(
    LagDischarge72 = lag(Discharge, 72),
    LagDischarge96 = lag(Discharge, 96),
    
-   # Lagged Marietta Inflows
-   LagInflows48 = lag(Inflows, 48),
-   LagInflows72 = lag(Inflows, 72),
-   LagInflows96 = lag(Inflows, 96),
-   LagInflows120 = lag(Inflows, 120),
-   LagInflows144 = lag(Inflows, 144),
+   # # Lagged Marietta Inflows
+   # LagInflows48 = lag(Inflows, 48),
+   # LagInflows72 = lag(Inflows, 72),
+   # LagInflows96 = lag(Inflows, 96),
+   # LagInflows120 = lag(Inflows, 120),
+   # LagInflows144 = lag(Inflows, 144),
    
    # Rolling Discharge
    RollingDischarge3   = zoo::rollmean(Discharge, 3, fill = NA, align = "right", na.rm = TRUE),
@@ -209,12 +200,12 @@ mutate(
    RollingDischarge24  = zoo::rollmean(Discharge, 24, fill = NA, align = "right", na.rm = TRUE),
    RollingDischarge48  = zoo::rollmean(Discharge, 48, fill = NA, align = "right", na.rm = TRUE),
    
-   # Rolling Inflows (by # of days)
-   RollingInflows3   = zoo::rollmean(Inflows, 24 * 3, fill = NA, align = "right", na.rm = TRUE),
-   RollingInflows7   = zoo::rollmean(Inflows, 24 * 7, fill = NA, align = "right", na.rm = TRUE),
-   RollingInflows14  = zoo::rollmean(Inflows, 24 * 14, fill = NA, align = "right", na.rm = TRUE),
-   RollingInflows30  = zoo::rollmean(Inflows, 24 * 24, fill = NA, align = "right", na.rm = TRUE),
-   RollingInflows90  = zoo::rollmean(Inflows, 24 * 90, fill = NA, align = "right", na.rm = TRUE),
+   # # Rolling Inflows (by # of days)
+   # RollingInflows3   = zoo::rollmean(Inflows, 24 * 3, fill = NA, align = "right", na.rm = TRUE),
+   # RollingInflows7   = zoo::rollmean(Inflows, 24 * 7, fill = NA, align = "right", na.rm = TRUE),
+   # RollingInflows14  = zoo::rollmean(Inflows, 24 * 14, fill = NA, align = "right", na.rm = TRUE),
+   # RollingInflows30  = zoo::rollmean(Inflows, 24 * 24, fill = NA, align = "right", na.rm = TRUE),
+   # RollingInflows90  = zoo::rollmean(Inflows, 24 * 90, fill = NA, align = "right", na.rm = TRUE),
    
 ) %>%
 
@@ -224,19 +215,10 @@ mutate(
 mutate(
    
    # Cyclical encoding for smooth seasonality
-   MonthSin = sin(2 * pi * Month / 12),
-   MonthCos = cos(2 * pi * Month / 12),
    DaySin = sin(2 * pi * DayOfYear / 365.25),
    DayCos = cos(2 * pi * DayOfYear / 365.25),
    
-   # Hour of day (diurnal patterns in stratification/mixing)
-   Hour = lubridate::hour(DateTime),
-   HourSin = sin(2 * pi * Hour / 24),
-   HourCos = cos(2 * pi * Hour / 24)
-   
-) %>%
-   
-   select(-Hour)  # Drop after encoding
+) 
    
 # Remove all NaNs and Infinites from computation
 model_data[] <- lapply(model_data, function(x) {
@@ -247,21 +229,21 @@ model_data[] <- lapply(model_data, function(x) {
 model_data <- model_data %>%
    relocate(FERC, Salinity, Discharge, .after = DayOfYear) %>%
    mutate_if(is.numeric, round, digits = 3) %>%
-   relocate(DaySin, DayCos, MonthSin, MonthCos, HourSin, HourCos, .after = DayOfYear) %>%
+   relocate(DaySin, DayCos, .after = DayOfYear) %>%
    relocate(Salinity, .after = DayOfYear) %>%
    relocate(FERC, .after = DayOfYear)
 
-# Normalize predictors and Add to model_data
-preds_to_normalize <- colnames(model_data)[which(colnames(model_data) == 'Discharge') : ncol(model_data)] # Starting from the discharge column
-
-# Apply the normalization function
-normalized_predictors <- normalize_multiple_predictors(model_data, preds_to_normalize)
-model_data <- normalized_predictors$data
-norm_params <- normalized_predictors$parameters
+# # Normalize predictors and Add to model_data
+# preds_to_normalize <- colnames(model_data)[which(colnames(model_data) == 'Discharge') : ncol(model_data)] # Starting from the discharge column
+# 
+# # Apply the normalization function
+# normalized_predictors <- normalize_multiple_predictors(model_data, preds_to_normalize)
+# model_data <- normalized_predictors$data
+# norm_params <- normalized_predictors$parameters
 
 # Write output files
-outputs <- list(model_data, norm_params)
-file_names <- c('FinalModelData', 'FinalNormalizationParams')
+outputs <- list(model_data)
+file_names <- c('FinalModelData')
 write_qs_files(outputs, 'Data/Tidied/Final', file_names)
 
 # Clear global environment

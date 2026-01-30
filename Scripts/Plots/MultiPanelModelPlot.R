@@ -168,17 +168,18 @@ create_salinity_predictor_plot <- function(data,
    # Define nice labels for common predictors
    predictor_labels <- c(
       "log_discharge" = "Log Discharge",
-      "RollingDischarge48" = "48-hr Rolling Discharge (m³/s)",
+      "RollingDischarge48" = "48-hr Discharge (m³/s)",
       "log_inflows" = "Log Inflows",
       "RollingInflows90" = "90-day Rolling Inflows (m³/s)",
       "TideRange24" = "24-hr Tide Range (m)",
-      "RollingV168" = "168-hr Rolling Velocity (m/s)",
+      "RollingV168" = "1-week N-S Wind Velocity (m/s)",
       "WindSpeed" = "Wind Speed (m/s)",
       "WindN" = "Northward Wind (m/s)",
       "DayOfYear" = "Day of Year",
       "quarter" = "Quarter",
       "Norm_InflowDeficit" = "Normalized Inflow Deficit",
-      "Norm_PowDischarge" = "Normalized Discharge"
+      "Norm_PowDischarge" = "Normalized Discharge",
+      "LagTide4" = '4-hr Lagged Tide Height'
    )
    
    predictor_plots <- list()

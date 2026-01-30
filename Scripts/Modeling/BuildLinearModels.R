@@ -32,94 +32,85 @@ invisible(
    })
 )
 
-# Read in model data
-hourly_data <- as.data.frame(read_qs_files('Data/Tidied/Final/FinalHourlyDataScreened.qs'))
-daily_data <- as.data.frame(read_qs_files('Data/Tidied/Final/FinalDailyDataScreened.qs'))
+# Define lead times that were run
+lead_times <- c(0, 1, 6, 12, 24, 48, 72, 168, 336, 504)
 
-hourly_data <- hourly_data %>% 
-   drop_na() %>% mutate_if(is.numeric, round, digits = 3) %>%
-   dplyr::select(-contains('Inflows'))
-daily_data <- daily_data %>% 
-   drop_na() %>% mutate_if(is.numeric, round, digits = 3) %>%
-   dplyr::select(-contains('Inflows')) %>%
-   rename(DateTime = Date)
+# Initialize lists to store results
+screened_data <- list()
 
+# Read in results and screened data
+for(k in lead_times) {
+   # Read screened data
+   screened_data[[paste0("lag", k)]] <- read_qs_files(
+      paste0('Data/Tidied/Final/FinalHourlyDataScreened_lag', k, '.qs')
+   )
+}
 
-# Create expanding folds for cross validation and make into proper form for tidymodels
-folds_hourly <- make_expanding_folds(hourly_data, initial_train_length = 5)
-folds_daily <- make_expanding_folds(daily_data, initial_train_length = 6)
+# Loop through each lead time
+for(k in 1 : length(lead_times)) {
+   
+   cat("\n=== Building Linear Models for lead time k =", lead_times[k], "hours ===\n")
+   
+   # Get data
+   hourly_data_k <- screened_data[[k]]
+   
+   # Clean data 
+   hourly_data_k <- hourly_data_k %>%
+      drop_na()
 
-# Elastic Net 
-elastic_hourly <- fit_model(
-   data = hourly_data,
-   model_type = 'linear',
-   penalty_range = c(0.001, 10), 
-   mixture_range = c(0, 1),
-   folds = folds_hourly,
-   eval_threshold = 0.16,
-   standardize = FALSE
-)
-
-# Lasso Regression
-lasso_hourly <- fit_model(
-   data = hourly_data,
-   model_type = 'linear',
-   penalty_range = c(0.001, 10),
-   mixture_range = c(1, 1),  # Pure LASSO
-   folds = folds_hourly,
-   eval_threshold = 0.16,
-   standardize = FALSE
-)
-
-# Ridge Regression
-ridge_hourly <- fit_model(
-   data = hourly_data,
-   model_type = 'linear',
-   penalty_range = c(0.001, 10),
-   mixture_range = c(0, 0),  # Pure Ridge
-   folds = folds_hourly,
-   eval_threshold = 0.16,
-   standardize = FALSE
-)
-
-# Elastic Net 
-elastic_daily <- fit_model(
-   data = daily_data,
-   model_type = 'linear',
-   penalty_range = c(0.001, 10), 
-   mixture_range = c(0, 1),
-   folds = folds_daily,
-   eval_threshold = 0.16,
-   standardize = FALSE
-)
-
-# Lasso Regression
-lasso_daily <- fit_model(
-   data = daily_data,
-   model_type = 'linear',
-   penalty_range = c(0.001, 10),
-   mixture_range = c(1, 1),  # Pure LASSO
-   folds = folds_daily,
-   eval_threshold = 0.16,
-   standardize = FALSE
-)
-
-# Ridge Regression
-ridge_daily <- fit_model(
-   data = daily_data,
-   model_type = 'linear',
-   penalty_range = c(0.001, 10),
-   mixture_range = c(0, 0),  # Pure Ridge
-   folds = folds_daily,
-   eval_threshold = 0.16,
-   standardize = FALSE
-)
-
-
-# Write output files
-objects <- list(elastic_hourly, lasso_hourly, ridge_hourly, elastic_daily, lasso_daily, ridge_daily)
-file_names <- list('ElasticHourly', 'LassoHourly', 'RidgeHourly', 'ElasticDaily', 'LassoDaily', 'RidgeDaily')
-write_qs_files(objects, 'Outputs/Experiments/Models/Linear', file_names)
+   # Make expanding fold CV scheme for linear model
+   folds_hourly <- make_expanding_folds(hourly_data_k, initial_train_length = 6)
+   
+   # Fit elastic linear regression model
+   elastic <- fit_model(
+      data = hourly_data_k,
+      model_type = 'linear',
+      penalty_range = c(0.001, 10), 
+      mixture_range = c(0, 1),
+      folds = folds_hourly,
+      eval_threshold = 0.16,
+      standardize = FALSE
+   )
+   
+   # Fit lasso regression model
+   lasso <- fit_model(
+      data = hourly_data_k,
+      model_type = 'linear',
+      penalty_range = c(0.001, 10),
+      mixture_range = c(1, 1),  # Pure LASSO
+      folds = folds_hourly,
+      eval_threshold = 0.16,
+      standardize = FALSE
+   )
+   
+   # Ridge Regression
+   ridge <- fit_model(
+      data = hourly_data_k,
+      model_type = 'linear',
+      penalty_range = c(0.001, 10),
+      mixture_range = c(0, 0),  # Pure Ridge
+      folds = folds_hourly,
+      eval_threshold = 0.16,
+      standardize = FALSE
+   )
+   
+   # Write model outputs with k in filename
+   write_qs_files(
+      list(elastic, lasso, ridge), 
+      'Outputs/Experiments/Models/Linear/', 
+      list(paste0('Elastic_', lead_times[k]), paste0('Lasso_', lead_times[k]), paste0('Ridge_', lead_times[k]))
+   )
+   
+   cat("Completed lead time k =", lead_times[k], "hours\n")
+}
 
 # Clear global environment
 rm(list = ls())
+
+
+# # Write output files
+# objects <- list(elastic_hourly, lasso_hourly, ridge_hourly, elastic_daily, lasso_daily, ridge_daily)
+# file_names <- list('ElasticHourly', 'LassoHourly', 'RidgeHourly', 'ElasticDaily', 'LassoDaily', 'RidgeDaily')
+# write_qs_files(objects, 'Outputs/Experiments/Models/Linear', file_names)
+
+

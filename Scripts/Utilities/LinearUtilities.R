@@ -131,7 +131,7 @@ fit_model <- function(data,
          resamples = cv_folds,
          grid = grid,
          metrics = metrics,
-         control = control_grid(verbose = TRUE)
+         control = control_grid(verbose = FALSE)
       )
    
    # Best model
@@ -153,7 +153,7 @@ fit_model <- function(data,
    # Finalize workflow
    final_wf <- finalize_workflow(wf, best)
    
-   # ===== NEW: Generate fold-level predictions and metrics =====
+   # ===== Generate fold-level predictions and metrics =====
    fold_predictions <- map_dfr(seq_along(cv_folds$splits), function(i) {
       split <- cv_folds$splits[[i]]
       fold_id <- cv_folds$id[i]
@@ -197,7 +197,7 @@ fit_model <- function(data,
          ungroup()
    }
    
-   # ===== NEW: Threshold-based evaluation for regression =====
+   # ===== Threshold-based evaluation for regression =====
    threshold_metrics_overall <- NULL
    threshold_metrics_folds <- NULL
    
@@ -239,6 +239,7 @@ fit_model <- function(data,
    
    # Extract final model details
    model_details <- list(
+      model = final_fit,
       formula = model_formula,
       response_var = response,
       n_predictors = length(predictors),
