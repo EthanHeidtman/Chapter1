@@ -24,7 +24,7 @@ source('Scripts/Utilities/FitGAM.R')
 set.seed(123)
 
 # Define lead times that were run
-lead_times <- c(0, 1, 6, 12, 24, 48, 72, 168, 336, 504)
+lead_times <- c(0, 1, 2, 4, 6, 8, 10, 12, 24, 36, 48, 72, 168, 336, 504)
 
 # Initialize lists to store results
 screened_data <- list()

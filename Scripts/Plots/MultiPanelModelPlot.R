@@ -60,6 +60,9 @@ create_salinity_predictor_plot <- function(data,
       plot_data <- data
    }
    
+   # Ensure chronological ordering
+   plot_data <- plot_data %>% arrange(DateTime)
+   
    # ============================================================================
    # IDENTIFY MODEL COLUMNS
    # ============================================================================
@@ -92,20 +95,32 @@ create_salinity_predictor_plot <- function(data,
       alpha_scale[model] <- model_alpha
    }
    
-   # Reshape data for plotting
+   # Reshape data for plotting with gap detection
    plot_data_long <- plot_data %>%
       dplyr::select(DateTime, Salinity, all_of(models)) %>%
       pivot_longer(cols = c(Salinity, all_of(models)), 
                    names_to = "Series", 
                    values_to = "Value") %>%
       mutate(Series = ifelse(Series == "Salinity", "Observed", Series)) %>%
-      mutate(Series = factor(Series, levels = c("Observed", models)))
+      mutate(Series = factor(Series, levels = c("Observed", models))) %>%
+      arrange(Series, DateTime) %>%
+      group_by(Series) %>%
+      mutate(
+         dt = as.numeric(difftime(DateTime, lag(DateTime), units = "secs")),
+         base_dt = median(dt, na.rm = TRUE),
+         segment = cumsum(is.na(dt) | dt > 1.5 * base_dt)
+      ) %>%
+      ungroup()
    
    # Initialize salinity plot
-   p_salinity <- ggplot(plot_data_long, aes(x = DateTime, y = Value, 
-                                            color = Series, 
-                                            size = Series, 
-                                            alpha = Series))
+   p_salinity <- ggplot(plot_data_long, aes(
+      x = DateTime, 
+      y = Value, 
+      color = Series, 
+      size = Series, 
+      alpha = Series,
+      group = interaction(Series, segment)
+   ))
    
    # Add highlight rectangle if specified
    if (!is.null(highlight_start) && !is.null(highlight_end)) {
@@ -172,6 +187,7 @@ create_salinity_predictor_plot <- function(data,
       "log_inflows" = "Log Inflows",
       "RollingInflows90" = "90-day Rolling Inflows (m³/s)",
       "TideRange24" = "24-hr Tide Range (m)",
+      "TideRange48" = "48-hr Tide Range (m)",
       "RollingV168" = "1-week N-S Wind Velocity (m/s)",
       "WindSpeed" = "Wind Speed (m/s)",
       "WindN" = "Northward Wind (m/s)",
@@ -201,8 +217,22 @@ create_salinity_predictor_plot <- function(data,
       # Determine if this is the last predictor (for x-axis)
       is_last <- (i == length(predictors))
       
+      # Prepare predictor data with gap detection
+      predictor_data <- plot_data %>%
+         select(DateTime, !!sym(var_name)) %>%
+         arrange(DateTime) %>%
+         mutate(
+            dt = as.numeric(difftime(DateTime, lag(DateTime), units = "secs")),
+            base_dt = median(dt, na.rm = TRUE),
+            segment = cumsum(is.na(dt) | dt > 1.5 * base_dt)
+         )
+      
       # Create predictor plot
-      p_pred <- ggplot(plot_data, aes(x = DateTime, y = !!sym(var_name)))
+      p_pred <- ggplot(predictor_data, aes(
+         x = DateTime, 
+         y = !!sym(var_name),
+         group = segment
+      ))
       
       # Add highlight rectangle if specified
       if (!is.null(highlight_start) && !is.null(highlight_end)) {
