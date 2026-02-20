@@ -24,7 +24,9 @@ source('Scripts/Utilities/FitGAM.R')
 set.seed(123)
 
 # Define lead times that were run
-lead_times <- c(1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 30)
+#lead_times <- 0
+lead_times <- seq(1, 30, 1)
+#lead_times <- seq(0, 30, 1)
 
 # Initialize lists to store results
 screened_data <- list()
@@ -81,7 +83,7 @@ for(k in 1 : length(lead_times)) {
    # Clean data and create a factor for WindDirection 
    daily_data_k <- daily_data_k %>%
       drop_na() %>%
-      dplyr::select(c(1 : 8, top_vars, contains('Day'))) %>%
+      dplyr::select(c(1 : "Salinity", top_vars)) %>%
       { 
          # If there is a V wind variable → North (-) vs South (+)
          if (any(grepl("V", top_vars))) {
@@ -109,8 +111,10 @@ for(k in 1 : length(lead_times)) {
    # Make expanding fold CV scheme for linear model
    folds_daily <- make_expanding_folds(daily_data_k, initial_train_length = 6)
    
-   # Make predictor set
-   predictors_k <- names(daily_data_k)[9 : ncol(daily_data_k)]
+   # Make predictor set (the ones after Salinity)
+   ncol_k <- ncol(daily_data_k)
+   ncol_sal <- as.numeric(which(names(daily_data_k) == 'Salinity'))
+   predictors_k <- names(daily_data_k)[(ncol_sal + 1) : ncol_k]
    
    # Fit GAM
    gam_k <- fit_gam(
@@ -123,7 +127,7 @@ for(k in 1 : length(lead_times)) {
       high_salinity_threshold = 0.16, # 75th percentile
       k_lagged_range = c(1, 1),
       k_flow_range = c(1, 50),
-      k_temporal_range = c(1, 20),
+      #k_temporal_range = c(1, 20),
       k_physical_range = c(1, 20),
       gam_levels  = 10,
       nthreads = 4
@@ -142,3 +146,4 @@ for(k in 1 : length(lead_times)) {
 
 # Clear global environment
 rm(list = ls())
+

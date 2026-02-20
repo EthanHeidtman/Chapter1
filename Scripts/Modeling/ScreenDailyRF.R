@@ -35,8 +35,7 @@ daily_data <- daily_data %>%
    dplyr::select(-contains('Inflows'))
 
 # Define lead times to test (in days)
-lead_times <- c(0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 30)
-#lead_times <- c(11, 13, 15, 16, 17, 18, 19, 20)
+lead_times <- seq(0, 30, 1)
 
 # Random Forest hyperparameters
 set.seed(123) 
@@ -61,7 +60,7 @@ for(k in lead_times) {
    discharge_cluster <- daily_data_k %>% dplyr::select(c('Salinity', contains('Discharge')))
    tide_cluster <- daily_data_k %>% dplyr::select(c('Salinity', contains('Tide')))
    wind_cluster <- daily_data_k %>% dplyr::select(c('Salinity', contains(c('U', 'V', 'Gust', 'Wind'))))
-   time_cluster <- daily_data_k %>% dplyr::select(c('Salinity', contains(c('Sin', 'Cos'))))
+   #time_cluster <- daily_data_k %>% dplyr::select(c('Salinity', contains(c('Sin', 'Cos'))))
    
    # Make expanding fold CV scheme for RF implementation
    folds_daily <- make_expanding_folds(daily_data_k, initial_train_length = 6)
@@ -81,15 +80,15 @@ for(k in lead_times) {
       salinity = salinity_cluster,
       discharge = discharge_cluster,
       tide = tide_cluster,
-      wind = wind_cluster,
-      time = time_cluster
+      wind = wind_cluster
+      #time = time_cluster
    )
    
    # Collect the top variables for each group
    top_vars_daily <- get_top_vars_by_group(
       importance_df = rf_daily$importance,
       group_dfs = group_list,
-      n_top = list(salinity = 3, discharge = 3, tide = 3, wind = 3, time = 3),
+      n_top = list(salinity = 3, discharge = 3, tide = 3, wind = 3),
       importance_col = "IncMSE_OOB",
       show_importance = TRUE
    )
@@ -104,7 +103,7 @@ for(k in lead_times) {
    
    # Collect only the screened model variables
    daily_data_screened <- daily_data_k %>%
-      dplyr::select(c(1 : 8), all_of(selected_vars_daily))
+      dplyr::select(c(1 : 'Salinity'), all_of(selected_vars_daily))
    
    # Write screened data with k in filename
    write_qs_files(

@@ -18,7 +18,7 @@ gam_colors <- list(
 #' @param gam_object A fitted GAM object
 #' @param max_lag Maximum lag for ACF (default 40)
 #' @param title Plot title
-plot_gam_acf <- function(gam_object, max_lag = 1000, title = NULL) {
+plot_gam_acf <- function(gam_object, max_lag = 100, title = NULL) {
    
    resids <- residuals(gam_object, type = "deviance")
    acf_result <- acf(resids, lag.max = max_lag, plot = FALSE, na.action = na.pass)
@@ -58,7 +58,7 @@ plot_gam_acf <- function(gam_object, max_lag = 1000, title = NULL) {
 #' @param gam_object A fitted GAM object
 #' @param max_lag Maximum lag for PACF (default 40)
 #' @param title Plot title
-plot_gam_pacf <- function(gam_object, max_lag = 500, title = NULL) {
+plot_gam_pacf <- function(gam_object, max_lag = 100, title = NULL) {
    
    resids <- residuals(gam_object, type = "deviance")
    pacf_result <- pacf(resids, lag.max = max_lag, plot = FALSE, na.action = na.pass)

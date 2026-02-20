@@ -66,8 +66,9 @@ data <- data %>%
    group_by(DateTime, Year, Month, Day) %>%
    summarise(
       Salinity = max(Salinity, na.rm = TRUE),
+      Tide = max(Tide, na.rm = TRUE) - min(Tide, na.rm = TRUE),
       across(
-         where(is.numeric) & !all_of("Salinity"),
+         where(is.numeric) & !all_of(c("Salinity", "Tide")),
          ~ mean(.x, na.rm = TRUE)
       ),
       .groups = "drop"
@@ -114,42 +115,18 @@ mutate(
    LagTide21 = lag(Tide, 21),
    LagTide30 = lag(Tide, 30),
    
-   # Tidal Range Metrics
-   TideRange1 = rollapply(Tide, width = 1,
-                          FUN = function(x) max(x, na.rm = TRUE) - min(x, na.rm = TRUE),
-                          fill = NA, align = "right"),
-   TideRange2 = rollapply(Tide, width = 2,
-                          FUN = function(x) max(x, na.rm = TRUE) - min(x, na.rm = TRUE),
-                          fill = NA, align = "right"),
-   TideRange3 = rollapply(Tide, width = 3,
-                          FUN = function(x) max(x, na.rm = TRUE) - min(x, na.rm = TRUE),
-                          fill = NA, align = "right"),
-   TideRange4 = rollapply(Tide, width = 4,
-                          FUN = function(x) max(x, na.rm = TRUE) - min(x, na.rm = TRUE),
-                          fill = NA, align = "right"),
-   TideRange6 = rollapply(Tide, width = 6, 
-                          FUN = function(x) max(x, na.rm = TRUE) - min(x, na.rm = TRUE),
-                          fill = NA, align = "right"),
-   TideRange7 = rollapply(Tide, width = 7,
-                          FUN = function(x) max(x, na.rm = TRUE) - min(x, na.rm = TRUE),
-                          fill = NA, align = "right"),
-   TideRange10 = rollapply(Tide, width = 10,
-                          FUN = function(x) max(x, na.rm = TRUE) - min(x, na.rm = TRUE),
-                          fill = NA, align = "right"),
-   TideRange12 = rollapply(Tide, width = 12,
-                           FUN = function(x) max(x, na.rm = TRUE) - min(x, na.rm = TRUE),
-                           fill = NA, align = "right"),
-   TideRange14 = rollapply(Tide, width = 14,
-                          FUN = function(x) max(x, na.rm = TRUE) - min(x, na.rm = TRUE),
-                          fill = NA, align = "right"),
-   TideRange21 = rollapply(Tide, width = 21,
-                           FUN = function(x) max(x, na.rm = TRUE) - min(x, na.rm = TRUE),
-                           fill = NA, align = "right"),
-   TideRange30 = rollapply(Tide, width = 30,
-                           FUN = function(x) max(x, na.rm = TRUE) - min(x, na.rm = TRUE),
-                           fill = NA, align = "right"),
-   
-   TidalVelocity = Tide - lag(Tide, 1)
+   # Tidal Range Metrics: Mean Tidal range over X # of days
+   TideRange1 = zoo::rollmean(Tide, 1, fill = NA, align = "right", na.rm = TRUE),
+   TideRange2 = zoo::rollmean(Tide, 2, fill = NA, align = "right", na.rm = TRUE),
+   TideRange3 = zoo::rollmean(Tide, 3, fill = NA, align = "right", na.rm = TRUE),
+   TideRange4 = zoo::rollmean(Tide, 4, fill = NA, align = "right", na.rm = TRUE),
+   TideRange6 = zoo::rollmean(Tide, 6, fill = NA, align = "right", na.rm = TRUE),
+   TideRange7 = zoo::rollmean(Tide, 7, fill = NA, align = "right", na.rm = TRUE),
+   TideRange10 = zoo::rollmean(Tide, 10, fill = NA, align = "right", na.rm = TRUE),
+   TideRange12 = zoo::rollmean(Tide, 12, fill = NA, align = "right", na.rm = TRUE),
+   TideRange14 = zoo::rollmean(Tide, 14, fill = NA, align = "right", na.rm = TRUE),
+   TideRange21 = zoo::rollmean(Tide, 21, fill = NA, align = "right", na.rm = TRUE),
+   TideRange30 = zoo::rollmean(Tide, 30, fill = NA, align = "right", na.rm = TRUE),
    
 ) %>%
 
@@ -287,10 +264,13 @@ model_data[] <- lapply(model_data, function(x) {
 
 model_data <- model_data %>%
    relocate(FERC, Salinity, Discharge, .after = DayOfYear) %>%
-   mutate_if(is.numeric, round, digits = 2) %>%
+   mutate_if(is.numeric, round, digits = 3) %>%
    relocate(DaySin, DayCos, .after = DayOfYear) %>%
    relocate(Salinity, .after = DayOfYear) %>%
    relocate(FERC, .after = DayOfYear)
+
+model_data <- model_data %>%
+   dplyr::select(-c(DaySin, DayCos))
 
 # # Normalize predictors and Add to model_data
 # preds_to_normalize <- colnames(model_data)[which(colnames(model_data) == 'Discharge') : ncol(model_data)] # Starting from the discharge column

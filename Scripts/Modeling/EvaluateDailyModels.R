@@ -30,7 +30,7 @@ source('Scripts/Utilities/ComputeGamPerformance.R')
 source('Scripts/Plots/GamEvalPlots.R')
 
 # Define lead times that were run
-lead_times <- c(0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 30)
+lead_times <- seq(0, 30, 1)
 
 # Initialize lists to store results
 screened_data <- list()
@@ -93,7 +93,7 @@ for(k in lead_times) {
    # Clean data
    daily_data_k <- daily_data_k %>%
       drop_na() %>%
-      dplyr::select(c(1 : 8, top_vars, contains('Day'))) %>%
+      dplyr::select(c(1 : "Salinity", top_vars)) %>%
       { 
          # If there is a V wind variable → North (-) vs South (+)
          if (any(grepl("V", top_vars))) {
@@ -120,7 +120,7 @@ for(k in lead_times) {
    
    # Create a subset with only the predictors used in the model
    model_data_k <- daily_data_k %>%
-      dplyr::select(c(1:8, all_of(top_vars), contains('Day'), 
+      dplyr::select(c(1: "Salinity", all_of(top_vars), 
                       if(any(grepl("[VU]", top_vars))) "WindDir" else NULL))
    
    # Load the GAM model for this k
@@ -315,7 +315,7 @@ ggsave(filename = file.path(base_dir, 'NSE_OverK.png'), plot = p_nse, width = 12
 plot_salinity_with_models(
    data = all_data,
    date_range = c('2016-09-15', '2016-12-25'),
-   models = c('2DayForecast', '1DayForecast'),
+   models = c('0DayForecast'),
    highlight_start = as_datetime("2016-10-09"),
    highlight_end = as_datetime("2016-10-25"),
    title = "October 2016 High Salinity Event"
@@ -324,7 +324,7 @@ plot_salinity_with_models(
 plot_salinity_with_models(
    data = all_data,
    date_range = c('2013-01-01', '2019-12-31'),
-   models = c('1DayForecast'),
+   models = c('12DayForecast'),
    title = "Havre de Grace Salinity"
 )
 

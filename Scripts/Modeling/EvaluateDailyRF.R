@@ -24,7 +24,7 @@ source('Scripts/Utilities/GetTopVarImp.R')
 source('Scripts/Plots/RF/RFEvalPlots.R')
 
 # Define lead times that were run
-lead_times <- c(0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 30)
+lead_times <- seq(0, 30, 1)
 
 # Initialize lists to store results
 rf_results <- list()
