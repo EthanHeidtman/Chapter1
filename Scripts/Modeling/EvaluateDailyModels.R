@@ -315,7 +315,7 @@ ggsave(filename = file.path(base_dir, 'NSE_OverK.png'), plot = p_nse, width = 12
 plot_salinity_with_models(
    data = all_data,
    date_range = c('2016-09-15', '2016-12-25'),
-   models = c('0DayForecast'),
+   models = c('7DayForecast', '14DayForecast'),
    highlight_start = as_datetime("2016-10-09"),
    highlight_end = as_datetime("2016-10-25"),
    title = "October 2016 High Salinity Event"
