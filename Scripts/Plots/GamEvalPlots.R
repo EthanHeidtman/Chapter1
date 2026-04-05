@@ -455,6 +455,28 @@ plot_gam_resid_hist <- function(gam_object, bins = 30, title = NULL) {
       )
 }
 
+
+# Unit detection — order matters, more specific patterns first
+.detect_units <- function(varname) {
+   patterns <- list(
+      # X-axis units (predictor)
+      list(pattern = "ExceedFlux",                units_x = "m³/s · days"),
+      list(pattern = "DaysSinceFlush",            units_x = "days"),
+      list(pattern = "RollingDischarge|LagDischarge", units_x = "m³/s"),
+      list(pattern = "MaxDischarge",              units_x = "m³/s"),
+      list(pattern = "TideRange",                 units_x = "m"),
+      list(pattern = "RollingU|LagU|WindU",       units_x = "m/s"),
+      list(pattern = "RollingV|LagV|WindV",       units_x = "m/s"),
+      list(pattern = "Gust",                      units_x = "m/s"),
+      list(pattern = "Sin|Cos",                   units_x = "radians"),
+      list(pattern = "LagSalinity|Salinity",      units_x = "PSU")
+   )
+   for (p in patterns) {
+      if (grepl(p$pattern, varname, ignore.case = TRUE)) return(p$units_x)
+   }
+   return("")
+}
+
 #' Plot smooth effects from GAM with shaded confidence intervals
 #' Handles by variables (e.g., by = WindDir)
 #' @param gam_object A fitted GAM object
@@ -462,60 +484,61 @@ plot_gam_resid_hist <- function(gam_object, bins = 30, title = NULL) {
 #' @param n_points Number of points for prediction (default 200)
 #' @param title Plot title (if NULL, uses smooth term name)
 #' @param lag_name Name of the lag (e.g., "Lag1", "Lag5") for title formatting
-plot_gam_smooth_single <- function(gam_object, select = 1, n_points = 200, title = NULL, lag_name = NULL) {
+plot_gam_smooth_single <- function(gam_object,
+                                   select   = 1,
+                                   n_points = 200,
+                                   title    = NULL,
+                                   lag_name = NULL) {
    
-   # Get smooth terms
    smooth_terms <- gam_object$smooth
    
+   # Select smooth object
    if (is.numeric(select)) {
-      if (select > length(smooth_terms)) {
-         stop("select index exceeds number of smooths")
-      }
+      if (select > length(smooth_terms)) stop("select index exceeds number of smooths")
       smooth_obj <- smooth_terms[[select]]
    } else {
-      # Find smooth by name
       smooth_names <- sapply(smooth_terms, function(x) x$label)
       idx <- which(smooth_names == select)
-      if (length(idx) == 0) {
-         stop("Smooth '", select, "' not found")
-      }
+      if (length(idx) == 0) stop("Smooth '", select, "' not found")
       smooth_obj <- smooth_terms[[idx]]
    }
    
-   # Get the variable name and clean it
-   var_name <- smooth_obj$term
-   # Remove trailing _1, _2, etc. that mgcv adds for by variables
-   var_name_clean <- sub("_\\d+$", "", var_name)
+   var_name       <- smooth_obj$term
+   var_name_clean <- sub("_\\d+$", "", var_name)  # strip lag suffix
+   by_var         <- smooth_obj$by
+   has_by         <- by_var != "NA"
+   model_data     <- gam_object$model
+   x_vals         <- model_data[[var_name]]
    
-   # Check if this is a "by" smooth
-   by_var <- smooth_obj$by
-   has_by <- by_var != "NA"
+   # Auto-detect units
+   units_x <- .detect_units(var_name_clean)
+   x_label <- if (nchar(units_x) > 0) units_x else var_name_clean
+   y_label <- "PSU"
    
-   # Get predictor values
-   model_data <- gam_object$model
-   x_vals <- model_data[[var_name]]
-   x_range <- range(x_vals, na.rm = TRUE)
-   
-   # If this is a "by" smooth, we need to handle it differently
    if (has_by) {
-      # Get the "by" variable levels
-      by_vals <- model_data[[by_var]]
-      by_level <- unique(by_vals)[1]  # This smooth is for a specific level
       
-      # The by variable in the smooth object tells us which level
-      # For factor by variables, the smooth$by.level tells us the level
-      if (!is.null(smooth_obj$by.level)) {
-         by_level <- smooth_obj$by.level
+      # Robustly resolve by level
+      by_level <- if (!is.null(smooth_obj$by.level)) {
+         smooth_obj$by.level
+      } else {
+         by_vals_all <- model_data[[by_var]]
+         lvls <- if (is.factor(by_vals_all)) levels(by_vals_all) else unique(by_vals_all)
+         matched <- lvls[sapply(lvls, function(l) grepl(as.character(l), smooth_obj$label))]
+         if (length(matched) > 0) matched[1] else lvls[1]
       }
       
-      # Create prediction data for this specific by level
+      by_vals <- model_data[[by_var]]
+      
+      # Clip x range to observations for this by level only
+      x_vals_this_level <- x_vals[by_vals == by_level]
+      x_range <- range(x_vals_this_level, na.rm = TRUE)
+      
       newdata <- data.frame(x = seq(x_range[1], x_range[2], length.out = n_points))
       names(newdata) <- var_name
       newdata[[by_var]] <- by_level
       
-      # Add other predictors at their means
       for (var in names(model_data)) {
-         if (var != var_name && var != by_var && var != names(model_data)[1]) {
+         if (!var %in% c(var_name, by_var, names(model_data)[1])) {
             if (is.numeric(model_data[[var]])) {
                newdata[[var]] <- mean(model_data[[var]], na.rm = TRUE)
             } else {
@@ -524,39 +547,32 @@ plot_gam_smooth_single <- function(gam_object, select = 1, n_points = 200, title
          }
       }
       
-      # Predict with standard errors
-      preds <- predict(gam_object, newdata = newdata, se.fit = TRUE, type = "terms")
-      
-      # Extract the smooth term effect
+      preds      <- predict(gam_object, newdata = newdata, se.fit = TRUE, type = "terms")
       smooth_idx <- which(colnames(preds$fit) == smooth_obj$label)
       
-      pred_df <- data.frame(
-         x = newdata[[var_name]],
-         fit = preds$fit[, smooth_idx],
-         se = preds$se.fit[, smooth_idx]
-      )
+      pred_df        <- data.frame(x = newdata[[var_name]],
+                                   fit = preds$fit[, smooth_idx],
+                                   se  = preds$se.fit[, smooth_idx])
+      pred_df$lower  <- pred_df$fit - 1.96 * pred_df$se
+      pred_df$upper  <- pred_df$fit + 1.96 * pred_df$se
       
-      pred_df$lower <- pred_df$fit - 1.96 * pred_df$se
-      pred_df$upper <- pred_df$fit + 1.96 * pred_df$se
+      x_vals_filtered <- x_vals_this_level
       
-      # Filter x_vals to only this by level for rug plot
-      x_vals_filtered <- x_vals[by_vals == by_level]
-      
-      # Create plot title
+      # Title: variable + by level + lag
       if (is.null(title)) {
-         if (!is.null(lag_name)) {
-            title <- paste0(var_name_clean, " (", by_level, ") at ", lag_name, " Smooth")
-         } else {
-            title <- paste0(var_name_clean, " (", by_level, ") Smooth")
-         }
+         title <- paste0(
+            var_name_clean,
+            " (", as.character(by_level), ")",
+            if (!is.null(lag_name)) paste0(" — ", lag_name) else ""
+         )
       }
       
    } else {
-      # Non-by smooth (original code)
-      newdata <- data.frame(x = seq(x_range[1], x_range[2], length.out = n_points))
+      
+      x_range <- range(x_vals, na.rm = TRUE)
+      newdata  <- data.frame(x = seq(x_range[1], x_range[2], length.out = n_points))
       names(newdata) <- var_name
       
-      # Add other predictors at their means
       for (var in names(model_data)) {
          if (var != var_name && var != names(model_data)[1]) {
             if (is.numeric(model_data[[var]])) {
@@ -567,52 +583,44 @@ plot_gam_smooth_single <- function(gam_object, select = 1, n_points = 200, title
          }
       }
       
-      # Predict with standard errors
-      preds <- predict(gam_object, newdata = newdata, se.fit = TRUE, type = "terms")
-      
-      # Extract the smooth term effect
+      preds      <- predict(gam_object, newdata = newdata, se.fit = TRUE, type = "terms")
       smooth_idx <- which(colnames(preds$fit) == smooth_obj$label)
       
-      pred_df <- data.frame(
-         x = newdata[[var_name]],
-         fit = preds$fit[, smooth_idx],
-         se = preds$se.fit[, smooth_idx]
-      )
-      
-      pred_df$lower <- pred_df$fit - 1.96 * pred_df$se
-      pred_df$upper <- pred_df$fit + 1.96 * pred_df$se
+      pred_df        <- data.frame(x = newdata[[var_name]],
+                                   fit = preds$fit[, smooth_idx],
+                                   se  = preds$se.fit[, smooth_idx])
+      pred_df$lower  <- pred_df$fit - 1.96 * pred_df$se
+      pred_df$upper  <- pred_df$fit + 1.96 * pred_df$se
       
       x_vals_filtered <- x_vals
       
-      # Create plot title
       if (is.null(title)) {
-         if (!is.null(lag_name)) {
-            title <- paste0(var_name_clean, " at ", lag_name, " Smooth")
-         } else {
-            title <- paste0(var_name_clean, " Smooth")
-         }
+         title <- paste0(
+            var_name_clean,
+            if (!is.null(lag_name)) paste0(" — ", lag_name) else ""
+         )
       }
    }
    
    ggplot(pred_df, aes(x = x, y = fit)) +
-      geom_hline(yintercept = 0, color = gam_colors$dark, 
+      geom_hline(yintercept = 0, color = gam_colors$dark,
                  linetype = "dashed", linewidth = 0.5) +
-      geom_ribbon(aes(ymin = lower, ymax = upper), 
+      geom_ribbon(aes(ymin = lower, ymax = upper),
                   fill = gam_colors$secondary, alpha = 0.3) +
       geom_line(color = gam_colors$primary, linewidth = 1) +
-      geom_rug(data = data.frame(x = x_vals_filtered), 
+      geom_rug(data = data.frame(x = x_vals_filtered),
                aes(x = x), inherit.aes = FALSE,
                sides = "b", alpha = 0.3, color = gam_colors$dark) +
       labs(
          title = title,
-         x = var_name_clean,
-         y = paste0("s(", var_name_clean, ")")
+         x     = x_label,
+         y     = y_label
       ) +
       theme_bw() +
       theme(
-         plot.title = element_text(size = 16, face = 'bold', color = gam_colors$dark),
-         axis.title = element_text(size = 14, face = 'bold', color = gam_colors$dark),
-         axis.text = element_text(size = 12, color = gam_colors$dark),
+         plot.title   = element_text(size = 16, face = "bold", color = gam_colors$dark),
+         axis.title   = element_text(size = 14, face = "bold", color = gam_colors$dark),
+         axis.text    = element_text(size = 12, color = gam_colors$dark),
          panel.border = element_rect(colour = gam_colors$dark, fill = NA, linewidth = 1)
       )
 }
@@ -625,32 +633,21 @@ plot_gam_smooth_single <- function(gam_object, select = 1, n_points = 200, title
 plot_gam_smooths <- function(gam_object, n_points = 200, title = NULL, lag_name = NULL) {
    
    smooth_terms <- gam_object$smooth
-   n_smooths <- length(smooth_terms)
+   n_smooths    <- length(smooth_terms)
    
-   if (n_smooths == 0) {
-      stop("No smooth terms in this GAM")
-   }
+   if (n_smooths == 0) stop("No smooth terms in this GAM")
    
-   # Create individual plots - pass lag_name to each
    plot_list <- lapply(1:n_smooths, function(i) {
-      plot_gam_smooth_single(gam_object, select = i, n_points = n_points, lag_name = lag_name)
+      plot_gam_smooth_single(gam_object, select = i,
+                             n_points = n_points, lag_name = lag_name)
    })
    
-   # Arrange in grid
-   if (n_smooths == 1) {
-      combined <- plot_list[[1]]
-   } else if (n_smooths == 2) {
-      combined <- plot_list[[1]] | plot_list[[2]]
-   } else if (n_smooths <= 4) {
-      combined <- wrap_plots(plot_list, ncol = 2)
-   } else {
-      combined <- wrap_plots(plot_list, ncol = 3)
-   }
+   combined <- wrap_plots(plot_list, ncol = min(3, n_smooths))
    
    if (!is.null(title)) {
       combined <- combined + plot_annotation(
          title = title,
-         theme = theme(plot.title = element_text(size = 18, face = 'bold', 
+         theme = theme(plot.title = element_text(size = 18, face = "bold",
                                                  color = gam_colors$dark))
       )
    }

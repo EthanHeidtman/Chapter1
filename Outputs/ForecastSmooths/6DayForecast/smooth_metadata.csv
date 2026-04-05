@@ -1,2 +1,2 @@
-"lag_days","discharge_var","wind_var","wind_type","wind_dir_var","tide_var","lag_sal_var","gam_intercept","gam_lag_coef","n_obs","r_squared"
-6,"RollingDischarge30_6","RollingU21_6","U","WindDir","TideRange30_6","LagSalinity_6",0.096711103323958,0.202459588712861,3199,0.729702408622559
+"lag_days","rolling_discharge_var","exceed_flux_var","days_since_var","wind_var","wind_type","wind_dir_var","flush_regime_var","tide_var","lag_sal_var","gam_intercept","gam_lag_coef","n_obs","r_squared"
+6,"RollingDischarge30_6","ExceedFlux7_6",NA,"RollingU21_6","U","WindDir",NA,"TideRange30_6","LagSalinity_6",0.0912859730755904,0.192136631223458,3176,0.734227739478093

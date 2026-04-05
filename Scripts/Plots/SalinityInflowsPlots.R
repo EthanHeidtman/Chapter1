@@ -1,101 +1,54 @@
-# Source necessary functions 
-dirs <- c("Scripts/Utilities")
-invisible(
-   lapply(dirs, function(dir) {
-      files <- list.files(dir, full.names = TRUE, pattern = "\\.R$", recursive = TRUE)
-      lapply(files, function(f) {
-         sys.source(f, envir = globalenv())
-      })
-   })
-)
+# Source necessary functions
+source('Scripts/Utilities/LoadTextFiles.R')
+source('Scripts/Utilities/WriteQS.R')
 
-# Read in model data
-model_data <- as.data.frame(read_qs_files('Data/Tidied/Final/FinalModelData.qs'))
-model_data <- model_data %>%
-   dplyr::select(-contains('Norm')) %>%
-   arrange(DateTime) %>%
-   mutate(Date = as_date(DateTime)) %>%
-   relocate(Date, .after = DateTime) %>%
-   filter(DateTime > '2007-03-29') 
+# Load necessary packages
+library(here)        # For directory referencing
+library(tidyverse)   # For data manipulation
+library(dplyr)       # For data manipulation
+library(zoo)         # For rolling computation
+library(lubridate)   # For datetime related functions
+library(svglite)
 
-plot_data <- model_data %>%
-   mutate(LogInflows = log(Inflows)) %>%
-   relocate(LogInflows, .after = Salinity) 
+# Directories where data are located
+dir1 <- 'Data/Tidied/Processed/HourlyDataFinal.csv'
+dir2 <- "Data/Raw/Text/SusquehannaBuoy/Meteo"
 
-highlight_start <- as_datetime("2016-10-09")
-highlight_end   <- as_datetime("2016-10-25")
+# Read in hourly Discharge and salinity data
+q_sal_data <- read.csv(dir1, 
+                       colClasses = c('NULL', NA, NA, NA, NA, NA, NA, NA, NA, NA, NA, NA, NA))
+q_sal_data <- q_sal_data %>%
+   dplyr::select(-c(9, 10)) %>%                              # Remove extra columns
+   mutate(DateTime = as_datetime(DateTime)) %>%              # Make dates class datetime
+   rename(Tide = Fitted_HdG) %>%
+   filter(DateTime < as_datetime('2024-11-01 00:00:00')) %>% # Keep only dates before 
+   mutate_if(is.character, as.factor)
 
-sal_range  <- range(plot_data$Salinity,   na.rm = TRUE)
-flow_range <- range(plot_data$LogInflows, na.rm = TRUE)
-scale_fac  <- diff(sal_range) / diff(flow_range)
+# Read in meteorology data, including wind
+meteo <- combine_txt_files(dir2)
+meteo <- meteo %>%
+   mutate(DateTime = make_datetime(YY, MM, DD, hh, mm)) %>% # Make a datetime column
+   dplyr::select(-c(YY, MM, DD, hh, mm)) %>%
+   relocate(DateTime) %>%
+   mutate(across(
+      where(is.numeric),
+      ~ if_else(grepl("^9+\\.?9*$", as.character(.x)), NA_real_, .x)
+   )) %>%
+   dplyr::select(1 : 4) %>%
+   mutate(Year = year(DateTime),
+          Month = month(DateTime),
+          Day = day(DateTime)) %>%
+   relocate(Year, Month, Day, .after = DateTime) %>%
+   arrange(DateTime)
 
-p1 <- ggplot(plot_data %>% filter(Year == 2016), aes(x = DateTime)) + 
-   #--- Yellow highlight background ---
-   annotate("rect",
-            xmin = highlight_start, xmax = highlight_end,
-            ymin = -Inf, ymax = Inf,
-            fill = "#fdb515", alpha = 0.2) +
-   
-   # EPA Total Dissolved Solids
-   geom_hline(yintercept = 0.5, color = '#002030', linetype = 2) + 
-   
-   annotate("text",
-            x = as.POSIXct("2016-09-13"),  # Left side of your plot
-            y = 0.52,                       # Just above the 0.5 line
-            label = "EPA Secondary Drinking Water Standard for TDS",
-            hjust = 0,                      # Left-align the text
-            vjust = 0,                      # Bottom-align (sits above the line)
-            size = 5,
-            colour = "#002030") +      
-   
-   # --- Salinity line (left axis) ---
-   geom_line(aes(y = Salinity), color = "#f58220", size = 0.8) +
-   
-   # --- Raw LogInflows (rescaled to left axis) ---
-   geom_line(aes(y = LogInflows * scale_fac + sal_range[1] -
-                    flow_range[1] * scale_fac),
-             colour = "#009bba", alpha = 0.4, na.rm = TRUE) +
-   
-   # --- LOESS smooth for LogInflows (also rescaled) ---
-   geom_smooth(aes(y = LogInflows * scale_fac + sal_range[1] -
-                      flow_range[1] * scale_fac),
-               method = "loess", span = 0.5,
-               se = FALSE, colour = "#009bba", size = 1, na.rm = TRUE) +
-   
-   # --- Axes ---
-   scale_x_datetime(date_breaks = "6 days", date_labels = "%b %d",
-                limits = c(as_datetime('2016-09-13'), as_datetime('2016-10-31'))) +
-   scale_y_continuous(
-      name = "Salinity (psu)",
-      sec.axis = sec_axis(
-         trans = ~ exp((. - sal_range[1] + flow_range[1] * scale_fac) / scale_fac),
-         name  = expression(paste("Inflows (", m^3, "/s)"))
-      )
-   ) +
-   
-   # --- Theming ---
-   theme_bw() +
-   labs(
-      title = "October 2016 High Salinity Event",
-      x = "Date"
-   ) +
-   theme(
-      text               = element_text(family = "Franklin Gothic ATF"),
-      plot.title         = element_text(size = 30, face = 'bold', color = '#002030'),
-      axis.title.x       = element_text(size = 28, face = 'bold', color = '#002030'),
-      axis.title.y.left  = element_text(size = 28, face = 'bold', colour = "#f58220"),
-      axis.title.y.right = element_text(size = 28, face = 'bold', colour = "#009bba"),
-      axis.text.y.left   = element_text(colour = "#f58220"),
-      axis.text.y.right  = element_text(colour = "#009bba"),
-      axis.text.x        = element_text(size = 20),
-      axis.text.y        = element_text(size = 24),
-      panel.border       = element_rect(colour = '#002030', fill = NA, linewidth = 1),
-   )
+# Merge all data into 1 dataset
+data <- merge(q_sal_data, meteo, by = c('DateTime', 'Year', 'Month', 'Day'), all.x = TRUE)
+data <- data %>%
+   filter(Year > 2006 & Year < 2025) %>%
+   mutate_if(is.numeric, round, digits = 2) %>%
+   rename(Gust = GST)
 
-
-
-ggsave('Outputs/Plots/SalinityInflows2016Plot.png', p1, dpi = 600, height = 8, width = 13)
-ggsave('Outputs/Plots/SalinityInflows2016Plot.svg', p1, dpi = 600, height = 8, width = 13)
+rm(meteo, q_sal_data, dir1, dir2)
 
 
 
@@ -105,25 +58,73 @@ library(lubridate)
 library(patchwork)
 library(grid)  # for arrow()
 
-# ── Shared x limits ──────────────────────────────────────────────────────────
-x_min <- as_datetime("2016-09-25")
+
+
+# Shared X range
+x_min <- as_datetime("2016-09-27")
 x_max <- as_datetime("2016-11-05")
 highlight_start <- as_datetime("2016-10-09")
 highlight_end   <- as_datetime("2016-10-25")
 
-plot_data_2016 <- data %>% filter(Year == 2016)
+# Raw hourly data for wind (before aggregation) 
+data_raw <- data  # assumes data is still hourly when this runs
 
-# ── Scaling for main panel ────────────────────────────────────────────────────
-sal_range  <- range(plot_data_2016$Salinity,   na.rm = TRUE)
+wind_df <- data_raw %>%
+   filter(
+      DateTime >= x_min,
+      DateTime <= x_max,
+      !is.na(WDIR), !is.na(WSPD)
+   ) %>%
+   # Thin to every 6 hours
+   filter(hour(DateTime) %in% c(0, 12, 24)) %>%
+   mutate(
+      rad  = (270 - WDIR) * pi / 180,
+      # Oceanographic: direction wind is blowing TOWARD
+      uend = DateTime + lubridate::dhours(WSPD * cos(rad) * 4),  # 8hr scaling
+      vend = WSPD * sin(rad)
+   )
+
+# Aggregate to daily resolution
+plot_data <- data_raw %>%
+   mutate(DateTime = as.Date(DateTime)) %>%
+   group_by(DateTime, Year, Month, Day) %>%
+   summarise(
+      Salinity = max(Salinity, na.rm = TRUE),
+      Tide     = max(Tide, na.rm = TRUE) - min(Tide, na.rm = TRUE),
+      across(
+         where(is.numeric) & !all_of(c("Salinity", "Tide")),
+         ~ mean(.x, na.rm = TRUE)
+      ),
+      .groups = "drop"
+   ) %>%
+   mutate(across(where(is.numeric), ~ round(.x, 2)))
+
+plot_data[] <- lapply(plot_data, function(x) {
+   x[is.nan(x) | is.infinite(x)] <- NA
+   x
+})
+
+# Single definition — daily, POSIXct DateTime
+plot_data_2016 <- plot_data %>%
+   filter(Year == 2016) %>%
+   mutate(DateTime = as_datetime(DateTime))
+
+# Scaling for secondary axis
+sal_range  <- range(plot_data_2016$Salinity,  na.rm = TRUE)
 flow_range <- range(plot_data_2016$Discharge, na.rm = TRUE)
 scale_fac  <- diff(sal_range) / diff(flow_range)
 
-# ── Wind color scale ──────────────────────────────────────────────────────────
-# Tertiary yellow: light tint → full saturated yellow → dark anchor
-wind_low  <- "#fef0c0"   # very light yellow tint
-wind_high <- "#fdb515"   # full tertiary yellow
+# Hourly background — from data_raw, scaled using daily ranges 
+hourly_2016 <- data_raw %>%
+   filter(DateTime >= x_min, DateTime <= x_max) %>%
+   mutate(
+      sal_scaled  = Salinity,
+      flow_scaled = Discharge * scale_fac + sal_range[1] - flow_range[1] * scale_fac
+   )
 
-# ── WIND PANEL ────────────────────────────────────────────────────────────────
+# WIND PANEL
+wind_color <- "#004060"
+
 wind_panel <- ggplot(wind_df, aes(x = DateTime)) +
    annotate("rect",
             xmin = highlight_start, xmax = highlight_end,
@@ -132,41 +133,79 @@ wind_panel <- ggplot(wind_df, aes(x = DateTime)) +
    geom_hline(yintercept = 0, color = "#a0b4be", linewidth = 0.3) +
    geom_segment(
       aes(
-         xend   = xend,
-         y      = 0,
-         yend   = yend,
-         colour = WSPD
+         xend = uend,
+         y    = 0,
+         yend = vend
       ),
+      colour    = wind_color,
       arrow     = arrow(length = unit(0.1, "cm"), type = "closed"),
-      linewidth = 0.9,
+      linewidth = 0.6,
       lineend   = "round"
    ) +
-   scale_colour_gradient(
-      low   = wind_low,
-      high  = wind_high,
-      name  = "Wind\nspeed\n(m/s)"
-   ) +
-   scale_x_datetime(limits = c(x_min, x_max), expand = c(0, 0)) +
-   scale_y_continuous(breaks = NULL, expand = expansion(mult = 0.15)) +
+   
+   # ── Reference arrows ──────────────────────────────────────────────────────
+   # Positioned in top-right, pointing straight up (due north = toward)
+   annotate("segment",
+            x = x_max - lubridate::ddays(8), xend = x_max - lubridate::ddays(8),
+            y = 6, yend = 7, colour = wind_color, linewidth = 0.6,
+            arrow = arrow(length = unit(0.1, "cm"), type = "closed")) +
+   annotate("segment",
+            x = x_max - lubridate::ddays(6), xend = x_max - lubridate::ddays(6),
+            y = 6, yend = 9, colour = wind_color, linewidth = 0.6,
+            arrow = arrow(length = unit(0.1, "cm"), type = "closed")) +
+   annotate("segment",
+            x = x_max - lubridate::ddays(4), xend = x_max - lubridate::ddays(4),
+            y = 6, yend = 11, colour = wind_color, linewidth = 0.6,
+            arrow = arrow(length = unit(0.1, "cm"), type = "closed")) +
+   annotate("rect",
+            xmin = x_max - lubridate::ddays(9),
+            xmax = x_max - lubridate::ddays(3),
+            ymin = 3.5, ymax = 12,
+            fill = "white", colour = "#002030", linewidth = 0.3) +
+   
+   # Labels well below the base line
+   annotate("text", x = x_max - lubridate::ddays(8), y = 4.5,
+            label = "1 m/s", size = 2.8, colour = wind_color, hjust = 0.5) +
+   annotate("text", x = x_max - lubridate::ddays(6), y = 4.5,
+            label = "3 m/s", size = 2.8, colour = wind_color, hjust = 0.5) +
+   annotate("text", x = x_max - lubridate::ddays(4), y = 4.5,
+            label = "5 m/s", size = 2.8, colour = wind_color, hjust = 0.5) +
+   # Redraw arrows and labels on top of the rect
+   annotate("segment",
+            x = x_max - lubridate::ddays(8), xend = x_max - lubridate::ddays(8),
+            y = 6, yend = 7, colour = wind_color, linewidth = 0.6,
+            arrow = arrow(length = unit(0.1, "cm"), type = "closed")) +
+   annotate("segment",
+            x = x_max - lubridate::ddays(6), xend = x_max - lubridate::ddays(6),
+            y = 6, yend = 9, colour = wind_color, linewidth = 0.6,
+            arrow = arrow(length = unit(0.1, "cm"), type = "closed")) +
+   annotate("segment",
+            x = x_max - lubridate::ddays(4), xend = x_max - lubridate::ddays(4),
+            y = 6, yend = 11, colour = wind_color, linewidth = 0.6,
+            arrow = arrow(length = unit(0.1, "cm"), type = "closed")) +
+   coord_cartesian(ylim = c(-10, 14)) +
+   scale_x_datetime(
+      limits  = c(x_min, x_max),
+      breaks  = seq(x_min, x_max, by = "6 days"),
+      expand  = c(0, 0)
+   ) + 
+   scale_y_continuous(breaks = c(-5, 0, 5)) +
    labs(title = "October 2016 High Salinity Event", x = NULL, y = "Wind (m/s)") +
    theme_bw() +
    theme(
       plot.title       = element_text(size = 30, face = "bold", color = "#002030"),
-      axis.title.y     = element_text(size = 20, face = "bold", color = "#fdb515"),
+      axis.title.y     = element_text(size = 20, face = "bold", color = wind_color),
+      axis.text.y      = element_text(size = 20, colour = wind_color),
+      axis.ticks.y     = element_line(colour = wind_color),
       axis.text.x      = element_blank(),
       axis.ticks.x     = element_blank(),
-      axis.text.y      = element_blank(),
-      axis.ticks.y     = element_blank(),
       panel.border     = element_rect(colour = "#002030", fill = NA, linewidth = 1),
-      panel.grid       = element_blank(),
-      legend.position  = "right",
-      legend.title     = element_text(size = 10, face = "bold", color = "#002030"),
-      legend.text      = element_text(size = 9),
-      legend.margin         = margin(0, 0, 0, 2),      # pulls legend toward panel
-      legend.box.margin     = margin(0, 0, 0, -8),     # closes gap further
-      plot.margin      = margin(5.5, 5.5, 6, 5.5)      # small bottom gap
+      panel.grid.major = element_line(colour = "grey92"),
+      panel.grid.minor = element_blank(),
+      plot.margin      = margin(5.5, 5.5, 6, 5.5)
    )
-# ── MAIN PANEL — no title, no x-axis labels ───────────────────────────────────
+
+# SALINTY/Discharge PANEL 
 p1 <- ggplot(plot_data_2016, aes(x = DateTime)) +
    annotate("rect",
             xmin = highlight_start, xmax = highlight_end,
@@ -174,21 +213,33 @@ p1 <- ggplot(plot_data_2016, aes(x = DateTime)) +
             fill = "#fdb515", alpha = 0.2) +
    geom_hline(yintercept = 0.5, color = "#002030", linetype = 2) +
    annotate("text",
-            x = as_datetime(x_min + 5 * 3600 * 24), y = 0.52,
+            x = as_datetime(x_min + 0.30 * 3600 * 24), y = 0.52,
             label = "EPA Secondary Drinking Water Standard",
             hjust = 0, vjust = 0, size = 4.5, colour = "#002030") +
-   geom_line(aes(y = Salinity), color = "#f58220", linewidth = 0.8) +
+   
+   # ── Hourly background lines ──
+   geom_line(data = hourly_2016,
+             aes(y = flow_scaled),
+             colour = "#009bba", alpha = 0.40, linewidth = 0.3, na.rm = TRUE) +
+   geom_line(data = hourly_2016,
+             aes(y = sal_scaled),
+             colour = "#f58220", alpha = 0.40, linewidth = 0.3, na.rm = TRUE) +
+   
+   # ── Daily bold lines ──
+   geom_line(aes(y = Salinity),
+             color = "#f58220", linewidth = 0.8) +
    geom_line(aes(y = Discharge * scale_fac + sal_range[1] -
                     flow_range[1] * scale_fac),
              colour = "#009bba", linewidth = 0.8, na.rm = TRUE) +
+   
    scale_x_datetime(
-      limits  = c(x_min, x_max),
-      expand  = c(0, 0),
-      labels  = NULL,   # suppress labels but keep limits consistent
-      breaks  = seq(x_min, x_max, by = "6 days")
+      limits = c(x_min, x_max),
+      expand = c(0, 0),
+      labels = NULL,
+      breaks = seq(x_min, x_max, by = "6 days")
    ) +
    scale_y_continuous(
-      name = "Salinity (psu)",
+      name = "Salinity (PSU)",
       sec.axis = sec_axis(
          trans = ~ (. - sal_range[1] + flow_range[1] * scale_fac) / scale_fac,
          name  = expression(paste("Discharge (", m^3, "/s)"))
@@ -205,30 +256,30 @@ p1 <- ggplot(plot_data_2016, aes(x = DateTime)) +
       axis.text.y.left   = element_text(size = 20, colour = "#f58220"),
       axis.text.y.right  = element_text(size = 20, colour = "#009bba"),
       panel.border       = element_rect(colour = "#002030", fill = NA, linewidth = 1),
+      panel.grid.major   = element_line(colour = "grey92"),
+      panel.grid.minor   = element_blank(),
       plot.margin        = margin(0, 5.5, 0, 5.5)
    )
-
-# ── TIDE PANEL ────────────────────────────────────────────────────────────────
-tide_panel <- ggplot(plot_data_2016 %>% filter(!is.na(Tide)),
+# TIDE PANEL
+tide_panel <- ggplot(hourly_2016 %>% filter(!is.na(Tide)),
                      aes(x = DateTime, y = Tide)) +
    annotate("rect",
             xmin = highlight_start, xmax = highlight_end,
             ymin = -Inf, ymax = Inf,
             fill = "#fdb515", alpha = 0.2) +
-   geom_ribbon(aes(ymin = min(Tide, na.rm = TRUE), ymax = Tide),
-               fill = "#002030", alpha = 0.15) +
+   # geom_ribbon(aes(ymin = min(Tide, na.rm = TRUE), ymax = Tide),
+   #             fill = "#002030", alpha = 0.15) +
    geom_line(colour = "#002030", linewidth = 0.6) +
    scale_x_datetime(
-      date_breaks = "6 days",
+      breaks      = seq(x_min, x_max, by = "6 days"),
       date_labels = "%b %d",
       limits      = c(x_min, x_max),
       expand      = c(0, 0)
-   ) +
+   ) + 
    scale_y_continuous(breaks = scales::pretty_breaks(n = 3)) +
    labs(x = "Date", y = "Tide Height (m)") +
    theme_bw() +
    theme(
-      
       axis.title.x   = element_text(size = 20, face = "bold", color = "#002030"),
       axis.title.y   = element_text(size = 20, face = "bold", color = "#002030"),
       axis.text.x    = element_text(size = 15, color = "#002030"),
@@ -236,22 +287,28 @@ tide_panel <- ggplot(plot_data_2016 %>% filter(!is.na(Tide)),
       axis.text.y    = element_text(size = 20, colour = "#002030"),
       panel.border   = element_rect(colour = "#002030", fill = NA, linewidth = 1),
       panel.grid     = element_blank(),
-      plot.margin    = margin(6, 5.5, 5.5, 5.5)        # small top gap
+      plot.margin    = margin(6, 5.5, 5.5, 5.5),
+      panel.grid.major = element_line(colour = "grey92"),
+      panel.grid.minor = element_blank(),
    )
 
-# ── Assemble ──────────────────────────────────────────────────────────────────
+# Assemble 
 combined <- wind_panel / p1 / tide_panel +
    plot_layout(
-      heights = c(0.18, 1, 0.15),
+      heights = c(1, 3, 1),
       guides  = "keep"
    ) &
    theme(plot.margin = margin(0.1, 5.5, 0.1, 5.5))
 
-# Override margins on first and last to preserve title/x padding
 combined[[1]] <- combined[[1]] + theme(plot.margin = margin(5.5, 5.5, 0, 5.5))
 combined[[3]] <- combined[[3]] + theme(plot.margin = margin(0, 5.5, 5.5, 5.5))
 
-ggsave("Outputs/Plots/SalinityInflows2016Plot.png",
+ggsave("Outputs/Plots/WindPanel.svg", wind_panel, height = 5, width = 13, device = svglite)
+ggsave("Outputs/Plots/SaltPanel.svg", p1, height = 8, width = 13, device = svglite)
+ggsave("Outputs/Plots/TidePanel.svg", tide_panel, height = 5, width = 13, device = svglite)
+
+# Save the plot
+ggsave("Outputs/Plots/SalinityWindTidePlot.png",
        combined, dpi = 600, height = 10, width = 13)
-ggsave("Outputs/Plots/SalinityInflows2016Plot.svg",
-       combined, dpi = 600, height = 10, width = 13)
+ggsave("Outputs/Plots/SalinityWindTidePlot.svg",
+       combined, height = 10, width = 13, device = svglite)

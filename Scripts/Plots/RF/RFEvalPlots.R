@@ -18,17 +18,16 @@ plot_relative_importance <- function(group_importance_df, title = NULL, x_label)
    
    # Define colors for groups
    group_colors <- c(
-      gam_colors$primary,      # orange
-      gam_colors$secondary,    # blue
-      gam_colors$tertiary,     # yellow
-      "#8B4789",               # purple
-      "#2E8B57",               # sea green
-      "#CD5C5C"                # indian red
+      FlushingDischarge = "#2E8B57",               # green
+      RollingDischarge = gam_colors$secondary,  # blue
+      Salinity = gam_colors$primary,            # orange
+      Tide = gam_colors$tertiary,               # yellow
+      Wind = "#8B4789"                          # purple
    )
    
    p <- ggplot(group_importance_df, aes(x = LeadTime, y = RelativeImportance, fill = Group)) +
       geom_area(alpha = 0.7, color = gam_colors$dark, linewidth = 0.3) +
-      scale_fill_manual(values = group_colors) +
+      scale_fill_manual(values = group_colors, breaks = names(group_colors)) + 
       labs(
          title = title,
          x = x_label,
@@ -62,19 +61,18 @@ plot_absolute_importance <- function(group_importance_df, title = NULL, x_label)
    
    # Define colors for groups (same as above for consistency)
    group_colors <- c(
-      gam_colors$primary,      # orange
-      gam_colors$secondary,    # blue
-      gam_colors$tertiary,     # yellow
-      "#8B4789",               # purple
-      "#2E8B57",               # sea green
-      "#CD5C5C"                # indian red
+      PulseDischarge = "#2E8B57",               # green
+      RollingDischarge = gam_colors$secondary,  # blue
+      Salinity = gam_colors$primary,            # orange
+      Tide = gam_colors$tertiary,               # yellow
+      Wind = "#8B4789"                          # purple
    )
    
    p <- ggplot(group_importance_df, aes(x = LeadTime, y = MeanImportance, 
                                         color = Group, shape = Group)) +
       geom_line(linewidth = 1.2) +
       geom_point(size = 3.5) +
-      scale_color_manual(values = group_colors) +
+      scale_color_manual(values = group_colors, breaks = names(group_colors)) +
       scale_shape_manual(values = c(16, 17, 15, 18, 3, 4)) +  # variety of shapes
       labs(
          title = title,
