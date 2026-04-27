@@ -40,7 +40,7 @@ plot_relative_importance <- function(group_importance_df, title = NULL, x_label)
          axis.title = element_text(size = 14, face = 'bold', color = gam_colors$dark),
          axis.text = element_text(size = 12, color = gam_colors$dark),
          panel.border = element_rect(colour = gam_colors$dark, fill = NA, linewidth = 1),
-         legend.position = "right",
+         legend.position = "bottom",
          legend.title = element_text(size = 12, face = 'bold', color = gam_colors$dark),
          legend.text = element_text(size = 11, color = gam_colors$dark),
          legend.background = element_rect(fill = "white", color = gam_colors$dark, linewidth = 0.5),
@@ -61,7 +61,7 @@ plot_absolute_importance <- function(group_importance_df, title = NULL, x_label)
    
    # Define colors for groups (same as above for consistency)
    group_colors <- c(
-      PulseDischarge = "#2E8B57",               # green
+      FlushingDischarge = "#2E8B57",               # green
       RollingDischarge = gam_colors$secondary,  # blue
       Salinity = gam_colors$primary,            # orange
       Tide = gam_colors$tertiary,               # yellow

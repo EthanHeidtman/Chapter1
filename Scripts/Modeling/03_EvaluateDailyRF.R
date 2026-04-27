@@ -57,9 +57,9 @@ for (k in lead_times) {
    # Define groups for this specific k
    salinity_cluster <- model_data_k %>% dplyr::select(c(contains('Salinity')))
    rolling_discharge_cluster <- model_data_k %>% dplyr::select(c('Salinity', contains(c('RollingDischarge', 'LagDischarge'))))
-   flushing_discharge_cluster <- model_data_k %>% dplyr::select(c('Salinity', contains(c('Flux', 'Flush'))))
+   flushing_discharge_cluster <- model_data_k %>% dplyr::select(c('Salinity', contains(c('ExceedFlux', 'Flush', 'MaxDischarge'))))
    tide_cluster <- model_data_k %>% dplyr::select(c('Salinity', contains('Tide')))
-   wind_cluster <- model_data_k %>% dplyr::select(c('Salinity', contains(c('U', 'V', 'Gust', 'Wind'))))
+   wind_cluster <- model_data_k %>% dplyr::select(c('Salinity', contains(c('RollingU', 'RollingV', 'Gust', 'Wind', 'LagU', 'LagV'))))
    
    group_list_k <- list(
       salinity = salinity_cluster,
@@ -69,15 +69,15 @@ for (k in lead_times) {
       wind = wind_cluster
    )
    
-   # Get top variables using your existing function
+   # Get top variables 
    top_vars_by_k[[lag_name]] <- get_top_vars_by_group(
       importance_df = rf_results[[lag_name]]$importance,
       group_dfs = group_list_k,
-      n_top = list(salinity = 3, 
-                   rolling_discharge = 3, 
-                   flushing_discharge = 3, 
-                   tide = 3, 
-                   wind = 3),
+      n_top = list(salinity = 4, 
+                   rolling_discharge = 4, 
+                   flushing_discharge = 4, 
+                   tide = 4, 
+                   wind = 4),
       importance_col = "IncMSE_OOB",
       show_importance = TRUE
    )
@@ -96,9 +96,9 @@ for (k in lead_times) {
    group_list_k <- list(
       Salinity = model_data_k %>% dplyr::select(contains('Salinity')),
       RollingDischarge = model_data_k %>% dplyr::select(c('Salinity', contains(c('RollingDischarge', 'LagDischarge')))),
-      FlushingDischarge = model_data_k %>% dplyr::select(c('Salinity', contains(c('Flux', 'Flush')))),
+      FlushingDischarge = model_data_k %>% dplyr::select(c('Salinity', contains(c('ExceedFlux', 'Flush', 'MaxDischarge')))),
       Tide = model_data_k %>% dplyr::select(c('Salinity', contains('Tide'))),
-      Wind = model_data_k %>% dplyr::select(c('Salinity', contains(c('U', 'V', 'Gust', 'Wind'))))
+      Wind = model_data_k %>% dplyr::select(c('Salinity', contains(c('RollingU', 'RollingV', 'Gust', 'Wind', 'LagU', 'LagV'))))
    )
    
    # Average importance across folds
@@ -197,6 +197,7 @@ for (k in lead_times) {
 
 p1 <- plot_relative_importance(group_importance_by_k, x_label = 'Lead Time (days)')
 ggsave('Outputs/Plots/DailyRF/RelativeVarImpAcrossK.png', plot = p1, dpi = 600, width = 12, height = 8)
+ggsave('Outputs/Plots/DailyRF/RelativeVarImpAcrossK.svg', plot = p1, dpi = 600, width = 12, height = 8)
 
 p2 <- plot_absolute_importance(group_importance_by_k, x_label = 'Lead Time (days)')
 ggsave('Outputs/Plots/DailyRF/AbsoluteVarImpAcrossK.png', plot = p2, dpi = 600, width = 12, height = 8)

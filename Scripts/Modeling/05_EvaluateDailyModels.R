@@ -2,9 +2,7 @@
 # Script Name:    05_EvaluateDailyModels.R
 # Project:        Chapter1
 # Author:         Ethan Heidtman
-# Description:    Takes the output of ScreenWithRF.R and creates regularized 
-#                 statistical models to further screen predictors and predict
-#                 salinity exceedance or raw salinity values.
+# Description:    
 # =============================================================================
 
 # =============================================================================
@@ -55,19 +53,19 @@ for(k in lead_times) {
 
 # Loop through each k to generate predictions and keep all data
 for(k in lead_times) {
+   
    lag_name <- paste0("lag", k)
    
-   # Get the screened data for this k
+   # Get the screened data for this k (FULL dataset)
    daily_data_k <- screened_data[[lag_name]]
    
-   # Define groups for this specific k
+   # Select variables
    salinity_cluster <- daily_data_k %>% dplyr::select(c(contains('Salinity')))
    rolling_discharge_cluster <- daily_data_k %>% dplyr::select(c('Salinity', contains(c('RollingDischarge', 'LagDischarge'))))
-   flushing_discharge_cluster <- daily_data_k %>% dplyr::select(c('Salinity', contains(c('Flux', 'Flush'))))
+   flushing_discharge_cluster <- daily_data_k %>% dplyr::select(c('Salinity', contains(c('ExceedFlux', 'Flush', 'MaxDischarge'))))
    tide_cluster <- daily_data_k %>% dplyr::select(c('Salinity', contains('Tide')))
-   wind_cluster <- daily_data_k %>% dplyr::select(c('Salinity', contains(c('U', 'V', 'Gust', 'Wind'))))
+   wind_cluster <- daily_data_k %>% dplyr::select(c('Salinity', contains(c('RollingU', 'RollingV', 'Gust', 'Wind', 'LagU', 'LagV'))))
    
-   # Generate group list
    group_list_k <- list(
       salinity = salinity_cluster,
       rolling_discharge = rolling_discharge_cluster,
@@ -76,89 +74,77 @@ for(k in lead_times) {
       wind = wind_cluster
    )
    
-   # Get top variable from each group
    top_vars_by_k[[lag_name]] <- get_top_vars_by_group(
       importance_df = rf_results[[lag_name]]$importance,
       group_dfs = group_list_k,
-      n_top = list(salinity = 1, 
-                   rolling_discharge = 1, 
-                   flushing_discharge = 1, 
-                   tide = 1, 
-                   wind = 1),
+      n_top = list(
+         salinity = 1, 
+         rolling_discharge = 1, 
+         flushing_discharge = 1, 
+         tide = 1, 
+         wind = 1
+      ),
       importance_col = "IncMSE_OOB",
       show_importance = TRUE
    )
    
-   # Top variables
+   # Top predictors
    top_vars <- unname(vapply(top_vars_by_k[[lag_name]], function(x) x$Variable, character(1)))
-   
-   # Store which predictors were used for this k
    predictors_used[[lag_name]] <- top_vars
    
-   # Clean data
-   daily_data_k <- daily_data_k %>%
-      drop_na() %>%
-      dplyr::select(c(1 : "Salinity", top_vars)) %>%
+   # Build model input
+   model_data_k <- daily_data_k %>%
+      dplyr::select(c(1:"Salinity", all_of(top_vars))) %>%
       { 
-         # If there is a V wind variable → North (-) vs South (+)
          if (any(grepl("V", top_vars))) {
-            
             wind_var <- top_vars[grepl("V", top_vars)][1]
+            mutate(., WindDir = factor(ifelse(.data[[wind_var]] < 0, "North", "South")))
             
-            mutate(., WindDir = factor(
-               ifelse(.data[[wind_var]] < 0, "North", "South")
-            ))
-            
-            # Else if there is a U wind variable → East (-) vs West (+)
          } else if (any(grepl("U", top_vars))) {
-            
             wind_var <- top_vars[grepl("U", top_vars)][1]
-            
-            mutate(., WindDir = factor(
-               ifelse(.data[[wind_var]] < 0, "East", "West")
-            ))
+            mutate(., WindDir = factor(ifelse(.data[[wind_var]] < 0, "East", "West")))
             
          } else {
             .
          }
       }
    
-   # Create a subset with only the predictors used in the model
-   model_data_k <- daily_data_k %>%
-      dplyr::select(c(1: "Salinity", all_of(top_vars), 
-                      if(any(grepl("[VU]", top_vars))) "WindDir" else NULL))
+   # Mask rows with complete predictors
+   valid_rows <- complete.cases(model_data_k[, top_vars])
    
-   # Load the GAM model for this k
+   # Load GAM model
    gam_file <- paste0('Outputs/Experiments/Models/DailyGAM/Gam_', k, '.qs')
    model_obj <- read_qs_files(gam_file)
    
-   # Store model file in list
    models[[paste0('Lag', k)]] <- model_obj
    
-   # Generate predictions
-   pred <- tryCatch({
+   # Predict on valid rows
+   pred <- rep(NA_real_, nrow(model_data_k))
+   
+   pred[valid_rows] <- tryCatch({
+      
       if (!is.null(model_obj$gam_object)) {
          
-         # Extract transformation info
          transform_info <- model_obj$transform_info
          family_type <- transform_info$family
          manual_transform <- transform_info$manual_transform
          
-         # Predict using type="response"
-         pred_response <- predict(model_obj$gam_object, 
-                                  newdata = model_data_k, 
-                                  type = "response")
+         pred_response <- predict(
+            model_obj$gam_object,
+            newdata = model_data_k[valid_rows, ],
+            type = "response"
+         )
          
-         # Back-transform ONLY if Gaussian with manual transformation
+         # Back-transform if needed
          if (family_type == "gaussian" && manual_transform == "log") {
             sigma_sq <- transform_info$sigma_sq
-            pred_original <- exp(pred_response + sigma_sq/2)
+            pred_out <- exp(pred_response + sigma_sq/2)
             
-            if (any(pred_original > 10, na.rm = TRUE) || 
-                any(is.infinite(pred_original))) {
+            if (any(pred_out > 10, na.rm = TRUE) || any(is.infinite(pred_out))) {
                warning(sprintf("Model lag%d has extreme/infinite predictions", k))
             }
-            pred_original
+            
+            pred_out
             
          } else if (family_type == "gaussian" && manual_transform == "sqrt") {
             pred_response^2
@@ -168,7 +154,11 @@ for(k in lead_times) {
          }
          
       } else if (!is.null(model_obj$final_fit)) {
-         predict(model_obj$final_fit, new_data = model_data_k)$.pred
+         
+         predict(
+            model_obj$final_fit,
+            new_data = model_data_k[valid_rows, ]
+         )$.pred
          
       } else {
          stop("Model object missing both gam_object and final_fit")
@@ -176,19 +166,17 @@ for(k in lead_times) {
       
    }, error = function(e) {
       warning(sprintf("Failed to predict with model lag%d: %s", k, e$message))
-      rep(NA_real_, nrow(model_data_k))
+      rep(NA_real_, sum(valid_rows))
    })
    
-   # Add prediction to the FULL dataset
+   # Attach predictions
    daily_data_k[[paste0(k, 'DayForecast')]] <- pred
    
-   # Store in list
    gam_predictions[[lag_name]] <- daily_data_k
    
-   # Clear space
-   rm(discharge_cluster_k, salinity_cluster_k, tide_cluster_k, wind_cluster_k,
-      model_obj, group_list_k, transform_info, top_vars, pred, pred_response,
-      lag_name, manual_transform, family_type, k, daily_data_k, model_data_k, gam_file)
+   # Cleanup
+   rm(model_data_k, model_obj, pred, pred_response, transform_info,
+      top_vars, group_list_k, valid_rows)
 }
 
 # Merge all predictions
@@ -313,26 +301,20 @@ p_nse <- plot_performance_by_leadtime(performance_metrics, metric = "NSE", x_lab
 ggsave(filename = file.path(base_dir, 'NSE_OverK.png'), plot = p_nse, width = 12, height = 8, dpi = 600)
 
 
-
-
-
-
-plot_salinity_with_models(
-   data = all_data,
-   date_range = c('2016-09-25', '2016-11-25'),
-   models = c('1DayForecast'),
-   highlight_start = as_datetime("2016-10-09"),
-   highlight_end = as_datetime("2016-10-25"),
-   title = "October 2016 High Salinity Event"
+plot_salinity_forecast_panels(
+   data       = all_data,
+   date_range = c('2016-09-15', '2016-11-15'),
+   models     = c('11DayForecast', '10DayForecast', '9DayForecast'),
+   title      = "GAM models forecast the October 2016 event"
 )
 
 ggsave("Outputs/Plots/ForecastPlot.svg",
-       plot, height = 10, width = 13, device = svglite)
+       plot, height = 8, width = 10, device = svglite)
 
 plot_salinity_with_models(
    data = all_data,
-   date_range = c('2013-01-01', '2019-12-31'),
-   models = c('2DayForecast'),
+   date_range = c('2016-09-15', '2016-11-15'),
+   models = c('1DayForecast'),
    title = "Havre de Grace Salinity"
 )
 

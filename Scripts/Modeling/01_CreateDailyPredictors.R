@@ -62,22 +62,28 @@ data <- data %>%
 rm(meteo, q_sal_data, dir1, dir2)
 
 # Aggregate to daily resolution
+
 data <- data %>%
-   mutate(DateTime = as.Date(DateTime)) %>%   
-   group_by(DateTime, Year, Month, Day) %>%
+   mutate(DateTime = as.Date(DateTime)) %>%
+   group_by(DateTime) %>%
    summarise(
       Salinity = max(Salinity, na.rm = TRUE),
       Tide = max(Tide, na.rm = TRUE) - min(Tide, na.rm = TRUE),
       MaxDischarge = max(Discharge, na.rm = TRUE),
-      Discharge = mean(Discharge, na.rm = TRUE),
-      
       across(
-         where(is.numeric) & !all_of(c("Salinity", "Tide", 'MaxDischarge')),
+         where(is.numeric) & !all_of(c('Salinity', 'Tide', 'MaxDischarge')),
          ~ mean(.x, na.rm = TRUE)
       ),
-      .groups = "drop"
+      .groups = 'drop') %>%
+   mutate(
+      Year = as.numeric(format(DateTime, "%Y")),
+      Month = as.numeric(format(DateTime, "%m")),
+      Day = as.numeric(format(DateTime, "%d")),
+      DayOfYear = as.numeric(format(DateTime, "%j"))
    ) %>%
+   
    mutate(across(where(is.numeric), ~ round(.x, 2)))
+
 
 # Make NaN NA
 data[] <- lapply(data, function(x) {
@@ -85,7 +91,7 @@ data[] <- lapply(data, function(x) {
    x
 })
 
-FLUSH_THRESHOLD <- 600 # cubic m/s, based on October 2016 event and other similar flushing events
+FLUSH_THRESHOLD <- 500 # cubic m/s, based on October 2016 event and other similar flushing events
 
 ####################### MODEL DATA PREPARATION PIPELINE ##########################
 
@@ -237,60 +243,32 @@ mutate(
    
    # 1. Cumulative flushing-range discharge over recent window
    # How much discharge above the threshold has occurred?
-   # Zero during normal conditions, grows only during genuine flush-range events
-   # Use 7-day window — long enough to capture sustained flush, 
-   # short enough not to dilute a genuine event
-   ExceedFlux7 = pmin(
-      zoo::rollsum(pmax(0, MaxDischarge - FLUSH_THRESHOLD), 7, 
-                   fill=NA, align="right"),
-      40000
-   ),
+   # Zero during normal conditions, grows only during genuine flush-range event
+   ExceedFlux1 = pmin(zoo::rollsum(pmax(0, MaxDischarge - FLUSH_THRESHOLD), 1, fill=NA, align="right"), 40000),
+   ExceedFlux2 = pmin(zoo::rollsum(pmax(0, MaxDischarge - FLUSH_THRESHOLD), 2, fill=NA, align="right"), 40000),
+   ExceedFlux3 = pmin(zoo::rollsum(pmax(0, MaxDischarge - FLUSH_THRESHOLD), 3, fill=NA, align="right"), 40000),
+   ExceedFlux4 = pmin(zoo::rollsum(pmax(0, MaxDischarge - FLUSH_THRESHOLD), 4, fill=NA, align="right"), 40000),
+   ExceedFlux5 = pmin(zoo::rollsum(pmax(0, MaxDischarge - FLUSH_THRESHOLD), 5, fill=NA, align="right"), 40000),
+   ExceedFlux6 = pmin(zoo::rollsum(pmax(0, MaxDischarge - FLUSH_THRESHOLD), 6, fill=NA, align="right"), 40000),
+   ExceedFlux7 = pmin(zoo::rollsum(pmax(0, MaxDischarge - FLUSH_THRESHOLD), 7, fill=NA, align="right"), 40000),
+   ExceedFlux8 = pmin(zoo::rollsum(pmax(0, MaxDischarge - FLUSH_THRESHOLD), 8, fill=NA, align="right"), 40000),
+   ExceedFlux9 = pmin(zoo::rollsum(pmax(0, MaxDischarge - FLUSH_THRESHOLD), 9, fill=NA, align="right"), 40000),
+   ExceedFlux10 = pmin(zoo::rollsum(pmax(0, MaxDischarge - FLUSH_THRESHOLD), 10, fill=NA, align="right"), 40000),
    
-   # 2. Days since last exceedance of threshold
-   # Captures recency — a flush 3 days ago is more relevant than one 12 days ago
-   # This is the variable your PeakDrop was trying to approximate
-   DaysSinceFlush = {
-      exceed <- MaxDischarge >= FLUSH_THRESHOLD
-      result <- rep(NA_real_, length(exceed))
-      last <- NA_real_
-      for (i in seq_along(exceed)) {
-         if (!is.na(exceed[i]) && exceed[i]) last <- i
-         result[i] <- if (is.na(last)) NA_real_ else i - last
-      }
-      result
-   },
+   # Did a flush happen recently?
+   RecentFlush = as.numeric(zoo::rollmax(MaxDischarge, 7, fill=NA, align="right") >= FLUSH_THRESHOLD),
    
-   # 3. Whether discharge is currently in flushing range (binary context)
-   # Gives the GAM a clean regime indicator to interact with
-   # Encode as 0/1 so the GAM smooth can fit different slopes above/below
-   InFlushRegime = as.numeric(RollingDischarge7 >= FLUSH_THRESHOLD)
-   
-   # Max Discharge
-   # MaxDischarge1 = zoo::rollapply(MaxDischarge, 1, max, fill = NA, align = 'right', na.rm = TRUE),
-   # MaxDischarge2 = zoo::rollapply(MaxDischarge, 2, max, fill = NA, align = 'right', na.rm = TRUE),
-   # MaxDischarge3 = zoo::rollapply(MaxDischarge, 3, max, fill = NA, align = 'right', na.rm = TRUE),
-   # MaxDischarge4 = zoo::rollapply(MaxDischarge, 4, max, fill = NA, align = 'right', na.rm = TRUE),
-   # MaxDischarge5 = zoo::rollapply(MaxDischarge, 5, max, fill = NA, align = 'right', na.rm = TRUE),
-   # MaxDischarge7 = zoo::rollapply(MaxDischarge, 7, max, fill = NA, align = 'right', na.rm = TRUE),
-   # MaxDischarge10 = zoo::rollapply(MaxDischarge, 10, max, fill = NA, align = 'right', na.rm = TRUE),
-   # MaxDischarge14 = zoo::rollapply(MaxDischarge, 14, max, fill = NA, align = 'right', na.rm = TRUE),
-   # 
-   # # Pulsed discharges
-   # Ramp1 = Discharge - lag(Discharge, 1), # Rate of change
-   # 
-   # # Discharge context
-   # RelAnomaly7 = Discharge / RollingDischarge7, # Change detection
-   # RelAnomaly14 = Discharge / RollingDischarge14, 
-   # PulseContrast = MaxDischarge3 / RollingDischarge14,
-   # 
-   # # How big is the pulse
-   # PulseVolume3 = zoo::rollsum(pmax(0, Ramp1), 3, fill = NA, align = "right"), # How big is the pulse?
-   # PulseVolume7 = zoo::rollsum(pmax(0, Ramp1), 7, fill = NA, align = "right"),
-   # PulseVolume14 = zoo::rollsum(pmax(0, Ramp1), 14, fill = NA, align = "right"),
-   # 
-   # # Pulse end signal
-   # PeakDrop3 = MaxDischarge3 - Discharge,
-   # PeakDrop7 = MaxDischarge7 - Discharge
+   # MaxDischarge variables
+   MaxDischarge1 = zoo::rollmax(MaxDischarge, 1, fill = NA, align = "right", na.rm = TRUE),
+   MaxDischarge2 = zoo::rollmax(MaxDischarge, 2, fill = NA, align = "right", na.rm = TRUE),
+   MaxDischarge3 = zoo::rollmax(MaxDischarge, 3, fill = NA, align = "right", na.rm = TRUE),
+   MaxDischarge4 = zoo::rollmax(MaxDischarge, 4, fill = NA, align = "right", na.rm = TRUE),
+   MaxDischarge5 = zoo::rollmax(MaxDischarge, 5, fill = NA, align = "right", na.rm = TRUE),
+   MaxDischarge6 = zoo::rollmax(MaxDischarge, 6, fill = NA, align = "right", na.rm = TRUE),
+   MaxDischarge7 = zoo::rollmax(MaxDischarge, 7, fill = NA, align = "right", na.rm = TRUE),
+   MaxDischarge8 = zoo::rollmax(MaxDischarge, 8, fill = NA, align = "right", na.rm = TRUE),
+   MaxDischarge9 = zoo::rollmax(MaxDischarge, 9, fill = NA, align = "right", na.rm = TRUE),
+   MaxDischarge10 = zoo::rollmax(MaxDischarge, 10, fill = NA, align = "right", na.rm = TRUE),
    
 ) %>%
    
@@ -319,7 +297,7 @@ model_data <- model_data %>%
    relocate(FERC, .after = DayOfYear)
 
 model_data <- model_data %>%
-   dplyr::select(-c(DaySin, DayCos, MaxDischarge1))
+   dplyr::select(-c(DaySin, DayCos, MaxDischarge))
 
 # Write output files
 outputs <- list(model_data)

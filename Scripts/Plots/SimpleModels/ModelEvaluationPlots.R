@@ -29,8 +29,8 @@ plot_salinity_with_models <- function(data,
    model_alpha <- 1.0
    
    observed_color <- "#f58220"
-   model_palette <- c("#3b7ea1", "#c4820e", "#6a994e", "#bc4b51", 
-                      "#8338ec", "#fb5607", "#ffbe0b", "#06ffa5")
+   model_palette <- c("#3b7ea1",  "#6a994e", "#bc4b51", 
+                      "#8338ec", "#fb5607", "#ffbe0b", "#06ffa5", "#c4820e")
    
    # ---- Filter Data ----
    if (!is.null(year)) {
@@ -101,15 +101,15 @@ plot_salinity_with_models <- function(data,
    ))
    
    # ---- Add Highlight Rectangle ----
-   if (!is.null(highlight_start) && !is.null(highlight_end)) {
-      p <- p + annotate("rect",
-                        xmin = highlight_start, 
-                        xmax = highlight_end,
-                        ymin = -Inf, 
-                        ymax = Inf,
-                        fill = "#fdb515", 
-                        alpha = 0.2)
-   }
+   # if (!is.null(highlight_start) && !is.null(highlight_end)) {
+   #    p <- p + annotate("rect",
+   #                      xmin = highlight_start, 
+   #                      xmax = highlight_end,
+   #                      ymin = -Inf, 
+   #                      ymax = Inf,
+   #                      fill = "#fdb515", 
+   #                      alpha = 0.2)
+   # }
    
    # ---- Add EPA Reference Line ----
    if (epa_line) {
@@ -157,9 +157,159 @@ plot_salinity_with_models <- function(data,
    return(p)
 }
 
-
-
-
+plot_salinity_forecast_panels <- function(data,
+                                          date_range = NULL,
+                                          year = NULL,
+                                          models = NULL,
+                                          epa_line = TRUE,
+                                          title = NULL) {
+   
+   # ---- Styling Parameters ----
+   observed_linewidth <- 0.9
+   model_linewidth    <- 0.7
+   observed_alpha     <- 0.8
+   model_alpha        <- 1.0
+   
+   observed_color <- "#f58220"
+   model_palette  <- c("#3b7ea1", "#6a994e", "#8338ec", "#bc4b51",
+                       "#fb5607", "#ffbe0b", "#06ffa5", "#c4820e")
+   
+   # ---- Filter to date window (identical logic to original function) ----
+   if (!is.null(year)) {
+      base_data <- data %>% dplyr::filter(Year == year)
+   } else if (!is.null(date_range)) {
+      base_data <- data %>%
+         dplyr::filter(DateTime >= as_datetime(date_range[1]) &
+                          DateTime <= as_datetime(date_range[2]))
+   } else {
+      base_data <- data
+   }
+   
+   base_data <- base_data %>% dplyr::arrange(DateTime)
+   
+   # ---- Identify Model Columns ----
+   if (is.null(models)) {
+      non_model_cols <- c('DateTime', 'Date', 'Year', 'Month', 'Day', 'DayOfYear',
+                          'FERC', 'Salinity', 'Inflows', 'LogInflows',
+                          grep('^Rolling|Range|Cos|Sin', names(base_data), value = TRUE))
+      models <- setdiff(names(base_data), non_model_cols)
+   }
+   models <- models[models %in% names(base_data)]
+   models <- models[1:min(3, length(models))]
+   
+   # ---- Gap-detection helper ----
+   add_segments <- function(df) {
+      df %>%
+         dplyr::mutate(
+            dt      = as.numeric(difftime(DateTime, lag(DateTime), units = "secs")),
+            base_dt = median(dt, na.rm = TRUE),
+            segment = cumsum(is.na(dt) | dt > 1.5 * base_dt)
+         )
+   }
+   
+   # ---- Helper: build one panel ----
+   make_panel <- function(model_name, model_color,
+                          show_x_axis  = FALSE,
+                          show_y_axis  = TRUE,
+                          show_y_label = FALSE,
+                          panel_title  = NULL) {
+      
+      # No cutoff — use the full filtered date range as-is
+      obs_df <- base_data %>%
+         dplyr::select(DateTime, Value = Salinity) %>%
+         dplyr::mutate(Series = "Observed") %>%
+         add_segments()
+      
+      mod_df <- base_data %>%
+         dplyr::select(DateTime, Value = dplyr::all_of(model_name)) %>%
+         dplyr::mutate(Series = model_name) %>%
+         add_segments()
+      
+      plot_long <- dplyr::bind_rows(obs_df, mod_df) %>%
+         dplyr::mutate(Series = factor(Series, levels = c("Observed", model_name)))
+      
+      label_row <- mod_df %>%
+         dplyr::filter(!is.na(Value)) %>%
+         dplyr::slice_max(DateTime, n = 1)
+      
+      p <- ggplot(plot_long,
+                  aes(x = DateTime, y = Value,
+                      color = Series, size = Series, alpha = Series,
+                      group = interaction(Series, segment))) +
+         geom_line()
+      
+      if (epa_line) {
+         p <- p +
+            geom_hline(yintercept = 0.5, color = '#002030', linetype = 2) +
+            annotate("text",
+                     x      = min(base_data$DateTime),
+                     y      = 0.52,
+                     label  = "EPA Secondary Drinking Water Standard for TDS",
+                     hjust  = 0, vjust = 0,
+                     size   = 4,
+                     colour = "#002030")
+      }
+      
+      p <- p +
+         annotate("text",
+                  x        = label_row$DateTime,
+                  y        = label_row$Value,
+                  label    = model_name,
+                  hjust    = 1.05,
+                  vjust    = -0.5,
+                  size     = 5,
+                  fontface = "bold",
+                  colour   = model_color) +
+         scale_color_manual(values = c("Observed" = observed_color,
+                                       setNames(model_color, model_name))) +
+         scale_size_manual( values = c("Observed" = observed_linewidth,
+                                       setNames(model_linewidth, model_name))) +
+         scale_alpha_manual(values = c("Observed" = observed_alpha,
+                                       setNames(model_alpha, model_name))) +
+         scale_y_continuous(name = if (show_y_label) "Salinity (psu)" else NULL) +
+         labs(
+            x     = if (show_x_axis) "Date" else NULL,
+            title = panel_title
+         ) +
+         theme_bw() +
+         theme(
+            plot.title        = element_text(size = 18, face = 'bold', color = '#002030'),
+            axis.title.x      = element_text(size = 16, face = 'bold', color = '#002030'),
+            axis.title.y.left = element_text(size = 16, face = 'bold', colour = "#f58220"),
+            axis.text.y.left  = element_text(colour = "#f58220", size = 13),
+            axis.text.x       = if (show_x_axis) element_text(size = 13) else element_blank(),
+            axis.ticks.x      = if (show_x_axis) element_line() else element_blank(),
+            panel.border      = element_rect(colour = '#002030', fill = NA, linewidth = 1),
+            legend.position   = "none"
+         )
+      
+      if (!show_y_axis) {
+         p <- p + theme(axis.text.y  = element_blank(),
+                        axis.ticks.y = element_blank())
+      }
+      
+      p
+   }
+   
+   # ---- Build panels (one per model, same date range, different model each time) ----
+   panel_colors <- model_palette[seq_along(models)]
+   
+   panels <- purrr::pmap(
+      list(
+         model_name   = models,
+         model_color  = panel_colors,
+         show_x_axis  = c(FALSE, FALSE, TRUE)[seq_along(models)],
+         show_y_axis  = rep(TRUE, length(models)),
+         show_y_label = c(FALSE, TRUE, FALSE)[seq_along(models)],
+         panel_title  = c(list(title), rep(list(NULL), length(models) - 1))
+      ),
+      make_panel
+   )
+   
+   # ---- Combine ----
+   patchwork::wrap_plots(panels, ncol = 1) &
+      theme(plot.margin = margin(2, 10, 2, 10))
+}
 
 
 plot_fold_performance <- function(fold_metrics, metric = "rmse") {

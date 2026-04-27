@@ -56,9 +56,9 @@ for(k in 1 : length(lead_times)) {
    # Define groups for this specific k
    salinity_cluster <- daily_data_k %>% dplyr::select(c(contains('Salinity')))
    rolling_discharge_cluster <- daily_data_k %>% dplyr::select(c('Salinity', contains(c('RollingDischarge', 'LagDischarge'))))
-   flushing_discharge_cluster <- daily_data_k %>% dplyr::select(c('Salinity', contains(c('Flux', 'Flush'))))
+   flushing_discharge_cluster <- daily_data_k %>% dplyr::select(c('Salinity', contains(c('ExceedFlux', 'Flush', 'MaxDischarge'))))
    tide_cluster <- daily_data_k %>% dplyr::select(c('Salinity', contains('Tide')))
-   wind_cluster <- daily_data_k %>% dplyr::select(c('Salinity', contains(c('U', 'V', 'Gust', 'Wind'))))
+   wind_cluster <- daily_data_k %>% dplyr::select(c('Salinity', contains(c('RollingU', 'RollingV', 'Gust', 'Wind', 'LagU', 'LagV'))))
    
    group_list_k <- list(
       salinity = salinity_cluster,
@@ -86,8 +86,8 @@ for(k in 1 : length(lead_times)) {
    
    # Clean data and create a factor for WindDirection 
    daily_data_k <- daily_data_k %>%
-      drop_na() %>%
-      dplyr::select(c(1 : "Salinity", top_vars)) %>%
+      dplyr::select(c(1:"Salinity", all_of(top_vars))) %>%
+      drop_na(Salinity, all_of(top_vars)) %>% 
       { 
          # If there is a V wind variable → North (-) vs South (+)
          if (any(grepl("V", top_vars))) {
@@ -130,10 +130,10 @@ for(k in 1 : length(lead_times)) {
       link = NULL,
       high_salinity_threshold = 0.16,
       k_lagged_range = c(1, 1),
-      k_rolling_flow_range = if (k == 1) c(1, 1) else c(1, 50),
-      k_flushing_flow_range = if (k == 1) c(1, 1) else c(1, 25),
+      k_rolling_flow_range = if (k == 1) c(1, 1) else c(1, 20),
+      k_flushing_flow_range = if (k == 1) c(1, 1) else c(1, 20),
       k_physical_range = if (k == 1) c(1, 1) else c(1, 20),
-      gam_levels = if (k == 1) 1 else 10,
+      gam_levels = if (k == 1) 1 else 6,
       nthreads = 4
    )
    

@@ -55,13 +55,12 @@ for(k in lead_times) {
       daily_data_k <- shift_predictors_by_k(daily_data, k = k) # 
    }
    
-   
    # Group predictors into clusters
    salinity_cluster <- daily_data_k %>% dplyr::select(c(contains('Salinity')))
    rolling_discharge_cluster <- daily_data_k %>% dplyr::select(c('Salinity', contains(c('RollingDischarge', 'LagDischarge'))))
-   flushing_discharge_cluster <- daily_data_k %>% dplyr::select(c('Salinity', contains(c('Flux', 'Flush'))))
+   flushing_discharge_cluster <- daily_data_k %>% dplyr::select(c('Salinity', contains(c('ExceedFlux', 'Flush', 'MaxDischarge'))))
    tide_cluster <- daily_data_k %>% dplyr::select(c('Salinity', contains('Tide')))
-   wind_cluster <- daily_data_k %>% dplyr::select(c('Salinity', contains(c('U', 'V', 'Gust', 'Wind'))))
+   wind_cluster <- daily_data_k %>% dplyr::select(c('Salinity', contains(c('RollingU', 'RollingV', 'Gust', 'Wind', 'LagU', 'LagV'))))
    
    # Make expanding fold CV scheme for RF implementation
    folds_daily <- make_expanding_folds(daily_data_k, initial_train_length = 6)
