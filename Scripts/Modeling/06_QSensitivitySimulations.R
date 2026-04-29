@@ -412,23 +412,6 @@ for (LEAD_TIME in lead_times) {
       filter(as.Date(DateTime) >= PLOT_START, as.Date(DateTime) <= PLOT_END)
    
    p <- ggplot() +
-      # annotate("rect",
-      #          xmin = as.POSIXct(max(PRERELEASE_START, PLOT_START)),
-      #          xmax = as.POSIXct(PRERELEASE_END),
-      #          ymin = -Inf, ymax = Inf, fill = "#3182bd", alpha = 0.04) +
-      # annotate("rect",
-      #          xmin = as.POSIXct(EVENT_START), xmax = as.POSIXct(EVENT_END),
-      #          ymin = -Inf, ymax = Inf, fill = "#238b45", alpha = 0.06) +
-      # geom_vline(xintercept = as.POSIXct(EVENT_START),
-      #            linetype = "dotted", color = "#002030", linewidth = 0.6) +
-      # annotate("text", x = as.POSIXct(EVENT_START), y = Inf,
-      #          label = "Oct 9\nevent onset", hjust = 1.1, vjust = 1.3,
-      #          size = 3.2, colour = "#002030") +
-      # geom_vline(xintercept = as.POSIXct(EVENT_END),
-      #            linetype = "dotted", color = "#238b45", linewidth = 0.6) +
-      # annotate("text", x = as.POSIXct(EVENT_END), y = Inf,
-      #          label = "Oct 24\nobs. flush", hjust = -0.1, vjust = 1.3,
-      #          size = 3.2, colour = "#238b45") +
       geom_line(data = results_long,
                 aes(x = DateTime, y = Salinity,
                     color = Scenario, linewidth = Scenario, linetype = Scenario)) +
@@ -513,3 +496,6 @@ ggsave(file.path(OUT_DIR, "Discharge_Sensitivity_Summary.png"),
 cat("\nSaved: Discharge_Sensitivity_Summary.png\n")
 
 p_summary
+
+# Clear global environment
+rm(list = ls())

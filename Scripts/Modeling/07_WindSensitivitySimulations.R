@@ -519,3 +519,6 @@ ggsave(file.path(OUT_DIR, "UWind_Sensitivity_Summary.png"),
 cat("\nSaved: UWind_Sensitivity_Summary.png\n")
 
 p_summary
+
+# Clear global environment
+rm(list = ls())

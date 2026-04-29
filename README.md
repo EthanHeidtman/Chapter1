@@ -1,4 +1,4 @@
-## Using multi-objective reinforcement learning to inform reservoir operations for mitigation of saltwater intrusion
+## Building generalized additive models (GAMs) for forecasting of saltwater intrusion hazards in tidal rivers in the Mid-Atlantic
 
 This repository contains data and code for the first chapter of my dissertation. The project is mainly implemented using R code, and packages are managed using `renv`. 
 
@@ -47,13 +47,6 @@ renv::restore()
 
 ## Running the Project
 
-For your convenience, you can run the entire project with a single script, once the environment is restored. Data are preprocessed and tidal fitting are already performed (see `Scripts/R/TidyingData.R`, `Scripts/R/TidalFitting.R`, and `Scripts/R/FinalHourlyData.R`), so `Scripts/MasterScript.R` runs the entire project from that point, starting with the creation of salt prediction models.
-
-Simply run the following command in the RStudio Console:
-
-```{r}
-source(Scripts/MasterScript.R)
-```
 
 This will execute all necessary steps in the correct order and produce all figures and outputs.
 
@@ -66,8 +59,3 @@ renv::diagnostics()
 renv::restore()
 ```
 
-For `cmdstanr` issues, check the installation using (in the RStudio Console):
-
-```{r}
-cmdstanr::cmdstan_version()
-```

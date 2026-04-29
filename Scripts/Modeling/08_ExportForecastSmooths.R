@@ -9,6 +9,196 @@
 
 `%||%` <- function(a, b) if (!is.null(a)) a else b
 
+
+library(here)
+library(dplyr)
+library(tidyverse)
+library(tidymodels)
+library(patchwork)
+library(tidyr)
+library(mgcv)
+library(svglite)
+
+# Source necessary functions 
+source('Scripts/Utilities/ReadQS.R')
+source('Scripts/Utilities/WriteQS.R')
+source('Scripts/Utilities/GetTopVarImp.R')
+source('Scripts/Plots/SimpleModels/ModelEvaluationPlots.R')
+source('Scripts/Plots/MultiPanelModelPlot.R')
+source('Scripts/Utilities/ComputeGamPerformance.R')
+source('Scripts/Plots/GamEvalPlots.R')
+
+# Define lead times that were run
+lead_times <- seq(0, 30, 1)
+
+# Initialize lists to store results
+screened_data <- list()
+rf_results <- list()
+top_vars_by_k <- list()
+gam_predictions <- list()
+predictors_used <- list()
+models <- list()
+
+# Read in results and screened data
+for(k in lead_times) {
+   # Read screened data
+   screened_data[[paste0("lag", k)]] <- read_qs_files(
+      paste0('Data/Tidied/Final/Daily/FinalDataScreened_lag', k, '.qs')
+   )
+   
+   # Read RF results
+   rf_results[[paste0("lag", k)]] <- read_qs_files(
+      paste0('Outputs/Experiments/Models/DailyRF/RFDailyScreening_lag', k, '.qs')
+   )
+   
+}
+
+# Loop through each k to generate predictions and keep all data
+for(k in lead_times) {
+   
+   lag_name <- paste0("lag", k)
+   
+   # Get the screened data for this k (FULL dataset)
+   daily_data_k <- screened_data[[lag_name]]
+   
+   # Select variables
+   salinity_cluster <- daily_data_k %>% dplyr::select(c(contains('Salinity')))
+   rolling_discharge_cluster <- daily_data_k %>% dplyr::select(c('Salinity', contains(c('RollingDischarge', 'LagDischarge'))))
+   flushing_discharge_cluster <- daily_data_k %>% dplyr::select(c('Salinity', contains(c('ExceedFlux', 'Flush', 'MaxDischarge'))))
+   tide_cluster <- daily_data_k %>% dplyr::select(c('Salinity', contains('Tide')))
+   wind_cluster <- daily_data_k %>% dplyr::select(c('Salinity', contains(c('RollingU', 'RollingV', 'Gust', 'Wind', 'LagU', 'LagV'))))
+   
+   group_list_k <- list(
+      salinity = salinity_cluster,
+      rolling_discharge = rolling_discharge_cluster,
+      flushing_discharge = flushing_discharge_cluster,
+      tide = tide_cluster,
+      wind = wind_cluster
+   )
+   
+   top_vars_by_k[[lag_name]] <- get_top_vars_by_group(
+      importance_df = rf_results[[lag_name]]$importance,
+      group_dfs = group_list_k,
+      n_top = list(
+         salinity = 1, 
+         rolling_discharge = 1, 
+         flushing_discharge = 1, 
+         tide = 1, 
+         wind = 1
+      ),
+      importance_col = "IncMSE_OOB",
+      show_importance = TRUE
+   )
+   
+   # Top predictors
+   top_vars <- unname(vapply(top_vars_by_k[[lag_name]], function(x) x$Variable, character(1)))
+   predictors_used[[lag_name]] <- top_vars
+   
+   # Build model input
+   model_data_k <- daily_data_k %>%
+      dplyr::select(c(1:"Salinity", all_of(top_vars))) %>%
+      { 
+         if (any(grepl("V", top_vars))) {
+            wind_var <- top_vars[grepl("V", top_vars)][1]
+            mutate(., WindDir = factor(ifelse(.data[[wind_var]] < 0, "North", "South")))
+            
+         } else if (any(grepl("U", top_vars))) {
+            wind_var <- top_vars[grepl("U", top_vars)][1]
+            mutate(., WindDir = factor(ifelse(.data[[wind_var]] < 0, "East", "West")))
+            
+         } else {
+            .
+         }
+      }
+   
+   # Mask rows with complete predictors
+   valid_rows <- complete.cases(model_data_k[, top_vars])
+   
+   # Load GAM model
+   gam_file <- paste0('Outputs/Experiments/Models/DailyGAM/Gam_', k, '.qs')
+   model_obj <- read_qs_files(gam_file)
+   
+   models[[paste0('Lag', k)]] <- model_obj
+   
+   # Predict on valid rows
+   pred <- rep(NA_real_, nrow(model_data_k))
+   
+   pred[valid_rows] <- tryCatch({
+      
+      if (!is.null(model_obj$gam_object)) {
+         
+         transform_info <- model_obj$transform_info
+         family_type <- transform_info$family
+         manual_transform <- transform_info$manual_transform
+         
+         pred_response <- predict(
+            model_obj$gam_object,
+            newdata = model_data_k[valid_rows, ],
+            type = "response"
+         )
+         
+         # Back-transform if needed
+         if (family_type == "gaussian" && manual_transform == "log") {
+            sigma_sq <- transform_info$sigma_sq
+            pred_out <- exp(pred_response + sigma_sq/2)
+            
+            if (any(pred_out > 10, na.rm = TRUE) || any(is.infinite(pred_out))) {
+               warning(sprintf("Model lag%d has extreme/infinite predictions", k))
+            }
+            
+            pred_out
+            
+         } else if (family_type == "gaussian" && manual_transform == "sqrt") {
+            pred_response^2
+            
+         } else {
+            pred_response
+         }
+         
+      } else if (!is.null(model_obj$final_fit)) {
+         
+         predict(
+            model_obj$final_fit,
+            new_data = model_data_k[valid_rows, ]
+         )$.pred
+         
+      } else {
+         stop("Model object missing both gam_object and final_fit")
+      }
+      
+   }, error = function(e) {
+      warning(sprintf("Failed to predict with model lag%d: %s", k, e$message))
+      rep(NA_real_, sum(valid_rows))
+   })
+   
+   # Attach predictions
+   daily_data_k[[paste0(k, 'DayForecast')]] <- pred
+   
+   gam_predictions[[lag_name]] <- daily_data_k
+   
+   # Cleanup
+   rm(model_data_k, model_obj, pred, pred_response, transform_info,
+      top_vars, group_list_k, valid_rows)
+}
+
+# Merge all predictions
+all_data <- gam_predictions[[paste0("lag", lead_times[1])]]
+for(i in 2:length(lead_times)) {
+   k <- lead_times[i]
+   lag_name <- paste0("lag", k)
+   
+   # Select only datetime and the new prediction column
+   pred_cols <- gam_predictions[[lag_name]] %>%
+      dplyr::select(DateTime, starts_with(paste0(k, 'DayForecast')))
+   
+   # Join by datetime
+   all_data <- all_data %>%
+      left_join(pred_cols, by = "DateTime")
+}
+
+
+
+
 # =============================================================================
 # Helper: additive buffer on actual range (works for negative values)
 # =============================================================================
@@ -450,3 +640,6 @@ output_dir <- "Outputs/ForecastSmooths"
 for (k in seq(1, 30, 1)) {
    export_forecast_smooths(k = k, models = models, output_dir = output_dir)
 }
+
+# Clear global environment
+rm(list = ls())

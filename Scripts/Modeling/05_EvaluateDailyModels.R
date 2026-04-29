@@ -301,7 +301,7 @@ p_nse <- plot_performance_by_leadtime(performance_metrics, metric = "NSE", x_lab
 ggsave(filename = file.path(base_dir, 'NSE_OverK.png'), plot = p_nse, width = 12, height = 8, dpi = 600)
 
 
-plot_salinity_forecast_panels(
+plot <- plot_salinity_forecast_panels(
    data       = all_data,
    date_range = c('2016-09-15', '2016-11-15'),
    models     = c('11DayForecast', '10DayForecast', '9DayForecast'),
@@ -311,31 +311,34 @@ plot_salinity_forecast_panels(
 ggsave("Outputs/Plots/ForecastPlot.svg",
        plot, height = 8, width = 10, device = svglite)
 
-plot_salinity_with_models(
-   data = all_data,
-   date_range = c('2016-09-15', '2016-11-15'),
-   models = c('1DayForecast'),
-   title = "Havre de Grace Salinity"
-)
+# Clear global environment
+rm(list = ls())
 
-
-
-create_salinity_predictor_plot(
-   data = all_data,
-   date_range = c('2016-01-01', '2016-12-31'),
-   models = c('14DayForecast', '7DayForecast'),
-   predictors = c('RollingDischarge30', 'TideRange21', 'RollingU30'),
-   highlight_start = as_datetime("2016-10-05"),
-   highlight_end = as_datetime("2016-10-31"),
-   title = "October 2016 Saltwater Intrusion Event"
-)
-
-create_salinity_predictor_plot(
-   data = all_data,
-   date_range = c('2013-01-01', '2019-12-31'),
-   models = c('14DayForecast', '7DayForecast'),
-   predictors = c('RollingDischarge30', 'TideRange21', 'RollingU30'),
-   title = "October 2016 Saltwater Intrusion Event"
-)
-
+# plot_salinity_with_models(
+#    data = all_data,
+#    date_range = c('2016-09-15', '2016-11-15'),
+#    models = c('1DayForecast'),
+#    title = "Havre de Grace Salinity"
+# )
+# 
+# 
+# 
+# create_salinity_predictor_plot(
+#    data = all_data,
+#    date_range = c('2016-01-01', '2016-12-31'),
+#    models = c('14DayForecast', '7DayForecast'),
+#    predictors = c('RollingDischarge30', 'TideRange21', 'RollingU30'),
+#    highlight_start = as_datetime("2016-10-05"),
+#    highlight_end = as_datetime("2016-10-31"),
+#    title = "October 2016 Saltwater Intrusion Event"
+# )
+# 
+# create_salinity_predictor_plot(
+#    data = all_data,
+#    date_range = c('2013-01-01', '2019-12-31'),
+#    models = c('14DayForecast', '7DayForecast'),
+#    predictors = c('RollingDischarge30', 'TideRange21', 'RollingU30'),
+#    title = "October 2016 Saltwater Intrusion Event"
+# )
+# 
 
