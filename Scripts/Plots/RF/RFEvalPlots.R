@@ -19,11 +19,12 @@ plot_relative_importance <- function(group_importance_df, title = NULL, x_label)
    # Define colors for groups
    group_colors <- c(
       FlushingDischarge = "#2E8B57",               # green
-      RollingDischarge = gam_colors$secondary,  # blue
+      SustainedDischarge = gam_colors$secondary,  # blue
       Salinity = gam_colors$primary,            # orange
       Tide = gam_colors$tertiary,               # yellow
       Wind = "#8B4789"                          # purple
    )
+
    
    p <- ggplot(group_importance_df, aes(x = LeadTime, y = RelativeImportance, fill = Group)) +
       geom_area(alpha = 0.7, color = gam_colors$dark, linewidth = 0.3) +
@@ -62,7 +63,7 @@ plot_absolute_importance <- function(group_importance_df, title = NULL, x_label)
    # Define colors for groups (same as above for consistency)
    group_colors <- c(
       FlushingDischarge = "#2E8B57",               # green
-      RollingDischarge = gam_colors$secondary,  # blue
+      SustainedDischarge = gam_colors$secondary,  # blue
       Salinity = gam_colors$primary,            # orange
       Tide = gam_colors$tertiary,               # yellow
       Wind = "#8B4789"                          # purple
@@ -147,11 +148,11 @@ plot_mean_importance <- function(importance_df, top_vars_list, top_n_per_group =
    
    # Extract variable names from each category in top_vars_list
    top_variables <- c(
-      top_vars_list$salinity$Variable,
-      top_vars_list$inflow$Variable,
-      top_vars_list$discharge$Variable,
-      top_vars_list$tide$Variable,
-      top_vars_list$wind$Variable,
+      top_vars_list$Salinity$Variable,
+      top_vars_list$SustainedDischarge$Variable,
+      top_vars_list$FlushingDischarge$Variable,
+      top_vars_list$Tide$Variable,
+      top_vars_list$Wind$Variable,
       top_vars_list$time$Variable
    )
    
@@ -166,11 +167,12 @@ plot_mean_importance <- function(importance_df, top_vars_list, top_n_per_group =
    # Add category labels based on which list each variable came from
    mean_imp <- mean_imp %>%
       mutate(Category = case_when(
-         Variable %in% top_vars_list$salinity$Variable ~ 'Salinity',
+         Variable %in% top_vars_list$Salinity$Variable ~ 'Salinity',
          Variable %in% top_vars_list$inflow$Variable ~ "Inflow",
-         Variable %in% top_vars_list$discharge$Variable ~ "Discharge",
-         Variable %in% top_vars_list$tide$Variable ~ "Tide",
-         Variable %in% top_vars_list$wind$Variable ~ "Wind",
+         Variable %in% top_vars_list$SustainedDischarge$Variable ~ "SustainedDischarge",
+         Variable %in% top_vars_list$FlushingDischarge$Variable ~ "FlushingDischarge",
+         Variable %in% top_vars_list$Tide$Variable ~ "Tide",
+         Variable %in% top_vars_list$Wind$Variable ~ "Wind",
          Variable %in% top_vars_list$time$Variable ~ "Time",
          TRUE ~ "Other"
       ))
@@ -185,11 +187,11 @@ plot_mean_importance <- function(importance_df, top_vars_list, top_n_per_group =
       
       # Color scheme using your palette
       scale_fill_manual(values = c(
-         'Salinity' = 'forestgreen',
-         "Inflow" = gam_colors$secondary,     # blue
-         "Discharge" = gam_colors$primary,    # orange
-         "Tide" = gam_colors$dark,            # dark blue
-         "Wind" = gam_colors$tertiary,        # yellow
+         'Salinity' = gam_colors$primary,
+         "SustainedDischarge" = gam_colors$secondary,     
+         "FlushingDischarge" = "#2E8B57",    
+         "Tide" = gam_colors$tertiary,            # dark blue
+         "Wind" = "#8B4789",
          "Time" = "gray50"
       )) +
       

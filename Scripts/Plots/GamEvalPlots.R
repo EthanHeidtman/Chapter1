@@ -462,10 +462,10 @@ plot_gam_resid_hist <- function(gam_object, bins = 30, title = NULL) {
       # X-axis units (predictor)
       list(pattern = "ExceedFlux",                units_x = "m³/s · days"),
       list(pattern = "DaysSinceFlush",            units_x = "days"),
-      list(pattern = "RollingDischarge|LagDischarge", units_x = "m³/s"),
+      list(pattern = "RollingDischarge|RollingAnomaly", units_x = "m³/s"),
       list(pattern = "MaxDischarge",              units_x = "m³/s"),
-      list(pattern = "TideRange",                 units_x = "m"),
-      list(pattern = "RollingU|LagU|WindU",       units_x = "m/s"),
+      list(pattern = "TideRange|TideMean",        units_x = "m"),
+      list(pattern = "RollingU|LagU|WindU|RollingWind",       units_x = "m/s"),
       list(pattern = "RollingV|LagV|WindV",       units_x = "m/s"),
       list(pattern = "Gust",                      units_x = "m/s"),
       list(pattern = "Sin|Cos",                   units_x = "radians"),

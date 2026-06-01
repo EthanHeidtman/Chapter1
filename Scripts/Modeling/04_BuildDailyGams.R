@@ -55,28 +55,24 @@ for(k in 1 : length(lead_times)) {
    
    # Define groups for this specific k
    salinity_cluster <- daily_data_k %>% dplyr::select(c(contains('Salinity')))
-   rolling_discharge_cluster <- daily_data_k %>% dplyr::select(c('Salinity', contains(c('RollingDischarge', 'LagDischarge'))))
-   flushing_discharge_cluster <- daily_data_k %>% dplyr::select(c('Salinity', contains(c('ExceedFlux', 'Flush', 'MaxDischarge'))))
-   tide_cluster <- daily_data_k %>% dplyr::select(c('Salinity', contains('Tide')))
-   wind_cluster <- daily_data_k %>% dplyr::select(c('Salinity', contains(c('RollingU', 'RollingV', 'Gust', 'Wind', 'LagU', 'LagV'))))
+   sustained_discharge_cluster <- daily_data_k %>% dplyr::select(c('Salinity', contains(c('RollingDischarge', 'RollingAnomaly'))))
+   flushing_discharge_cluster <- daily_data_k %>% dplyr::select(c('Salinity', contains(c('MaxDischarge', 'ExceedFlux')))) 
+   tide_cluster <- daily_data_k %>% dplyr::select(c('Salinity', contains(c('TideRange', 'TideMean'))))
+   wind_cluster <- daily_data_k %>% dplyr::select(c('Salinity', contains(c('RollingWindAlong', 'RollingWindCross'))))
    
    group_list_k <- list(
-      salinity = salinity_cluster,
-      rolling_discharge = rolling_discharge_cluster,
-      flushing_discharge = flushing_discharge_cluster,
-      tide = tide_cluster,
-      wind = wind_cluster
+      Salinity = salinity_cluster,
+      SustainedDischarge = sustained_discharge_cluster,
+      Flushingischarge = flushing_discharge_cluster,
+      Tide = tide_cluster,
+      Wind = wind_cluster
    )
    
    # Get top variables using your existing function
    top_vars_by_k[[k]] <- get_top_vars_by_group(
       importance_df = rf_results[[k]]$importance,
       group_dfs = group_list_k,
-      n_top = list(salinity = 1, 
-                   rolling_discharge = 1, 
-                   flushing_discharge = 1, 
-                   tide = 1, 
-                   wind = 1),
+      n_top = 1,
       importance_col = "IncMSE_OOB",
       show_importance = TRUE
    )
@@ -87,26 +83,18 @@ for(k in 1 : length(lead_times)) {
    # Clean data and create a factor for WindDirection 
    daily_data_k <- daily_data_k %>%
       dplyr::select(c(1:"Salinity", all_of(top_vars))) %>%
-      drop_na(Salinity, all_of(top_vars)) %>% 
-      { 
-         # If there is a V wind variable → North (-) vs South (+)
-         if (any(grepl("V", top_vars))) {
-            
-            wind_var <- top_vars[grepl("V", top_vars)][1]
-            
+      drop_na(Salinity, all_of(top_vars)) %>%
+      {
+         if (any(grepl("Along", top_vars))) {
+            wind_var <- top_vars[grepl("Along", top_vars)][1]
             mutate(., WindDir = factor(
-               ifelse(.data[[wind_var]] < 0, "North", "South")
+               ifelse(.[[wind_var]] >= 0, "UpEstuary", "DownEstuary")
             ))
-            
-            # Else if there is a U wind variable → East (-) vs West (+)
-         } else if (any(grepl("U", top_vars))) {
-            
-            wind_var <- top_vars[grepl("U", top_vars)][1]
-            
+         } else if (any(grepl("Cross", top_vars))) {
+            wind_var <- top_vars[grepl("Cross", top_vars)][1]
             mutate(., WindDir = factor(
-               ifelse(.data[[wind_var]] < 0, "East", "West")
+               ifelse(.[[wind_var]] >= 0, "RightBank", "LeftBank")
             ))
-            
          } else {
             .
          }
@@ -130,10 +118,10 @@ for(k in 1 : length(lead_times)) {
       link = NULL,
       high_salinity_threshold = 0.16,
       k_lagged_range = c(1, 1),
-      k_rolling_flow_range = if (k == 1) c(1, 1) else c(1, 20),
-      k_flushing_flow_range = if (k == 1) c(1, 1) else c(1, 20),
-      k_physical_range = if (k == 1) c(1, 1) else c(1, 20),
-      gam_levels = if (k == 1) 1 else 6,
+      k_sustained_flow_range = if (k == 1) c(1, 1) else c(1, 30),
+      k_flushing_flow_range = if (k == 1) c(1, 1) else c(1, 30),
+      k_physical_range = if (k == 1) c(1, 1) else c(1, 30),
+      gam_levels = if (k == 1) 1 else 10,
       nthreads = 4
    )
    

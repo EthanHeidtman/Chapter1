@@ -14,7 +14,7 @@ fit_gam <- function(data,
                     tweedie_p = 1.5,
                     
                     # Smoothing parameters by variable type
-                    k_rolling_flow_range = c(8, 15),
+                    k_sustained_flow_range = c(8, 15),
                     k_flushing_flow_range = c(3, 10), 
                     k_physical_range = c(6, 12),
                     k_temporal_range = c(12, 12),
@@ -193,13 +193,13 @@ fit_gam <- function(data,
    # CLASSIFY PREDICTORS
    # ============================================================================
    
-   rolling_flow_vars <- predictors[grepl("RollingDischarge|LagDischarge",
+   sustained_flow_vars <- predictors[grepl("RollingDischarge|RollingAnomaly",
                                          predictors, ignore.case = TRUE)]
    
-   flushing_flow_vars <- predictors[grepl("ExceedFlux|DaysSinceFlush",
+   flushing_flow_vars <- predictors[grepl("ExceedFlux|MaxDischarge",
                                           predictors, ignore.case = TRUE)]
    
-   physical_vars <- predictors[grepl("Tid|RollingV|RollingU|LagV|LagU|Wind|Gust",
+   physical_vars <- predictors[grepl("Tid|RollingWindAlong|RollingWindCross",
                                      predictors, ignore.case = TRUE)]
    physical_vars <- physical_vars[!grepl("Dir", physical_vars)]
    
@@ -207,11 +207,11 @@ fit_gam <- function(data,
    lagged_vars   <- predictors[grepl("^Salinity_lag|^lag.*Salinity",
                                      predictors, ignore.case = TRUE)]
    other_vars    <- setdiff(predictors,
-                            c(rolling_flow_vars, flushing_flow_vars,
+                            c(sustained_flow_vars, flushing_flow_vars,
                               physical_vars, temporal_vars, lagged_vars))
    other_vars    <- other_vars[!grepl("Dir", other_vars)]
    
-   has_rolling_flow   <- length(rolling_flow_vars)   > 0
+   has_sustained_flow   <- length(sustained_flow_vars)   > 0
    has_flushing_flow  <- length(flushing_flow_vars)  > 0
    has_physical       <- length(physical_vars)       > 0
    has_temporal       <- length(temporal_vars)       > 0
@@ -225,9 +225,9 @@ fit_gam <- function(data,
    
    k_sequences <- list()
    
-   if (has_rolling_flow) {
-      k_sequences$k_rolling_flow <- unique(round(seq(
-         k_rolling_flow_range[1], k_rolling_flow_range[2], length.out = gam_levels)))
+   if (has_sustained_flow) {
+      k_sequences$k_sustained_flow <- unique(round(seq(
+         k_sustained_flow_range[1], k_sustained_flow_range[2], length.out = gam_levels)))
    }
    if (has_flushing_flow) {
       k_sequences$k_flushing_flow <- unique(round(seq(
@@ -254,7 +254,7 @@ fit_gam <- function(data,
    
    k_grid <- expand.grid(k_sequences) %>% distinct()
    
-   if (!has_rolling_flow)  k_grid$k_rolling_flow  <- k_rolling_flow_range[1]
+   if (!has_sustained_flow)  k_grid$k_sustained_flow  <- k_sustained_flow_range[1]
    if (!has_flushing_flow) k_grid$k_flushing_flow <- k_flushing_flow_range[1]
    if (!has_physical && !has_other) k_grid$k_physical <- k_physical_range[1]
    if (!has_temporal)      k_grid$k_temporal      <- k_temporal_range[1]
@@ -262,7 +262,7 @@ fit_gam <- function(data,
    if (!has_interactions)  k_grid$k_interaction   <- k_interaction_range[1]
    
    k_grid <- k_grid %>%
-      select(k_rolling_flow, k_flushing_flow, k_physical,
+      select(k_sustained_flow, k_flushing_flow, k_physical,
              k_temporal, k_lagged, k_interaction)
    
    # ============================================================================
@@ -286,7 +286,7 @@ fit_gam <- function(data,
    cat("\n")
    
    cat("Variable groups:\n")
-   if (has_rolling_flow)  cat("  Rolling flow:  ", paste(rolling_flow_vars,  collapse=", "), "\n")
+   if (has_sustained_flow)  cat("  Sustained flow:  ", paste(sustained_flow_vars,  collapse=", "), "\n")
    if (has_flushing_flow) cat("  Flushing flow: ", paste(flushing_flow_vars, collapse=", "), "\n")
    if (has_physical)      cat("  Physical:      ", paste(physical_vars,      collapse=", "), "\n")
    if (has_temporal)      cat("  Temporal:      ", paste(temporal_vars,      collapse=", "), "\n")
@@ -303,12 +303,12 @@ fit_gam <- function(data,
    # BUILD FORMULA FUNCTION
    # ============================================================================
    
-   build_gam_formula <- function(k_rolling_flow, k_flushing_flow, k_physical,
+   build_gam_formula <- function(k_sustained_flow, k_flushing_flow, k_physical,
                                  k_temporal, k_lagged, k_interaction) {
       terms <- c()
       
-      if (has_rolling_flow) {
-         terms <- c(terms, paste0("s(", rolling_flow_vars, ", k=", k_rolling_flow,
+      if (has_sustained_flow) {
+         terms <- c(terms, paste0("s(", sustained_flow_vars, ", k=", k_sustained_flow,
                                   ", bs='", basis_default, "')"))
       }
       
@@ -335,7 +335,7 @@ fit_gam <- function(data,
       
       if (has_physical) {
          phys_vars_copy <- physical_vars
-         wind_vars <- phys_vars_copy[grepl("Rolling[VU]|Lag[VU]", phys_vars_copy)]
+         wind_vars <- phys_vars_copy[grepl("RollingWindAlong|RollingWindCross", phys_vars_copy)]
          
          if (length(wind_vars) > 0 && "WindDir" %in% predictors) {
             terms <- c(terms, paste0("s(", wind_vars, ", by=WindDir, k=", k_physical,
@@ -502,7 +502,7 @@ fit_gam <- function(data,
    tune_results <- map_dfr(1:nrow(k_grid), function(i) {
       
       k_vals <- k_grid[i, ]
-      formula <- build_gam_formula(k_vals$k_rolling_flow, k_vals$k_flushing_flow,
+      formula <- build_gam_formula(k_vals$k_sustained_flow, k_vals$k_flushing_flow,
                                    k_vals$k_physical, k_vals$k_temporal,
                                    k_vals$k_lagged, k_vals$k_interaction)
       
@@ -573,7 +573,7 @@ fit_gam <- function(data,
    # ============================================================================
    
    cat("Fitting final model...\n")
-   final_formula <- build_gam_formula(best_k$k_rolling_flow, best_k$k_flushing_flow,
+   final_formula <- build_gam_formula(best_k$k_sustained_flow, best_k$k_flushing_flow,
                                       best_k$k_physical, best_k$k_temporal,
                                       best_k$k_lagged, best_k$k_interaction)
    
@@ -678,7 +678,7 @@ fit_gam <- function(data,
       tune_results = fold_level_results,
       tune_grid = tune_results,
       best_params = tibble(
-         k_rolling_flow  = best_k$k_rolling_flow,
+         k_sustained_flow  = best_k$k_sustained_flow,
          k_flushing_flow = best_k$k_flushing_flow,
          k_physical      = best_k$k_physical,
          k_temporal      = best_k$k_temporal,

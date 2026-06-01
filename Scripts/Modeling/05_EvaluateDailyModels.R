@@ -61,29 +61,30 @@ for(k in lead_times) {
    
    # Select variables
    salinity_cluster <- daily_data_k %>% dplyr::select(c(contains('Salinity')))
-   rolling_discharge_cluster <- daily_data_k %>% dplyr::select(c('Salinity', contains(c('RollingDischarge', 'LagDischarge'))))
-   flushing_discharge_cluster <- daily_data_k %>% dplyr::select(c('Salinity', contains(c('ExceedFlux', 'Flush', 'MaxDischarge'))))
-   tide_cluster <- daily_data_k %>% dplyr::select(c('Salinity', contains('Tide')))
-   wind_cluster <- daily_data_k %>% dplyr::select(c('Salinity', contains(c('RollingU', 'RollingV', 'Gust', 'Wind', 'LagU', 'LagV'))))
+   sustained_discharge_cluster <- daily_data_k %>% dplyr::select(c('Salinity', contains(c('RollingDischarge', 'RollingAnomaly'))))
+   flushing_discharge_cluster <- daily_data_k %>% dplyr::select(c('Salinity', contains(c('MaxDischarge', 'ExceedFlux')))) 
+   tide_cluster <- daily_data_k %>% dplyr::select(c('Salinity', contains(c('TideRange', 'TideMean'))))
+   wind_cluster <- daily_data_k %>% dplyr::select(c('Salinity', contains(c('RollingWindAlong', 'RollingWindCross'))))
    
    group_list_k <- list(
-      salinity = salinity_cluster,
-      rolling_discharge = rolling_discharge_cluster,
-      flushing_discharge = flushing_discharge_cluster,
-      tide = tide_cluster,
-      wind = wind_cluster
+      Salinity = salinity_cluster,
+      SustainedDischarge = sustained_discharge_cluster,
+      FlushingDischarge = flushing_discharge_cluster,
+      Tide = tide_cluster,
+      Wind = wind_cluster
    )
    
    top_vars_by_k[[lag_name]] <- get_top_vars_by_group(
       importance_df = rf_results[[lag_name]]$importance,
       group_dfs = group_list_k,
-      n_top = list(
-         salinity = 1, 
-         rolling_discharge = 1, 
-         flushing_discharge = 1, 
-         tide = 1, 
-         wind = 1
-      ),
+      n_top = 1,
+      # n_top = list(
+      #    salinity = 1, 
+      #    rolling_discharge = 1, 
+      #    flushing_discharge = 1, 
+      #    tide = 1, 
+      #    wind = 1
+      # ),
       importance_col = "IncMSE_OOB",
       show_importance = TRUE
    )
@@ -95,19 +96,26 @@ for(k in lead_times) {
    # Build model input
    model_data_k <- daily_data_k %>%
       dplyr::select(c(1:"Salinity", all_of(top_vars))) %>%
+      # drop_na(Salinity, all_of(top_vars)) %>% 
       { 
-         if (any(grepl("V", top_vars))) {
-            wind_var <- top_vars[grepl("V", top_vars)][1]
-            mutate(., WindDir = factor(ifelse(.data[[wind_var]] < 0, "North", "South")))
-            
-         } else if (any(grepl("U", top_vars))) {
-            wind_var <- top_vars[grepl("U", top_vars)][1]
-            mutate(., WindDir = factor(ifelse(.data[[wind_var]] < 0, "East", "West")))
-            
+         # If there is an "Along" wind variable 
+         if (any(grepl("Along", top_vars))) {
+            wind_var <- top_vars[grepl("Along", top_vars)][1]
+            daily_data_k <- daily_data_k %>%
+               mutate(WindDir = factor(
+                  ifelse(.data[[wind_var]] >= 0, "UpEstuary", "DownEstuary")
+               ))
+         } else if (any(grepl("Cross", top_vars))) {
+            wind_var <- top_vars[grepl("Cross", top_vars)][1]
+            daily_data_k <- daily_data_k %>%
+               mutate(WindDir = factor(
+                  ifelse(.data[[wind_var]] >= 0, "RightBank", "LeftBank")
+               ))
          } else {
             .
          }
       }
+   
    
    # Mask rows with complete predictors
    valid_rows <- complete.cases(model_data_k[, top_vars])
@@ -304,7 +312,7 @@ ggsave(filename = file.path(base_dir, 'NSE_OverK.png'), plot = p_nse, width = 12
 plot <- plot_salinity_forecast_panels(
    data       = all_data,
    date_range = c('2016-09-15', '2016-11-15'),
-   models     = c('11DayForecast', '10DayForecast', '9DayForecast'),
+   models     = c('10DayForecast'),
    title      = "GAM models forecast the October 2016 event"
 )
 
