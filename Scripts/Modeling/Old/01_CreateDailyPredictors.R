@@ -5,8 +5,8 @@
 # Description:    Loads raw hourly data, tidies columns, and then creates a
 #                 large number of variables that predict salinity. Categories
 #                 include tide, wind, sustained discharge, flushing discharge.
-#                 Data is written to .qs format. Also stacks the daily data into 
-#                 a date-horizon format for the unified multi-horizon GAM.
+#                 Continuous predictors are then normalized and data is written
+#                 to .qs format as 'FinalModelData.qs'
 # =============================================================================
 
 source('Scripts/Utilities/LoadTextFiles.R')
@@ -31,9 +31,6 @@ ESTUARY_AXIS_DEG <- 0
 # Flushing threshold computed after data load
 # 90th percentile of max discharge during the intrusion season (August - November)
 FLUSH_THRESHOLD <- NULL  # set after data load
-
-# Maximum forecast horizon (days)
-H_MAX <- 20
 
 # =============================================================================
 # LOAD AND TIDY DATA
@@ -111,7 +108,7 @@ data[] <- lapply(data, function(x) { x[is.nan(x) | is.infinite(x)] <- NA; x })
 # Derived Parameters
 # =============================================================================
 
-# Set flushing threshold now that data is loaded: 90th percentile of max discharge in late summer/fall
+# Set threshold now that data is loaded
 FLUSH_THRESHOLD <- quantile(
    data$MaxDischarge[month(data$DateTime) %in% c(8, 9, 10, 11)],
    0.90, na.rm = TRUE
@@ -148,7 +145,7 @@ model_data <- data %>%
 
 mutate(
    
-   LagSalinity = lag(Salinity, 1)
+   LagSalinity = Salinity
    
 ) %>%
    
@@ -174,17 +171,17 @@ mutate(
    TideRange30 = zoo::rollmean(Tide, 30, fill = NA, align = "right", na.rm = TRUE),
    
    # Mean Water Level
-   TideMean1  = zoo::rollmean(TideMean, 1,  fill = NA, align = 'right', na.rm = TRUE),
-   TideMean2  = zoo::rollmean(TideMean, 2,  fill = NA, align = 'right', na.rm = TRUE),
-   TideMean3  = zoo::rollmean(TideMean, 3,  fill = NA, align = 'right', na.rm = TRUE),
-   TideMean4  = zoo::rollmean(TideMean, 4,  fill = NA, align = 'right', na.rm = TRUE),
-   TideMean6  = zoo::rollmean(TideMean, 6,  fill = NA, align = 'right', na.rm = TRUE),
-   TideMean7  = zoo::rollmean(TideMean, 7,  fill = NA, align = 'right', na.rm = TRUE),
-   TideMean10 = zoo::rollmean(TideMean, 10, fill = NA, align = 'right', na.rm = TRUE),
-   TideMean12 = zoo::rollmean(TideMean, 12, fill = NA, align = 'right', na.rm = TRUE),
-   TideMean14 = zoo::rollmean(TideMean, 14, fill = NA, align = 'right', na.rm = TRUE),
-   TideMean21 = zoo::rollmean(TideMean, 21, fill = NA, align = 'right', na.rm = TRUE),
-   TideMean30 = zoo::rollmean(TideMean, 30, fill = NA, align = 'right', na.rm = TRUE)
+   TideMean1  = zoo::rollmean(Tide, 1, fill = NA, align = 'right', na.rm = TRUE),
+   TideMean2  = zoo::rollmean(Tide, 2, fill = NA, align = 'right', na.rm = TRUE),
+   TideMean3  = zoo::rollmean(Tide, 3, fill = NA, align = 'right', na.rm = TRUE),
+   TideMean4  = zoo::rollmean(Tide, 4, fill = NA, align = 'right', na.rm = TRUE),
+   TideMean6  = zoo::rollmean(Tide, 6, fill = NA, align = 'right', na.rm = TRUE),
+   TideMean7  = zoo::rollmean(Tide, 7, fill = NA, align = 'right', na.rm = TRUE),
+   TideMean10 = zoo::rollmean(Tide, 10, fill = NA, align = 'right', na.rm = TRUE),
+   TideMean12 = zoo::rollmean(Tide, 12, fill = NA, align = 'right', na.rm = TRUE),
+   TideMean14 = zoo::rollmean(Tide, 14, fill = NA, align = 'right', na.rm = TRUE),
+   TideMean21 = zoo::rollmean(Tide, 21, fill = NA, align = 'right', na.rm = TRUE),
+   TideMean30 = zoo::rollmean(Tide, 30, fill = NA, align = 'right', na.rm = TRUE)
    
 ) %>%
    
@@ -304,6 +301,18 @@ mutate(
    ExceedFlux9  = zoo::rollsum(pmax(0, MaxDischarge - FLUSH_THRESHOLD), 9,  fill = NA, align = "right"),
    ExceedFlux10 = zoo::rollsum(pmax(0, MaxDischarge - FLUSH_THRESHOLD), 10, fill = NA, align = "right"),
    
+   
+) %>%
+   
+# =======================================================================================
+# PART 4: TEMPORAL FEATURES
+# =======================================================================================
+
+mutate(
+   
+   DaySin = sin(2 * pi * DayOfYear / 365.25),
+   DayCos = cos(2 * pi * DayOfYear / 365.25),
+   
 )
 
 # =============================================================================
@@ -315,67 +324,31 @@ model_data[] <- lapply(model_data, function(x) { x[is.nan(x) | is.infinite(x)] <
 model_data <- model_data %>%
    relocate(FERC, Salinity, Discharge, .after = DayOfYear) %>%
    mutate_if(is.numeric, round, digits = 3) %>%
+   relocate(DaySin, DayCos, .after = DayOfYear) %>%
    relocate(Salinity, .after = DayOfYear) %>%
    relocate(FERC, .after = DayOfYear) %>%
-   dplyr::select(-c(MaxDischarge, WindAlong, WindCross, TideMean, DischargeAnomaly, ClimDischarge))
+   dplyr::select(-c(DaySin, DayCos, MaxDischarge, WindAlong, WindCross, TideMean, DischargeAnomaly, ClimDischarge))
+
 
 # =============================================================================
-# STACKING FUNCTION
-# For each issue date t and horizon h (1:H_MAX), generate one row where:
-#   - all predictors are anchored to t (no leakage)
-#   - Salinity_h is the observed salinity at t + h days
-# Rows where t + h falls outside the available salinity record are dropped.
+# WRITE OUTPUT
 # =============================================================================
 
-stack_horizons <- function(daily_data, h_max = H_MAX) {
-   
-   # Salinity lookup: maps each date to its observed salinity value
-   salinity_lookup <- daily_data %>%
-      dplyr::select(DateTime, Salinity) %>%
-      rename(target_date = DateTime, Salinity_h = Salinity)
-   
-   # Drop Salinity from predictor columns (it becomes LagSalinity only)
-   predictor_data <- daily_data %>%
-      dplyr::select(-Salinity)
-   
-   # Expand each issue date across all horizons
-   stacked <- purrr::map_dfr(1:h_max, function(h) {
-      predictor_data %>%
-         mutate(
-            h           = h,
-            target_date = DateTime + h
-         ) %>%
-         left_join(salinity_lookup, by = 'target_date') %>%
-         dplyr::select(-target_date)
-   }) %>%
-      filter(!is.na(Salinity_h)) %>%
-      arrange(DateTime, h) %>%
-      relocate(h, Salinity_h, .after = DateTime)
-   
-   return(stacked)
-}
+# Save holdout data for validation later on (Script 8)
+holdout_data <- model_data %>% 
+   filter(Year >= 2022)
 
-# =============================================================================
-# SPLIT, STACK, AND WRITE
-# =============================================================================
+outputs <- list(holdout_data)
+file_names <- c('HoldoutData2023_2024')
+write_qs_files(outputs, 'Data/Tidied/Final/Daily', file_names)
 
-# Daily (non-stacked) splits
-daily_training <- model_data %>% filter(Year < 2023)
-daily_holdout  <- model_data %>% filter(Year >= 2022)
 
-# Stacked splits
-# Training stack: drop any rows where t+h reaches into holdout years
-stacked_training <- stack_horizons(daily_training, h_max = H_MAX)
-stacked_holdout  <- stack_horizons(daily_holdout,  h_max = H_MAX)
+# Write training data (2007-2022)
+model_data <- model_data %>%
+   filter(Year < 2023)
 
-cat(sprintf("Daily training rows:   %d\n", nrow(daily_training)))
-cat(sprintf("Daily holdout rows:    %d\n", nrow(daily_holdout)))
-cat(sprintf("Stacked training rows: %d\n", nrow(stacked_training)))
-cat(sprintf("Stacked holdout rows:  %d\n", nrow(stacked_holdout)))
-
-# Write all four outputs
-outputs    <- list(daily_training, daily_holdout, stacked_training, stacked_holdout)
-file_names <- c('DailyPredictors', 'DailyHoldout', 'StackedModelData', 'StackedHoldoutData')
+outputs    <- list(model_data)
+file_names <- c('FinalModelData')
 write_qs_files(outputs, 'Data/Tidied/Final/Daily', file_names)
 
 rm(list = ls())

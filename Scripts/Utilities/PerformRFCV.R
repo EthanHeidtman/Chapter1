@@ -118,6 +118,7 @@ run_rf_cv <- function(data, folds, response_col, predictor_cols,
       
       # Store results
       results[[i]] <- list(
+         model = rf_model,
          fold = i,
          train_years = folds[[i]]$train_years,
          test_years = folds[[i]]$test_years,

@@ -1,20 +1,10 @@
 # =============================================================================
-# Script Name:    03_EvaluateDailyRF_final.R
+# Script Name:    03_EvaluateStackedRF.R
 # Project:        Chapter1
 # Author:         Ethan Heidtman
-# Description:    Evaluates RF screening results across all lead times.
-#                 Plots variable importance by group, heatmaps, and relative
-#                 importance across forecast horizons.
-#
-#                 Changes from original (v1):
-#                 - Cluster definitions updated to match revised predictor
-#                   engineering: sustained_discharge replaces rolling_discharge,
-#                   ExpDecayDischarge added to sustained flow cluster,
-#                   wind cluster updated to RollingU_along/RollingU_cross,
-#                   LagDischarge/LagU/LagV/LagTide references removed.
-#                 - ExceedFlux_vol excluded from flushing cluster (consistent
-#                   with RF screening script).
-#                 - Wind heatmap pattern updated from 'U|V' to 'U_along|U_cross'.
+# Description:    Evaluates RF screening results from the unified stacked
+#                 dataset. Produces a suite of visualizations to inform scale-
+#                 dependent predictor selection for GAM construction.
 # =============================================================================
 
 library(here)
@@ -22,197 +12,358 @@ library(tidyverse)
 library(dplyr)
 library(lubridate)
 library(ggplot2)
-library(ggthemes)
+library(ggridges)
 
 source('Scripts/Utilities/ReadQS.R')
 source('Scripts/Utilities/WriteQS.R')
-source('Scripts/Utilities/GetTopVarImp.R')
-source('Scripts/Plots/RF/RFEvalPlots.R')
 
 # =============================================================================
 # PARAMETERS
 # =============================================================================
 
-lead_times <- seq(0, 30, 1)
+H_MAX <- 20 # number of horizon days
 
-# =============================================================================
-# LOAD RESULTS
-# =============================================================================
-
-rf_results   <- list()
-screened_data <- list()
-
-for (k in lead_times) {
-   screened_data[[paste0("lag", k)]] <- read_qs_files(
-      paste0('Data/Tidied/Final/Daily/FinalDataScreened_lag', k, '.qs')
-   )
-   rf_results[[paste0("lag", k)]] <- read_qs_files(
-      paste0('Outputs/Experiments/Models/DailyRF/RFDailyScreening_lag', k, '.qs')
-   )
-}
-
-# =============================================================================
-# HELPER: define clusters for a given screened dataset
-# Centralised here so cluster definitions are consistent across all loops.
-# When transferring to a new system, only this function needs updating if
-# predictor naming changes.
-# =============================================================================
-
-define_clusters <- function(model_data_k) {
-   list(
-      Salinity = model_data_k %>%
-         dplyr::select(contains('Salinity')),
-      
-      SustainedDischarge = model_data_k %>%
-         dplyr::select(Salinity,
-                       contains(c('RollingDischarge', 'RollingAnomaly'))),
-      
-      FlushingDischarge = model_data_k %>%
-         dplyr::select(Salinity,
-                       contains(c('MaxDischarge', 'ExceedFlux'))),
-      
-      Tide = model_data_k %>%
-         dplyr::select(Salinity,
-                       contains(c('TideRange', 'TideMean'))),   
-      
-      Wind = model_data_k %>%
-         dplyr::select(Salinity,
-                       contains(c('RollingWindAlong', 'RollingWindCross')))
-      
-   )
-}
-
-# =============================================================================
-# GET TOP VARIABLES PER GROUP ACROSS ALL LEAD TIMES
-# =============================================================================
-
-top_vars_by_k <- list()
-
-for (k in lead_times) {
-   lag_name     <- paste0("lag", k)
-   model_data_k <- screened_data[[lag_name]]
-   group_list_k <- define_clusters(model_data_k)
-   
-   top_vars_by_k[[lag_name]] <- get_top_vars_by_group(
-      importance_df  = rf_results[[lag_name]]$importance,
-      group_dfs      = group_list_k,
-      n_top = 4,
-      importance_col  = "IncMSE_OOB",
-      show_importance = TRUE
-   )
-}
-
-# =============================================================================
-# GROUP IMPORTANCE ACROSS LEAD TIMES
-# =============================================================================
-
-group_importance_by_k <- data.frame()
-
-for (k in lead_times) {
-   lag_name     <- paste0("lag", k)
-   model_data_k <- screened_data[[lag_name]]
-   group_list_k <- define_clusters(model_data_k)
-   
-   avg_importance <- rf_results[[lag_name]]$importance %>%
-      group_by(Variable) %>%
-      summarise(avg_imp = mean(IncMSE_OOB, na.rm = TRUE), .groups = 'drop')
-   
-   for (grp_name in names(group_list_k)) {
-      group_vars     <- setdiff(colnames(group_list_k[[grp_name]]), "Salinity")
-      group_mean_imp <- avg_importance %>%
-         filter(Variable %in% group_vars) %>%
-         summarise(mean_importance = mean(avg_imp, na.rm = TRUE)) %>%
-         pull(mean_importance)
-      
-      group_importance_by_k <- rbind(
-         group_importance_by_k,
-         data.frame(LeadTime       = k,
-                    Group          = grp_name,
-                    MeanImportance = group_mean_imp)
-      )
-   }
-}
-
-group_importance_by_k <- group_importance_by_k %>%
-   group_by(LeadTime) %>%
-   mutate(TotalImportance    = sum(MeanImportance),
-          RelativeImportance = MeanImportance / TotalImportance) %>%
-   ungroup()
-
-# =============================================================================
-# PLOTS PER LEAD TIME
-# =============================================================================
-
-base_dir <- "Outputs/Plots/DailyRF"
+base_dir <- "Outputs/Plots/StackedRF"
 if (!dir.exists(base_dir)) dir.create(base_dir, recursive = TRUE)
 
-for (k in lead_times) {
-   
-   lag_name     <- paste0("lag", k)
-   rf_result_k  <- rf_results[[lag_name]]
-   top_vars_k   <- top_vars_by_k[[lag_name]]
-   
-   lag_dir <- file.path(base_dir, lag_name)
-   if (!dir.exists(lag_dir)) dir.create(lag_dir, recursive = TRUE)
-   
-   # 1. Error metrics
-   p_error <- plot_error_metrics(rf_result_k$metrics)
-   ggsave(file.path(lag_dir, 'error.png'),
-          plot = p_error, width = 8, height = 6, dpi = 600)
-   
-   # 2. Mean importance by group
-   p_mean_imp <- plot_mean_importance(rf_result_k$importance, top_vars_k)
-   ggsave(file.path(lag_dir, 'mean_imp.png'),
-          plot = p_mean_imp, width = 8, height = 6, dpi = 600)
-   
-   # 3. Overall importance heatmap (top 20 variables)
-   p_imp_heat <- plot_importance_heatmap(rf_result_k$importance, top_n = 20)
-   ggsave(file.path(lag_dir, 'imp_heatmap.png'),
-          plot = p_imp_heat, width = 8, height = 6, dpi = 600)
-   
-   # # 4. Wind variable heatmap
-   # # Pattern matches RollingU_along and RollingU_cross families
-   # p_wind_heat <- plot_variable_group_heatmap(
-   #    rf_result_k$importance,
-   #    pattern      = 'U_along|U_cross',
-   #    pattern_name = 'Wind Variables'
-   # )
-   # ggsave(file.path(lag_dir, 'wind_heatmap.png'),
-   #        plot = p_wind_heat, width = 10, height = 8, dpi = 600)
-   # 
-   # # 5. Discharge variable heatmap (all discharge families)
-   # p_discharge_heat <- plot_variable_group_heatmap(
-   #    rf_result_k$importance,
-   #    pattern      = 'Discharge|ExceedFlux',
-   #    pattern_name = 'Discharge Variables'
-   # )
-   # ggsave(file.path(lag_dir, 'discharge_heatmap.png'),
-   #        plot = p_discharge_heat, width = 10, height = 8, dpi = 600)
-   # 
-   # # 6. Tide variable heatmap
-   # p_tide_heat <- plot_variable_group_heatmap(
-   #    rf_result_k$importance,
-   #    pattern      = 'TideRange',
-   #    pattern_name = 'Tide Variables'
-   # )
-   # ggsave(file.path(lag_dir, 'tide_heatmap.png'),
-   #        plot = p_tide_heat, width = 10, height = 8, dpi = 600)
-   
-   cat("Saved plots for", lag_name, "to", lag_dir, "\n")
+within_group_dir <- file.path(base_dir, 'WithinGroup')
+if (!dir.exists(within_group_dir)) dir.create(within_group_dir, recursive = TRUE)
+
+group_colors <- c(
+   FlushingDischarge  = "#2E8B57",
+   SustainedDischarge = "#4A90D9",
+   LagSalinity        = "#E07B3F",
+   Tide               = "#D4AC0D",
+   Wind               = "#8B4789"
+)
+
+theme_rf <- function() {
+   theme_bw() +
+      theme(
+         plot.title        = element_text(size = 14, face = 'bold', color = 'grey20'),
+         plot.subtitle     = element_text(size = 11, color = 'grey20'),
+         axis.title        = element_text(size = 12, face = 'bold', color = 'grey20'),
+         axis.text         = element_text(size = 10, color = 'grey20'),
+         panel.border      = element_rect(colour = 'grey20', fill = NA, linewidth = 1),
+         legend.title      = element_text(size = 11, face = 'bold', color = 'grey20'),
+         legend.text       = element_text(size = 10, color = 'grey20'),
+         legend.background = element_rect(fill = 'white', color = 'grey20', linewidth = 0.5),
+         legend.key        = element_rect(fill = 'white', color = NA),
+         strip.text        = element_text(size = 11, face = 'bold', color = 'grey20'),
+         strip.background  = element_rect(fill = 'grey92', color = 'grey20')
+      )
 }
 
 # =============================================================================
-# SUMMARY PLOTS ACROSS ALL LEAD TIMES
+# LOAD AND PREPARE
 # =============================================================================
 
-p1 <- plot_relative_importance(group_importance_by_k, x_label = 'Lead Time (days)')
-ggsave('Outputs/Plots/DailyRF/RelativeVarImpAcrossK.png',
-       plot = p1, dpi = 600, width = 12, height = 8)
-ggsave('Outputs/Plots/DailyRF/RelativeVarImpAcrossK.svg',
-       plot = p1, dpi = 600, width = 12, height = 8)
+rf_stacked         <- read_qs_files('Outputs/Models/StackedRF/RFStacked.qs')
+importance_summary <- read_qs_files('Outputs/Models/StackedRF/RFImportanceSummary.qs')
+h_importance       <- read_qs_files('Outputs/Models/StackedRF/RFImportanceByHorizon.qs')
+stability_summary  <- read_qs_files('Outputs/Models/StackedRF/RFStabilitySummary.qs')
 
-p2 <- plot_absolute_importance(group_importance_by_k, x_label = 'Lead Time (days)')
-ggsave('Outputs/Plots/DailyRF/AbsoluteVarImpAcrossK.png',
-       plot = p2, dpi = 600, width = 12, height = 8)
+recode_groups <- function(df) {
+   df %>% mutate(Group = recode(Group,
+                                lag_salinity        = 'LagSalinity',
+                                sustained_discharge = 'SustainedDischarge',
+                                flushing_discharge  = 'FlushingDischarge',
+                                tide                = 'Tide',
+                                wind                = 'Wind',
+                                horizon             = 'Horizon'
+   ))
+}
+
+importance_summary <- recode_groups(importance_summary)
+h_importance       <- recode_groups(h_importance)
+stability_summary  <- recode_groups(stability_summary)
+
+# Floor negatives, filter to physical groups
+h_imp <- h_importance %>%
+   filter(Group %in% names(group_colors)) %>%
+   mutate(MeanImportance = pmax(MeanImportance, 0))
+
+h_imp <- h_imp %>%
+   mutate(WindowWidth = as.integer(str_extract(Variable, "[0-9]+$")))
+
+# =============================================================================
+# GROUP-LEVEL NORMALIZED IMPORTANCE
+# =============================================================================
+
+group_by_h <- h_imp %>%
+   group_by(h, Group) %>%
+   summarise(MeanImportance = mean(MeanImportance, na.rm = TRUE), .groups = 'drop') %>%
+   group_by(h) %>%
+   mutate(
+      TotalImportance    = sum(MeanImportance),
+      RelativeImportance = if_else(TotalImportance > 0,
+                                   MeanImportance / TotalImportance, 0)
+   ) %>%
+   ungroup() %>%
+   rename(LeadTime = h)
+
+# =============================================================================
+# PLOT 1: RELATIVE GROUP IMPORTANCE — STREAM
+# =============================================================================
+
+p_stream <- ggplot(group_by_h,
+                   aes(x = LeadTime, y = RelativeImportance, fill = Group)) +
+   geom_area(alpha = 0.75, color = 'grey20', linewidth = 0.3) +
+   scale_fill_manual(values = group_colors, breaks = names(group_colors)) +
+   scale_x_continuous(breaks = seq(0, H_MAX, 2)) +
+   scale_y_continuous(labels = scales::percent_format()) +
+   labs(x = "Lead Time (days)", y = "Relative Importance", fill = "Group",
+        title = "Group Importance Across Lead Times") +
+   theme_rf() +
+   theme(legend.position = 'bottom')
+
+ggsave(file.path(base_dir, 'RelativeGroupImportance.png'),
+       plot = p_stream, width = 12, height = 8, dpi = 600)
+ggsave(file.path(base_dir, 'RelativeGroupImportance.svg'),
+       plot = p_stream, width = 12, height = 8, dpi = 600)
+
+# =============================================================================
+# PLOT 2: ABSOLUTE GROUP IMPORTANCE — LINE
+# =============================================================================
+
+p_absolute <- ggplot(group_by_h,
+                     aes(x = LeadTime, y = MeanImportance,
+                         color = Group, shape = Group)) +
+   geom_line(linewidth = 1.2) +
+   geom_point(size = 3.5) +
+   scale_color_manual(values = group_colors, breaks = names(group_colors)) +
+   scale_shape_manual(values = c(16, 17, 15, 18, 3)) +
+   scale_x_continuous(breaks = seq(0, H_MAX, 2)) +
+   labs(x = "Lead Time (days)", y = "Mean Permutation Importance",
+        color = "Group", shape = "Group",
+        title = "Absolute Group Importance Across Lead Times") +
+   theme_rf() +
+   theme(legend.position = 'bottom')
+
+ggsave(file.path(base_dir, 'AbsoluteGroupImportance.png'),
+       plot = p_absolute, width = 12, height = 8, dpi = 600)
+
+# =============================================================================
+# PLOT 3: WITHIN-GROUP HEATMAPS
+# =============================================================================
+
+plot_group_heatmap <- function(df, grp, col) {
+   
+   df_grp <- df %>%
+      filter(Group == grp)
+   
+   var_order <- df_grp %>%
+      group_by(Variable) %>%
+      summarise(total_imp = sum(MeanImportance, na.rm = TRUE)) %>%
+      arrange(total_imp) %>%
+      pull(Variable)
+   
+   df_grp <- df_grp %>%
+      mutate(Variable = factor(Variable, levels = var_order))
+   
+   ggplot(df_grp, aes(x = h, y = Variable, fill = MeanImportance)) +
+      geom_tile(color = 'grey85', linewidth = 0.2) +
+      scale_fill_gradient(low = 'white', high = col, name = 'Importance') +
+      scale_x_continuous(breaks = seq(0, H_MAX, 2), expand = c(0, 0)) +
+      scale_y_discrete(expand = c(0, 0)) +
+      labs(x = 'Lead Time (days)', y = NULL, title = grp) +
+      theme_rf() +
+      theme(panel.grid  = element_blank(),
+            axis.text.y = element_text(size = 9))
+}
+
+for (grp in names(group_colors)) {
+   p_heat <- plot_group_heatmap(h_imp, grp, group_colors[[grp]])
+   ggsave(file.path(within_group_dir, paste0('Heatmap_', grp, '.png')),
+          plot = p_heat, width = 9, height = 6, dpi = 600)
+   ggsave(file.path(within_group_dir, paste0('Heatmap_', grp, '.svg')),
+          plot = p_heat, width = 9, height = 6, dpi = 600)
+}
+
+# Combined top-N heatmap
+TOP_N_HEATMAP <- 30
+
+top_vars <- h_imp %>%
+   group_by(Variable, Group) %>%
+   summarise(MeanImp = mean(MeanImportance), .groups = 'drop') %>%
+   slice_max(MeanImp, n = TOP_N_HEATMAP) %>%
+   arrange(Group, MeanImp) %>%
+   mutate(Variable = fct_inorder(Variable))
+
+h_imp_top <- h_imp %>%
+   filter(Variable %in% top_vars$Variable) %>%
+   left_join(top_vars %>% select(Variable, Group, MeanImp),
+             by = c('Variable', 'Group')) %>%
+   mutate(Variable = factor(Variable, levels = levels(top_vars$Variable)))
+
+p_heat_combined <- ggplot(h_imp_top,
+                          aes(x = h, y = Variable, fill = MeanImportance)) +
+   geom_tile(color = 'grey85', linewidth = 0.2) +
+   facet_grid(Group ~ ., scales = 'free_y', space = 'free_y') +
+   scale_fill_gradient(low = 'white', high = 'grey20', name = 'Importance') +
+   scale_x_continuous(breaks = seq(0, H_MAX, 2), expand = c(0, 0)) +
+   scale_y_discrete(expand = c(0, 0)) +
+   labs(x = 'Lead Time (days)', y = NULL,
+        title = paste0("Top ", TOP_N_HEATMAP, " Predictors — Importance Surface")) +
+   theme_rf() +
+   theme(panel.grid  = element_blank(),
+         axis.text.y = element_text(size = 8))
+
+ggsave(file.path(base_dir, 'Heatmap_TopPredictors.png'),
+       plot = p_heat_combined, width = 11, height = 14, dpi = 600)
+ggsave(file.path(base_dir, 'Heatmap_TopPredictors.svg'),
+       plot = p_heat_combined, width = 11, height = 14, dpi = 600)
+
+# =============================================================================
+# PLOT 4: RIDGELINES
+# =============================================================================
+
+for (grp in names(group_colors)) {
+   
+   df_grp <- h_imp %>%
+      filter(Group == grp)
+   
+   var_order <- df_grp %>%
+      group_by(Variable) %>%
+      summarise(total_imp = sum(MeanImportance, na.rm = TRUE)) %>%
+      arrange(total_imp) %>%
+      pull(Variable)
+   
+   df_grp <- df_grp %>%
+      mutate(Variable = factor(Variable, levels = var_order))
+   
+   p_ridge <- ggplot(df_grp,
+                     aes(x = h, y = Variable,
+                         height = MeanImportance * 1000,
+                         fill = Variable)) +
+      geom_ridgeline(scale = 3, alpha = 0.75, color = 'grey20',
+                     linewidth = 0.3, min_height = 0) +
+      scale_fill_manual(
+         values = colorRampPalette(c('white', group_colors[[grp]]))(
+            length(unique(df_grp$Variable))
+         ),
+         guide = 'none'
+      ) +
+      scale_x_continuous(breaks = seq(0, H_MAX, 2)) +
+      labs(x = 'Lead Time (days)', y = NULL,
+           title = paste0(grp, " — Importance Profile by Lead Time")) +
+      theme_rf()
+   
+   ggsave(file.path(within_group_dir, paste0('Ridge_', grp, '.png')),
+          plot = p_ridge, width = 10, height = 7, dpi = 600)
+   ggsave(file.path(within_group_dir, paste0('Ridge_', grp, '.svg')),
+          plot = p_ridge, width = 10, height = 7, dpi = 600)
+}
+
+# =============================================================================
+# PLOT 5: PEAK IMPORTANCE HORIZON vs WINDOW WIDTH
+# =============================================================================
+
+peak_horizon <- h_imp %>%
+   filter(!is.na(WindowWidth)) %>%
+   group_by(Variable, Group, WindowWidth) %>%
+   summarise(
+      PeakH          = h[which.max(MeanImportance)],
+      MeanImportance = mean(MeanImportance),
+      .groups = 'drop'
+   )
+
+p_peak <- ggplot(peak_horizon,
+                 aes(x = WindowWidth, y = PeakH,
+                     color = Group, size = MeanImportance)) +
+   geom_point(alpha = 0.8) +
+   geom_smooth(aes(group = Group, color = Group),
+               method = 'lm', se = FALSE, linewidth = 0.8, linetype = 'dashed') +
+   scale_color_manual(values = group_colors, breaks = names(group_colors)) +
+   scale_size_continuous(range = c(1.5, 6), name = 'Mean Importance') +
+   scale_x_continuous(breaks = c(1, 2, 3, 4, 6, 7, 10, 12, 14, 21, 30)) +
+   scale_y_continuous(breaks = seq(0, H_MAX, 2)) +
+   labs(x = 'Predictor Window Width (days)', y = 'Peak Importance Horizon (days)',
+        color = 'Group',
+        title = 'Predictor Timescale vs Peak Forecast Horizon') +
+   theme_rf() +
+   theme(legend.position = 'right')
+
+ggsave(file.path(base_dir, 'PeakHorizon_vs_WindowWidth.png'),
+       plot = p_peak, width = 11, height = 7, dpi = 600)
+ggsave(file.path(base_dir, 'PeakHorizon_vs_WindowWidth.svg'),
+       plot = p_peak, width = 11, height = 7, dpi = 600)
+
+# =============================================================================
+# PLOT 6: STABILITY — MEAN RANK ± SD RANK
+# One dot per predictor, x = mean rank within group across seeds,
+# error bars = ± 1 SD. Faceted by group. Lower rank = more important.
+# Wide error bars flag collinearity-driven instability.
+# =============================================================================
+
+stab_plot_df <- stability_summary %>%
+   filter(Group %in% names(group_colors)) %>%
+   group_by(Group) %>%
+   mutate(Variable = fct_reorder(Variable, MeanRank, .desc = TRUE)) %>%
+   ungroup()
+
+p_stability <- ggplot(stab_plot_df,
+                      aes(x = MeanRank, y = Variable,
+                          color = Group, xmin = MeanRank - SDRank,
+                          xmax = MeanRank + SDRank)) +
+   geom_errorbarh(height = 0.35, linewidth = 0.7, alpha = 0.6) +
+   geom_point(aes(size = MeanImportance), alpha = 0.9) +
+   facet_wrap(~ Group, scales = 'free_y', ncol = 2) +
+   scale_color_manual(values = group_colors, guide = 'none') +
+   scale_size_continuous(range = c(1.5, 5), name = 'Mean Importance') +
+   scale_x_continuous(breaks = scales::pretty_breaks(n = 6)) +
+   labs(x = 'Mean Rank Within Group (lower = more important)',
+        y = NULL,
+        title = 'Predictor Stability Across Seeds',
+        subtitle = 'Error bars show ± 1 SD of rank across 10 seeds') +
+   theme_rf() +
+   theme(legend.position = 'bottom')
+
+ggsave(file.path(base_dir, 'StabilityRank.png'),
+       plot = p_stability, width = 13, height = 10, dpi = 600)
+ggsave(file.path(base_dir, 'StabilityRank.svg'),
+       plot = p_stability, width = 13, height = 10, dpi = 600)
+
+# =============================================================================
+# PLOT 7: CV ERROR METRICS — LINE + POINT
+# =============================================================================
+
+metrics_long <- rf_stacked$metrics %>%
+   select(Fold, Test_Years, RMSE, MAE) %>%
+   pivot_longer(cols = c(RMSE, MAE),
+                names_to  = 'Metric',
+                values_to = 'Value')
+
+p_error <- ggplot(metrics_long,
+                  aes(x = Fold, y = Value, color = Metric, group = Metric)) +
+   geom_line(linewidth = 1.2) +
+   geom_point(size = 3.5) +
+   scale_color_manual(values = c(RMSE = "#E07B3F", MAE = "#4A90D9")) +
+   scale_x_continuous(breaks = rf_stacked$metrics$Fold,
+                      labels = rf_stacked$metrics$Test_Years) +
+   labs(x = "Fold (Test Year)", y = "Error",
+        color = "Metric",
+        title = "Model Performance Across Expanding Window Folds",
+        subtitle = "RMSE and MAE on test sets") +
+   theme_rf() +
+   theme(
+      axis.text.x     = element_text(angle = 45, hjust = 1),
+      legend.position = 'bottom'
+   )
+
+ggsave(file.path(base_dir, 'CVErrorMetrics.png'),
+       plot = p_error, width = 10, height = 6, dpi = 600)
+
+# =============================================================================
+# WRITE OUTPUTS
+# =============================================================================
+
+write_qs_files(
+   list(group_by_h, peak_horizon),
+   'Outputs/Models/StackedRF',
+   c('GroupImportanceByH', 'PeakHorizon')
+)
+
+cat("\nScript 03 complete. Plots saved to:", base_dir, "\n")
 
 rm(list = ls())
