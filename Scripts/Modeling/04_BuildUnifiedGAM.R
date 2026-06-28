@@ -35,16 +35,17 @@ set.seed(123)
 H_MAX <- 20
 
 # Manually selected predictors based on RF screening (Scripts 02/03)
-# LagSalinity:        snapshot at issue date, linear main effect
-# RollingDischarge30: sustained discharge, dominant across most horizons
+# LagSalinity:         snapshot at issue date, linear main effect
+# RollingDischarge30:  sustained discharge, dominant across most horizons
 # MaxDischarge10:      flushing discharge pulse signal
-# TideMean30:         tide, weak but retained
+# TideMean30:          tide, weak but retained
 # RollingWindCross12:  wind cross-estuary component, with WindDir by-variable
-SELECTED_PREDICTORS <- c('h', 'LagSalinity', 'RollingDischarge30',
-                         'MaxDischarge10', 'TideMean30', 'RollingWindCross12')
+
+SELECTED_PREDICTORS <- c('h', 'LagSalinity', 'RollingDischarge50',
+                         'MaxDischarge10', 'TideRange60', 'RollingWindCross12')
 
 HIGH_SALINITY_THRESHOLD <- 0.16 # 75th percentile of daily maximum salinity
-GAM_LEVELS              <- 3
+GAM_LEVELS              <- 3    # number of k's to try when fitting
 
 # =============================================================================
 # LOAD DATA
@@ -98,19 +99,10 @@ gc() # Clean the environment for stability in writing files
 # candidate_summary (EDF + metrics), edf_tables, data_clean, model_cols, fit_params. 
 # =============================================================================
 
-write_qs_files(
-   list(gam_candidates),
-   'Outputs/Models/UnifiedGAM',
-   list('CandidateGAMs_Metadata')
-)
-
-cat("\nPhase 1 complete.\n")
-cat("Open Outputs/Plots/UnifiedGAM/GAMSelection/ to inspect selection plots.\n")
-cat("Then set SELECTED_CANDIDATE_RANK below and run Phase 3.\n\n")
+write_qs_files(list(gam_candidates), 'Outputs/Models/UnifiedGAM', list('CandidateGAMs_Metadata'))
 
 # =============================================================================
 # PHASE 2: INSPECT PLOTS — stop here, do not run Phase 3 yet
-# -----------------------------------------------------------------------------
 # 1. Open Outputs/Plots/UnifiedGAM/GAMSelection/
 # 2. Review AccuracyVsComplexity, AccuracyVsConsistency, EDFHeatmap, FoldProfiles
 # 3. Choose the candidate with the most physically interpretable smooth
@@ -130,16 +122,9 @@ cat(sprintf("\n=== Phase 3: Refitting Candidate Rank %d ===\n", SELECTED_CANDIDA
 # Load metadata if starting a fresh session after plot inspection
 # gam_candidates <- read_qs_files('Outputs/Models/UnifiedGAM/CandidateGAMs_Metadata.qs')
 
-gam_unified <- select_gam_candidate(
-   candidates_output = gam_candidates,
-   rank              = SELECTED_CANDIDATE_RANK
-)
+gam_unified <- select_gam_candidate(candidates_output = gam_candidates, rank = SELECTED_CANDIDATE_RANK)
 
-write_qs_files(
-   list(gam_unified),
-   'Outputs/Models/UnifiedGAM',
-   list('GamUnified')
-)
+write_qs_files(list(gam_unified), 'Outputs/Models/UnifiedGAM', list('GamUnified'))
 
 cat("\nScript 04 complete. Final model saved to Outputs/Models/UnifiedGAM/GamUnified.qs\n")
 

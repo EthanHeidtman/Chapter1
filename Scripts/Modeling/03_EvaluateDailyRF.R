@@ -13,6 +13,7 @@ library(dplyr)
 library(lubridate)
 library(ggplot2)
 library(ggridges)
+library(patchwork)
 
 source('Scripts/Utilities/ReadQS.R')
 source('Scripts/Utilities/WriteQS.R')
@@ -60,8 +61,13 @@ theme_rf <- function() {
 
 rf_stacked         <- read_qs_files('Outputs/Models/StackedRF/RFStacked.qs')
 importance_summary <- read_qs_files('Outputs/Models/StackedRF/RFImportanceSummary.qs')
-h_importance       <- read_qs_files('Outputs/Models/StackedRF/RFImportanceByHorizon.qs')
 stability_summary  <- read_qs_files('Outputs/Models/StackedRF/RFStabilitySummary.qs')
+
+# Seed-averaged h-stratified importance: each seed contributes one
+# fold-averaged MeanImportance per Variable x h; values here are the
+# mean and SD of those seed-level estimates across N_STABLE_SEEDS seeds.
+# This is the appropriate object for importance surface plots.
+h_importance <- read_qs_files('Outputs/Models/StackedRF/RFImportanceByHorizonSeeded.qs')
 
 recode_groups <- function(df) {
    df %>% mutate(Group = recode(Group,
@@ -180,7 +186,10 @@ for (grp in names(group_colors)) {
           plot = p_heat, width = 9, height = 6, dpi = 600)
 }
 
-# Combined top-N heatmap
+# =============================================================================
+# COMBINED TOP-N HEATMAPS (PATCHWORK REFACTOR)
+# =============================================================================
+
 TOP_N_HEATMAP <- 30
 
 top_vars <- h_imp %>%
@@ -196,23 +205,94 @@ h_imp_top <- h_imp %>%
              by = c('Variable', 'Group')) %>%
    mutate(Variable = factor(Variable, levels = levels(top_vars$Variable)))
 
-p_heat_combined <- ggplot(h_imp_top,
-                          aes(x = h, y = Variable, fill = MeanImportance)) +
-   geom_tile(color = 'grey85', linewidth = 0.2) +
-   facet_grid(Group ~ ., scales = 'free_y', space = 'free_y') +
-   scale_fill_gradient(low = 'white', high = 'grey20', name = 'Importance') +
-   scale_x_continuous(breaks = seq(0, H_MAX, 2), expand = c(0, 0)) +
-   scale_y_discrete(expand = c(0, 0)) +
-   labs(x = 'Lead Time (days)', y = NULL,
-        title = paste0("Top ", TOP_N_HEATMAP, " Predictors — Importance Surface")) +
-   theme_rf() +
-   theme(panel.grid  = element_blank(),
-         axis.text.y = element_text(size = 8))
+# Identify unique groups present in the top-N data
+present_groups <- names(group_colors)[names(group_colors) %in% unique(h_imp_top$Group)]
 
-ggsave(file.path(base_dir, 'Heatmap_TopPredictors.png'),
-       plot = p_heat_combined, width = 11, height = 14, dpi = 600)
-ggsave(file.path(base_dir, 'Heatmap_TopPredictors.svg'),
-       plot = p_heat_combined, width = 11, height = 14, dpi = 600)
+# Dynamic layout engine: calculate rows per group to maintain proportional sizes
+group_counts <- h_imp_top %>%
+   group_by(Group) %>%
+   summarise(n_vars = n_distinct(Variable), .groups = 'drop') %>%
+   deframe()
+
+# Set a minimum relative height floor (3) so isolated panels like
+# LagSalinity have plenty of vertical room for vertical text labels
+layout_heights <- sapply(present_groups, function(g) max(group_counts[[g]], 3))
+
+# Calculate global limits across the entire subset for the monochromatic scale
+global_limits <- c(0, max(h_imp_top$MeanImportance, na.rm = TRUE))
+
+# Modular panel builder function
+build_heatmap_panels <- function(df, groups, mono_color = NULL, shared_limits = NULL) {
+   plot_list <- list()
+   
+   for (i in seq_along(groups)) {
+      grp     <- groups[i]
+      is_last <- (i == length(groups))
+      df_grp  <- df %>% filter(Group == grp)
+      
+      # Assign palette mapping (group-specific vs fallback monochromatic)
+      high_col <- if (is.null(mono_color)) group_colors[[grp]] else mono_color
+      
+      p <- ggplot(df_grp, aes(x = h, y = Variable, fill = MeanImportance)) +
+         geom_tile(color = 'grey85', linewidth = 0.2) +
+         facet_grid(Group ~ ., scales = 'free_y') +
+         scale_fill_gradient(
+            low    = 'white',
+            high   = high_col,
+            name   = 'Importance',
+            limits = shared_limits
+         ) +
+         scale_x_continuous(breaks = seq(0, H_MAX, 2), expand = c(0, 0)) +
+         scale_y_discrete(expand = c(0, 0)) +
+         theme_rf() +
+         theme(
+            panel.grid   = element_blank(),
+            axis.text.y  = element_text(size = 8),
+            strip.text.y = element_text(face = 'bold')
+         )
+      
+      if (!is_last) {
+         p <- p + theme(
+            axis.title.x = element_blank(),
+            axis.text.x  = element_blank(),
+            axis.ticks.x = element_blank()
+         )
+      } else {
+         p <- p + labs(x = 'Lead Time (days)')
+      }
+      
+      plot_list[[grp]] <- p
+   }
+   return(plot_list)
+}
+
+# --- VERSION 1: Multi-Color (Group-Specific Colors & Scales) ---
+plots_multi  <- build_heatmap_panels(h_imp_top, present_groups, mono_color = NULL, shared_limits = NULL)
+p_heat_multi <- wrap_plots(plots_multi, ncol = 1, heights = layout_heights) +
+   plot_layout(guides = 'keep') +
+   plot_annotation(
+      title = paste0("Top ", TOP_N_HEATMAP, " Predictors — Importance Surface"),
+      theme = theme(plot.title = element_text(size = 14, face = 'bold', color = 'grey20'))
+   )
+
+ggsave(file.path(base_dir, 'Heatmap_TopPredictors_MultiColor.png'),
+       plot = p_heat_multi, width = 11, height = 14, dpi = 600)
+ggsave(file.path(base_dir, 'Heatmap_TopPredictors_MultiColor.svg'),
+       plot = p_heat_multi, width = 11, height = 14, dpi = 600)
+
+# --- VERSION 2: Monochromatic (Orange Theme, Shared Global Scale) ---
+plots_orange  <- build_heatmap_panels(h_imp_top, present_groups, mono_color = "#E07B3F", shared_limits = global_limits)
+p_heat_orange <- wrap_plots(plots_orange, ncol = 1, heights = layout_heights) +
+   plot_layout(guides = 'collect') +
+   plot_annotation(
+      title = paste0("Top ", TOP_N_HEATMAP, " Predictors — Importance Surface"),
+      theme = theme(plot.title = element_text(size = 14, face = 'bold', color = 'grey20'))
+   )
+
+ggsave(file.path(base_dir, 'Heatmap_TopPredictors_Orange.png'),
+       plot = p_heat_orange, width = 11, height = 14, dpi = 600)
+ggsave(file.path(base_dir, 'Heatmap_TopPredictors_Orange.svg'),
+       plot = p_heat_orange, width = 11, height = 14, dpi = 600)
 
 # =============================================================================
 # PLOT 4: RIDGELINES

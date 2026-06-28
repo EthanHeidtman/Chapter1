@@ -3,10 +3,9 @@
 # Project:        Chapter1
 # Author:         Ethan Heidtman
 # Description:    Runs a single random forest on the stacked date-horizon
-#                 dataset (h = 1:30) to screen predictors for the unified
+#                 dataset (h = 1:20) to screen predictors for the unified
 #                 multi-horizon GAM. Variable importance is stored stratified
-#                 by horizon h for post-hoc inspection of fast vs. slow
-#                 predictor scales within each group. A stability analysis
+#                 by horizon h. A stability analysis
 #                 across 10 seeds tracks importance rank and weighted mean
 #                 horizon variance to flag collinearity-driven instability.
 # =============================================================================
@@ -21,16 +20,15 @@ source('Scripts/Utilities/ReadQS.R')
 source('Scripts/Utilities/WriteQS.R')
 source('Scripts/Utilities/MakeCVFolds.R')
 source('Scripts/Utilities/PerformRFCV.R')
-source('Scripts/Utilities/GetTopVarImp.R')
 
 # =============================================================================
 # PARAMETERS
 # =============================================================================
 
 SEED           <- 123
-ntree          <- 500
-mtry           <- 10
-N_STABLE_SEEDS <- 10
+ntree          <- 250 # number of trees
+mtry           <- 10  # number of splits to make
+N_STABLE_SEEDS <- 10  # number of seeds to try
 
 # =============================================================================
 # LOAD DATA
@@ -45,10 +43,10 @@ stacked_data <- stacked_data %>% arrange(DateTime, h)
 # DEFINE PREDICTOR COLUMNS
 # =============================================================================
 
+# Remove columns that aren't predictors
 non_predictor_cols <- c('DateTime', 'Year', 'Month', 'Day', 'DayOfYear',
                         'FERC', 'Discharge', 'Salinity_h',
                         'Inflows', 'Gust', 'Tide')
-
 predictor_cols <- setdiff(names(stacked_data), non_predictor_cols)
 
 cat(sprintf("Total predictors (including h): %d\n", length(predictor_cols)))
@@ -200,7 +198,7 @@ importance_summary <- rf_stacked$importance_oob %>%
 cat("\nImportance summary:\n")
 print(importance_summary %>% arrange(Group, desc(MeanIncMSE)), n = 100)
 
-# H-stratified importance
+# H-stratified importance (single main seed, fold-averaged)
 cat("\nComputing h-stratified importance for main RF...\n")
 h_importance <- compute_h_importance(rf_stacked, stacked_data, predictor_cols)
 
@@ -214,16 +212,21 @@ if (is.null(h_importance)) {
 # STABILITY ANALYSIS
 # Reruns full CV across N_STABLE_SEEDS seeds. For each seed, stores:
 #   - fold-averaged OOB importance per variable
-#   - h-stratified importance
+#   - h-stratified importance (fold-averaged within seed)
 #   - importance-weighted mean horizon per variable
 # Summary across seeds: selection frequency (rank <=3 within group),
 # mean and SD of weighted mean horizon — flags collinearity-driven instability.
+#
+# h_importance_seeds: the seed-averaged h-stratified importance used in
+# Script 03 plots. MeanImportance = mean across seeds (each seed itself
+# fold-averaged); SDImportance = SD across seeds.
 # =============================================================================
 
 cat(sprintf("\n=== STABILITY ANALYSIS (%d seeds) ===\n", N_STABLE_SEEDS))
 
-stable_seeds      <- (1:N_STABLE_SEEDS) * 17  # deterministic but varied
-stability_records <- list()
+stable_seeds          <- (1:N_STABLE_SEEDS) * 17  # deterministic but varied
+stability_records     <- list()
+h_importance_per_seed <- list()  # accumulate h-stratified importance per seed
 
 for (s in seq_along(stable_seeds)) {
    
@@ -252,13 +255,20 @@ for (s in seq_along(stable_seeds)) {
       mutate(RankWithinGroup = rank(-MeanIncMSE)) %>%
       ungroup()
    
-   # H-stratified importance and weighted mean horizon
+   # H-stratified importance (fold-averaged within this seed)
    h_imp_s <- compute_h_importance(rf_s, stacked_data, predictor_cols)
    
    if (!is.null(h_imp_s)) {
+      
+      # Weighted mean horizon for stability summary
       wh_s <- compute_weighted_h(h_imp_s) %>%
          select(Variable, WeightedMeanH)
       imp_s <- imp_s %>% left_join(wh_s, by = 'Variable')
+      
+      # Tag with seed index and accumulate for cross-seed averaging
+      h_importance_per_seed[[s]] <- h_imp_s %>%
+         mutate(Seed = seed_s)
+      
    } else {
       imp_s$WeightedMeanH <- NA_real_
    }
@@ -269,7 +279,7 @@ for (s in seq_along(stable_seeds)) {
    cat(sprintf("  Seed %d complete.\n", s))
 }
 
-# Combine and summarise
+# Combine and summarise stability across seeds (OOB importance)
 stability_all <- do.call(rbind, stability_records)
 
 stability_summary <- stability_all %>%
@@ -296,15 +306,35 @@ print(stability_summary %>%
       n = 100)
 
 # =============================================================================
+# SEED-AVERAGED H-STRATIFIED IMPORTANCE
+# Each seed contributes one fold-averaged MeanImportance per Variable x h.
+# Averaging across seeds gives a more stable importance surface for plotting.
+# This replaces the single-seed h_importance in Script 03 visualizations.
+# =============================================================================
+
+h_importance_seeds <- do.call(rbind, h_importance_per_seed) %>%
+   group_by(Variable, h, Group) %>%
+   summarise(
+      MeanImportance = mean(MeanImportance, na.rm = TRUE),
+      SDImportance   = sd(MeanImportance,   na.rm = TRUE),
+      .groups = 'drop'
+   ) %>%
+   arrange(Group, Variable, h)
+
+cat(sprintf("\nSeed-averaged h-stratified importance: %d rows across %d seeds\n",
+            nrow(h_importance_seeds), length(h_importance_per_seed)))
+
+# =============================================================================
 # WRITE OUTPUTS
 # =============================================================================
 
 outputs <- list(
    rf_stacked,
    importance_summary,
-   h_importance,
+   h_importance,          # single-seed, fold-averaged (retained for reference)
    stability_summary,
-   stability_all
+   stability_all,
+   h_importance_seeds     # seed-averaged, fold-averaged — used in Script 03 plots
 )
 
 file_names <- c(
@@ -312,7 +342,8 @@ file_names <- c(
    'RFImportanceSummary',
    'RFImportanceByHorizon',
    'RFStabilitySummary',
-   'RFStabilityAll'
+   'RFStabilityAll',
+   'RFImportanceByHorizonSeeded'
 )
 
 write_qs_files(outputs, 'Outputs/Models/StackedRF', file_names)

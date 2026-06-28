@@ -1,6 +1,8 @@
-## Building generalized additive models (GAMs) for forecasting of saltwater intrusion hazards in tidal rivers in the Mid-Atlantic
+## A unified forecasting framework for saltwater intrusion in the tidal Susquehanna River
 
-This repository contains data and code for the first chapter of my dissertation. The project is mainly implemented using R code, and packages are managed using `renv`. 
+This repository contains data and code for Heidtman et al. (2027). The
+project is implemented using R code, and packages are managed using
+`renv`.
 
 ## Getting Started
 
@@ -8,11 +10,11 @@ This repository contains data and code for the first chapter of my dissertation.
 
 To clone and run this project, you need:
 
--   R (version \>= 4.0.0)
+- R (version \>= 4.0.0)
 
--   RStudio (recommended)
+- RStudio (recommended)
 
--   git (for cloning the repository)
+- git (for cloning the repository)
 
 ### Installation Steps
 
@@ -25,7 +27,7 @@ cd YourDesiredFolder
 
 2.  **Open the project in RStudio:**
 
--   Double click the `.Rproj` file or use this line in the terminal:
+- Double click the `.Rproj` file or use this line in the terminal:
 
 ```{bash}
 rstudio repo_name.Rproj
@@ -43,19 +45,20 @@ install.packages('renv')
 renv::restore()
 ```
 
--   This will restore the project's environment, all of the packages and dependencies that are specified in the `renv.lock` file
+- This will restore the project's environment, all of the packages and
+  dependencies that are specified in the `renv.lock` file
 
 ## Running the Project
 
-
-This will execute all necessary steps in the correct order and produce all figures and outputs.
+This will execute all necessary steps in the correct order and produce
+all figures and outputs.
 
 ## Troubleshooting
 
-If you encounter issues related to missing packages, ensure that `renv` has correctly restored the environment. Try this in the RStudio Console:
+If you encounter issues related to missing packages, ensure that `renv`
+has correctly restored the environment. Try this in the RStudio Console:
 
 ```{r}
 renv::diagnostics()
 renv::restore()
 ```
-
