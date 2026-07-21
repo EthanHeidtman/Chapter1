@@ -1,2 +1,0 @@
-"lag_days","rolling_discharge_var","exceed_flux_var","days_since_var","wind_var","wind_type","wind_dir_var","flush_regime_var","tide_var","lag_sal_var","gam_intercept","gam_lag_coef","n_obs","r_squared"
-23,"RollingDischarge21_23",NA,NA,"RollingV12_23","V","WindDir",NA,"TideRange30_23","LagSalinity_23",0.138291805915353,-0.00875045397950286,2861,0.160019442058893

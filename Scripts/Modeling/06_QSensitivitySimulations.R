@@ -4,7 +4,7 @@
 #
 # For each horizon h=1:20, perturb raw discharge in scenario windows,
 # rebuild all predictors exactly as Script 01, stack, and evaluate the
-# model's predicted event peak. Reports peak salinity reduction vs baseline.
+# model's predicted event peak. Reports peak salinity difference vs baseline.
 # =============================================================================
 
 library(dplyr)
@@ -52,37 +52,49 @@ HORIZONS    <- 1:20
 H_MAX       <- 20
 ESTUARY_AXIS_DEG <- 0
 
+# Shared y-axis bounds across Script 06 (discharge) and Script 07 (wind)
+# sensitivity plots, so relative sensitivity is visually comparable.
+SENSITIVITY_Y_LIMITS <- c(-1.2, 0.2)
+
 OUT_DIR <- "Outputs/Plots/SensitivitySimulations/Discharge"
 dir.create(OUT_DIR, recursive = TRUE, showWarnings = FALSE)
 
 # =============================================================================
 # COLORS
-# Three scenario groups, each a sequential ramp within the project palette.
-# Pre-event: blues (#4A90D9 family)
-# Pulse:     teals (#009bba family)
-# Combined:  purples (#8B4789 family)
+# Pre-event scenarios: sequential ramp anchored on the project's
+# SustainedDischarge color (#4A90D9).
+# Pulse scenarios: sequential ramp anchored on the project's
+# FlushingDischarge color (#2E8B57).
+# Combined: kept as a distinct purple, since it isn't a shade of either.
 # =============================================================================
 
+SUSTAINED_DISCHARGE_BASE <- "#4A90D9"
+FLUSHING_DISCHARGE_BASE  <- "#2E8B57"
+COMBINED_COLOR           <- "#002030"
+
+pre_colors   <- colorRampPalette(c("#BFDCF2", SUSTAINED_DISCHARGE_BASE, "#1B4F72"))(3)
+pulse_colors <- colorRampPalette(c("#A8D5BA", FLUSHING_DISCHARGE_BASE, "#145A32"))(2)
+
 SCENARIO_COLORS <- c(
-   "Pre \u00d71.5"               = "#9ecae1",
-   "Pre \u00d72"                 = "#4A90D9",
-   "Pre \u00d73"                 = "#08519c",
-   "Pulse \u00d72"               = "#99d8c9",
-   "Pulse \u00d73"               = "#009bba",
-   "Pre \u00d72 + Pulse \u00d73" = "#8B4789"
+   "Pre \u00d71.5"               = pre_colors[1],
+   "Pre \u00d72"                 = pre_colors[2],
+   "Pre \u00d73"                 = pre_colors[3],
+   "Pulse \u00d72"               = pulse_colors[1],
+   "Pulse \u00d73"               = pulse_colors[2],
+   "Pre \u00d72 + Pulse \u00d73" = COMBINED_COLOR
 )
 
 GROUP_COLORS <- c(
-   "Pre-event" = "#4A90D9",
-   "Pulse"     = "#009bba",
-   "Combined"  = "#8B4789"
+   "Pre-event" = SUSTAINED_DISCHARGE_BASE,
+   "Pulse"     = FLUSHING_DISCHARGE_BASE,
+   "Combined"  = COMBINED_COLOR
 )
 
 # =============================================================================
 # LOAD MODEL AND RAW DATA
 # =============================================================================
 
-gam_unified   <- read_qs_files("Outputs/Models/UnifiedGAM/GamUnified.qs")
+gam_unified   <- read_qs_files("Outputs/Models/UnifiedGAM/GamUnified_Adjusted.qs")
 gam_obj       <- gam_unified$gam_object
 gam_pred_vars <- names(gam_obj$model)
 gam_pred_vars <- gam_pred_vars[gam_pred_vars != "Salinity_h"]
@@ -259,12 +271,15 @@ for (h in HORIZONS) {
    for (sc in scenarios) {
       sc_max <- predict_event_peak(scenario_stacks[[sc$label]], h)
       summary_rows[[length(summary_rows) + 1]] <- data.frame(
-         Horizon   = h,
-         Scenario  = sc$label,
-         Group     = sc$group,
-         Obs_Max   = obs_max,
-         Scen_Max  = sc_max,
-         Reduction = obs_max - sc_max
+         Horizon    = h,
+         Scenario   = sc$label,
+         Group      = sc$group,
+         Obs_Max    = obs_max,
+         Scen_Max   = sc_max,
+         # Negative = scenario peak below baseline (a reduction).
+         # Kept in the same sign convention as the wind sensitivity plot
+         # so the two panels can share a y-axis without a sign flip.
+         Difference = sc_max - obs_max
       )
    }
 }
@@ -280,20 +295,24 @@ summary_df <- bind_rows(summary_rows) %>%
 # =============================================================================
 
 p_sensitivity <- ggplot(summary_df,
-                        aes(x = Horizon, y = Reduction,
+                        aes(x = Horizon, y = Difference,
                             color = Scenario, group = Scenario)) +
    geom_hline(yintercept = 0, color = "grey70", linewidth = 0.4) +
    geom_line(linewidth = 0.8) +
    geom_point(size = 2.5) +
    scale_color_manual(values = SCENARIO_COLORS) +
    scale_x_continuous(breaks = HORIZONS, name = "Forecast Horizon h (days)") +
-   scale_y_continuous(name = "Peak Salinity Reduction (psu)") +
+   scale_y_continuous(name = "Salinity Peak Difference (ppt)",
+                      limits = SENSITIVITY_Y_LIMITS) +
    labs(title = "Discharge Scenario Sensitivity — October 2016 Event",
         color = "Scenario") +
    theme_rf() +
-   theme(legend.key.width = unit(1.2, "cm"))
+   theme(legend.key.width = unit(1.2, "cm"),
+         legend.position = 'bottom')
 
 ggsave(file.path(OUT_DIR, "Discharge_Sensitivity_ByHorizon.png"),
+       p_sensitivity, width = 10, height = 6, dpi = 600)
+ggsave(file.path(OUT_DIR, "Discharge_Sensitivity_ByHorizon.svg"),
        p_sensitivity, width = 10, height = 6, dpi = 600)
 cat("Saved: Discharge_Sensitivity_ByHorizon.png\n")
 

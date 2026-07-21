@@ -5,7 +5,7 @@
 # For each horizon h=1:20, reduce WSPD in the pre-event window, rebuild
 # all predictors exactly as Script 01, stack, and evaluate the model's
 # predicted event peak. WindDir always derived from observed wind sign.
-# Reports peak salinity reduction vs baseline across horizons.
+# Reports peak salinity difference vs baseline across horizons.
 # =============================================================================
 
 library(dplyr)
@@ -59,6 +59,10 @@ WIND_SHIFTS  <- seq(0.25, 2.0, by = 0.25)
 SHIFT_LABELS <- sprintf("\u22120.%s m/s", formatC(WIND_SHIFTS * 100, format = "d"))
 SHIFT_LABELS <- sprintf("-%.2f m/s", WIND_SHIFTS)
 
+# Shared y-axis bounds across Script 06 (discharge) and Script 07 (wind)
+# sensitivity plots, so relative sensitivity is visually comparable.
+SENSITIVITY_Y_LIMITS <- c(-1.2, 0.2)
+
 OUT_DIR <- "Outputs/Plots/SensitivitySimulations/Wind"
 dir.create(OUT_DIR, recursive = TRUE, showWarnings = FALSE)
 
@@ -73,7 +77,7 @@ SCENARIO_COLORS <- setNames(shift_colors, SHIFT_LABELS)
 # LOAD MODEL AND RAW DATA
 # =============================================================================
 
-gam_unified   <- read_qs_files("Outputs/Models/UnifiedGAM/GamUnified.qs")
+gam_unified   <- read_qs_files("Outputs/Models/UnifiedGAM/GamUnified_Adjusted.qs")
 gam_obj       <- gam_unified$gam_object
 gam_pred_vars <- names(gam_obj$model)
 gam_pred_vars <- gam_pred_vars[gam_pred_vars != "Salinity_h"]
@@ -223,12 +227,14 @@ for (h in HORIZONS) {
    for (sc in scenarios) {
       sc_max <- predict_event_peak(scenario_stacks[[sc$label]], h)
       summary_rows[[length(summary_rows) + 1]] <- data.frame(
-         Horizon   = h,
-         Scenario  = sc$label,
-         Shift     = sc$shift,
-         Obs_Max   = obs_max,
-         Scen_Max  = sc_max,
-         Reduction = obs_max - sc_max
+         Horizon    = h,
+         Scenario   = sc$label,
+         Shift      = sc$shift,
+         Obs_Max    = obs_max,
+         Scen_Max   = sc_max,
+         # Negative = scenario peak below baseline (a reduction).
+         # Same sign convention as Script 06 so both panels share a y-axis.
+         Difference = sc_max - obs_max
       )
    }
 }
@@ -240,7 +246,7 @@ summary_df <- bind_rows(summary_rows)
 # =============================================================================
 
 p_sensitivity <- ggplot(summary_df,
-                        aes(x = Horizon, y = Reduction,
+                        aes(x = Horizon, y = Difference,
                             color = Shift, group = Scenario)) +
    geom_hline(yintercept = 0, color = "grey70", linewidth = 0.4) +
    geom_line(linewidth = 0.8) +
@@ -248,15 +254,21 @@ p_sensitivity <- ggplot(summary_df,
    scale_color_gradient(
       low  = "#d4b8e0",
       high = "#8B4789",
-      name = sprintf("Wind speed\nreduction\n(%s, m/s)", wind_component)
+      name = "Easterly Wind Reduction (m/s)"
    ) +
    scale_x_continuous(breaks = HORIZONS, name = "Forecast Horizon h (days)") +
-   scale_y_continuous(name = "Peak Salinity Reduction (psu)") +
+   scale_y_continuous(name = "Salinity Peak Difference (ppt)",
+                      limits = SENSITIVITY_Y_LIMITS) +
    labs(title = "Wind Scenario Sensitivity — October 2016 Event") +
    theme_rf() +
-   theme(legend.key.width = unit(1.2, "cm"))
+   theme(legend.key.width = unit(1.0, "cm"),
+         legend.position = 'bottom',
+         legend.box.spacing = unit(0.2, 'cm')) 
+   
 
 ggsave(file.path(OUT_DIR, "Wind_Sensitivity_ByHorizon.png"),
+       p_sensitivity, width = 10, height = 6, dpi = 600)
+ggsave(file.path(OUT_DIR, "Wind_Sensitivity_ByHorizon.svg"),
        p_sensitivity, width = 10, height = 6, dpi = 600)
 cat("Saved: Wind_Sensitivity_ByHorizon.png\n")
 

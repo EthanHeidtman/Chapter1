@@ -138,10 +138,11 @@ p_absolute <- ggplot(group_by_h,
    geom_line(linewidth = 1.2) +
    geom_point(size = 3.5) +
    scale_color_manual(values = group_colors, breaks = names(group_colors)) +
-   scale_shape_manual(values = c(16, 17, 15, 18, 3)) +
+   # Set guide = "none" to hide shapes from the legend entirely
+   scale_shape_manual(values = c(16, 17, 15, 18, 3), guide = "none") + 
    scale_x_continuous(breaks = seq(0, H_MAX, 2)) +
    labs(x = "Lead Time (days)", y = "Mean Permutation Importance",
-        color = "Group", shape = "Group",
+        color = "Group", # Removed shape assignment here
         title = "Absolute Group Importance Across Lead Times") +
    theme_rf() +
    theme(legend.position = 'bottom')
@@ -190,14 +191,32 @@ for (grp in names(group_colors)) {
 # COMBINED TOP-N HEATMAPS (PATCHWORK REFACTOR)
 # =============================================================================
 
-TOP_N_HEATMAP <- 30
+# TOP_N_HEATMAP <- 30
+# 
+# top_vars <- h_imp %>%
+#    group_by(Variable, Group) %>%
+#    summarise(MeanImp = mean(MeanImportance), .groups = 'drop') %>%
+#    slice_max(MeanImp, n = TOP_N_HEATMAP) %>%
+#    arrange(Group, MeanImp) %>%
+#    mutate(Variable = fct_inorder(Variable))
+# 
+# h_imp_top <- h_imp %>%
+#    filter(Variable %in% top_vars$Variable) %>%
+#    left_join(top_vars %>% select(Variable, Group, MeanImp),
+#              by = c('Variable', 'Group')) %>%
+#    mutate(Variable = factor(Variable, levels = levels(top_vars$Variable)))
+
+TOP_N_PER_GROUP <- 6
 
 top_vars <- h_imp %>%
    group_by(Variable, Group) %>%
    summarise(MeanImp = mean(MeanImportance), .groups = 'drop') %>%
-   slice_max(MeanImp, n = TOP_N_HEATMAP) %>%
+   # Slice within each group instead of globally
+   group_by(Group) %>%
+   slice_max(MeanImp, n = TOP_N_PER_GROUP, with_ties = FALSE) %>%
+   ungroup() %>%
    arrange(Group, MeanImp) %>%
-   mutate(Variable = fct_inorder(Variable))
+   mutate(Variable = factor(Variable, levels = unique(Variable)))
 
 h_imp_top <- h_imp %>%
    filter(Variable %in% top_vars$Variable) %>%
@@ -271,7 +290,7 @@ plots_multi  <- build_heatmap_panels(h_imp_top, present_groups, mono_color = NUL
 p_heat_multi <- wrap_plots(plots_multi, ncol = 1, heights = layout_heights) +
    plot_layout(guides = 'keep') +
    plot_annotation(
-      title = paste0("Top ", TOP_N_HEATMAP, " Predictors — Importance Surface"),
+      title = "Top Predictors Per Group — Importance Surface",
       theme = theme(plot.title = element_text(size = 14, face = 'bold', color = 'grey20'))
    )
 
@@ -285,7 +304,7 @@ plots_orange  <- build_heatmap_panels(h_imp_top, present_groups, mono_color = "#
 p_heat_orange <- wrap_plots(plots_orange, ncol = 1, heights = layout_heights) +
    plot_layout(guides = 'collect') +
    plot_annotation(
-      title = paste0("Top ", TOP_N_HEATMAP, " Predictors — Importance Surface"),
+      title = "Top Predictors Per Group — Importance Surface",
       theme = theme(plot.title = element_text(size = 14, face = 'bold', color = 'grey20'))
    )
 
@@ -294,80 +313,169 @@ ggsave(file.path(base_dir, 'Heatmap_TopPredictors_Orange.png'),
 ggsave(file.path(base_dir, 'Heatmap_TopPredictors_Orange.svg'),
        plot = p_heat_orange, width = 11, height = 14, dpi = 600)
 
-# =============================================================================
-# PLOT 4: RIDGELINES
-# =============================================================================
+# # Identify unique groups present in the top-N data
+# present_groups <- names(group_colors)[names(group_colors) %in% unique(h_imp_top$Group)]
+# 
+# # Dynamic layout engine: calculate rows per group to maintain proportional sizes
+# group_counts <- h_imp_top %>%
+#    group_by(Group) %>%
+#    summarise(n_vars = n_distinct(Variable), .groups = 'drop') %>%
+#    deframe()
+# 
+# # Set a minimum relative height floor (3) so isolated panels like
+# # LagSalinity have plenty of vertical room for vertical text labels
+# layout_heights <- sapply(present_groups, function(g) max(group_counts[[g]], 3))
+# 
+# # Calculate global limits across the entire subset for the monochromatic scale
+# global_limits <- c(0, max(h_imp_top$MeanImportance, na.rm = TRUE))
+# 
+# # Modular panel builder function
+# build_heatmap_panels <- function(df, groups, mono_color = NULL, shared_limits = NULL) {
+#    plot_list <- list()
+#    
+#    for (i in seq_along(groups)) {
+#       grp     <- groups[i]
+#       is_last <- (i == length(groups))
+#       df_grp  <- df %>% filter(Group == grp)
+#       
+#       # Assign palette mapping (group-specific vs fallback monochromatic)
+#       high_col <- if (is.null(mono_color)) group_colors[[grp]] else mono_color
+#       
+#       p <- ggplot(df_grp, aes(x = h, y = Variable, fill = MeanImportance)) +
+#          geom_tile(color = 'grey85', linewidth = 0.2) +
+#          facet_grid(Group ~ ., scales = 'free_y') +
+#          scale_fill_gradient(
+#             low    = 'white',
+#             high   = high_col,
+#             name   = 'Importance',
+#             limits = shared_limits
+#          ) +
+#          scale_x_continuous(breaks = seq(0, H_MAX, 2), expand = c(0, 0)) +
+#          scale_y_discrete(expand = c(0, 0)) +
+#          theme_rf() +
+#          theme(
+#             panel.grid   = element_blank(),
+#             axis.text.y  = element_text(size = 8),
+#             strip.text.y = element_text(face = 'bold')
+#          )
+#       
+#       if (!is_last) {
+#          p <- p + theme(
+#             axis.title.x = element_blank(),
+#             axis.text.x  = element_blank(),
+#             axis.ticks.x = element_blank()
+#          )
+#       } else {
+#          p <- p + labs(x = 'Lead Time (days)')
+#       }
+#       
+#       plot_list[[grp]] <- p
+#    }
+#    return(plot_list)
+# }
+# 
+# # --- VERSION 1: Multi-Color (Group-Specific Colors & Scales) ---
+# plots_multi  <- build_heatmap_panels(h_imp_top, present_groups, mono_color = NULL, shared_limits = NULL)
+# p_heat_multi <- wrap_plots(plots_multi, ncol = 1, heights = layout_heights) +
+#    plot_layout(guides = 'keep') +
+#    plot_annotation(
+#       title = paste0("Top ", TOP_N_HEATMAP, " Predictors — Importance Surface"),
+#       theme = theme(plot.title = element_text(size = 14, face = 'bold', color = 'grey20'))
+#    )
+# 
+# ggsave(file.path(base_dir, 'Heatmap_TopPredictors_MultiColor.png'),
+#        plot = p_heat_multi, width = 11, height = 14, dpi = 600)
+# ggsave(file.path(base_dir, 'Heatmap_TopPredictors_MultiColor.svg'),
+#        plot = p_heat_multi, width = 11, height = 14, dpi = 600)
+# 
+# # --- VERSION 2: Monochromatic (Orange Theme, Shared Global Scale) ---
+# plots_orange  <- build_heatmap_panels(h_imp_top, present_groups, mono_color = "#E07B3F", shared_limits = global_limits)
+# p_heat_orange <- wrap_plots(plots_orange, ncol = 1, heights = layout_heights) +
+#    plot_layout(guides = 'collect') +
+#    plot_annotation(
+#       title = paste0("Top ", TOP_N_HEATMAP, " Predictors — Importance Surface"),
+#       theme = theme(plot.title = element_text(size = 14, face = 'bold', color = 'grey20'))
+#    )
+# 
+# ggsave(file.path(base_dir, 'Heatmap_TopPredictors_Orange.png'),
+#        plot = p_heat_orange, width = 11, height = 14, dpi = 600)
+# ggsave(file.path(base_dir, 'Heatmap_TopPredictors_Orange.svg'),
+#        plot = p_heat_orange, width = 11, height = 14, dpi = 600)
 
-for (grp in names(group_colors)) {
-   
-   df_grp <- h_imp %>%
-      filter(Group == grp)
-   
-   var_order <- df_grp %>%
-      group_by(Variable) %>%
-      summarise(total_imp = sum(MeanImportance, na.rm = TRUE)) %>%
-      arrange(total_imp) %>%
-      pull(Variable)
-   
-   df_grp <- df_grp %>%
-      mutate(Variable = factor(Variable, levels = var_order))
-   
-   p_ridge <- ggplot(df_grp,
-                     aes(x = h, y = Variable,
-                         height = MeanImportance * 1000,
-                         fill = Variable)) +
-      geom_ridgeline(scale = 3, alpha = 0.75, color = 'grey20',
-                     linewidth = 0.3, min_height = 0) +
-      scale_fill_manual(
-         values = colorRampPalette(c('white', group_colors[[grp]]))(
-            length(unique(df_grp$Variable))
-         ),
-         guide = 'none'
-      ) +
-      scale_x_continuous(breaks = seq(0, H_MAX, 2)) +
-      labs(x = 'Lead Time (days)', y = NULL,
-           title = paste0(grp, " — Importance Profile by Lead Time")) +
-      theme_rf()
-   
-   ggsave(file.path(within_group_dir, paste0('Ridge_', grp, '.png')),
-          plot = p_ridge, width = 10, height = 7, dpi = 600)
-   ggsave(file.path(within_group_dir, paste0('Ridge_', grp, '.svg')),
-          plot = p_ridge, width = 10, height = 7, dpi = 600)
-}
+# # =============================================================================
+# # PLOT 4: RIDGELINES
+# # =============================================================================
+# 
+# for (grp in names(group_colors)) {
+#    
+#    df_grp <- h_imp %>%
+#       filter(Group == grp)
+#    
+#    var_order <- df_grp %>%
+#       group_by(Variable) %>%
+#       summarise(total_imp = sum(MeanImportance, na.rm = TRUE)) %>%
+#       arrange(total_imp) %>%
+#       pull(Variable)
+#    
+#    df_grp <- df_grp %>%
+#       mutate(Variable = factor(Variable, levels = var_order))
+#    
+#    p_ridge <- ggplot(df_grp,
+#                      aes(x = h, y = Variable,
+#                          height = MeanImportance * 1000,
+#                          fill = Variable)) +
+#       geom_ridgeline(scale = 3, alpha = 0.75, color = 'grey20',
+#                      linewidth = 0.3, min_height = 0) +
+#       scale_fill_manual(
+#          values = colorRampPalette(c('white', group_colors[[grp]]))(
+#             length(unique(df_grp$Variable))
+#          ),
+#          guide = 'none'
+#       ) +
+#       scale_x_continuous(breaks = seq(0, H_MAX, 2)) +
+#       labs(x = 'Lead Time (days)', y = NULL,
+#            title = paste0(grp, " — Importance Profile by Lead Time")) +
+#       theme_rf()
+#    
+#    ggsave(file.path(within_group_dir, paste0('Ridge_', grp, '.png')),
+#           plot = p_ridge, width = 10, height = 7, dpi = 600)
+#    ggsave(file.path(within_group_dir, paste0('Ridge_', grp, '.svg')),
+#           plot = p_ridge, width = 10, height = 7, dpi = 600)
+# }
 
-# =============================================================================
-# PLOT 5: PEAK IMPORTANCE HORIZON vs WINDOW WIDTH
-# =============================================================================
-
-peak_horizon <- h_imp %>%
-   filter(!is.na(WindowWidth)) %>%
-   group_by(Variable, Group, WindowWidth) %>%
-   summarise(
-      PeakH          = h[which.max(MeanImportance)],
-      MeanImportance = mean(MeanImportance),
-      .groups = 'drop'
-   )
-
-p_peak <- ggplot(peak_horizon,
-                 aes(x = WindowWidth, y = PeakH,
-                     color = Group, size = MeanImportance)) +
-   geom_point(alpha = 0.8) +
-   geom_smooth(aes(group = Group, color = Group),
-               method = 'lm', se = FALSE, linewidth = 0.8, linetype = 'dashed') +
-   scale_color_manual(values = group_colors, breaks = names(group_colors)) +
-   scale_size_continuous(range = c(1.5, 6), name = 'Mean Importance') +
-   scale_x_continuous(breaks = c(1, 2, 3, 4, 6, 7, 10, 12, 14, 21, 30)) +
-   scale_y_continuous(breaks = seq(0, H_MAX, 2)) +
-   labs(x = 'Predictor Window Width (days)', y = 'Peak Importance Horizon (days)',
-        color = 'Group',
-        title = 'Predictor Timescale vs Peak Forecast Horizon') +
-   theme_rf() +
-   theme(legend.position = 'right')
-
-ggsave(file.path(base_dir, 'PeakHorizon_vs_WindowWidth.png'),
-       plot = p_peak, width = 11, height = 7, dpi = 600)
-ggsave(file.path(base_dir, 'PeakHorizon_vs_WindowWidth.svg'),
-       plot = p_peak, width = 11, height = 7, dpi = 600)
+# # =============================================================================
+# # PLOT 5: PEAK IMPORTANCE HORIZON vs WINDOW WIDTH
+# # =============================================================================
+# 
+# peak_horizon <- h_imp %>%
+#    filter(!is.na(WindowWidth)) %>%
+#    group_by(Variable, Group, WindowWidth) %>%
+#    summarise(
+#       PeakH          = h[which.max(MeanImportance)],
+#       MeanImportance = mean(MeanImportance),
+#       .groups = 'drop'
+#    )
+# 
+# p_peak <- ggplot(peak_horizon,
+#                  aes(x = WindowWidth, y = PeakH,
+#                      color = Group, size = MeanImportance)) +
+#    geom_point(alpha = 0.8) +
+#    geom_smooth(aes(group = Group, color = Group),
+#                method = 'lm', se = FALSE, linewidth = 0.8, linetype = 'dashed') +
+#    scale_color_manual(values = group_colors, breaks = names(group_colors)) +
+#    scale_size_continuous(range = c(1.5, 6), name = 'Mean Importance') +
+#    scale_x_continuous(breaks = c(1, 2, 3, 4, 6, 7, 10, 12, 14, 21, 30)) +
+#    scale_y_continuous(breaks = seq(0, H_MAX, 2)) +
+#    labs(x = 'Predictor Window Width (days)', y = 'Peak Importance Horizon (days)',
+#         color = 'Group',
+#         title = 'Predictor Timescale vs Peak Forecast Horizon') +
+#    theme_rf() +
+#    theme(legend.position = 'right')
+# 
+# ggsave(file.path(base_dir, 'PeakHorizon_vs_WindowWidth.png'),
+#        plot = p_peak, width = 11, height = 7, dpi = 600)
+# ggsave(file.path(base_dir, 'PeakHorizon_vs_WindowWidth.svg'),
+#        plot = p_peak, width = 11, height = 7, dpi = 600)
 
 # =============================================================================
 # PLOT 6: STABILITY — MEAN RANK ± SD RANK
@@ -378,6 +486,7 @@ ggsave(file.path(base_dir, 'PeakHorizon_vs_WindowWidth.svg'),
 
 stab_plot_df <- stability_summary %>%
    filter(Group %in% names(group_colors)) %>%
+   filter(Group != "LagSalinity") %>% # Dropping LagSalinity from this specific plot
    group_by(Group) %>%
    mutate(Variable = fct_reorder(Variable, MeanRank, .desc = TRUE)) %>%
    ungroup()
@@ -439,9 +548,9 @@ ggsave(file.path(base_dir, 'CVErrorMetrics.png'),
 # =============================================================================
 
 write_qs_files(
-   list(group_by_h, peak_horizon),
+   list(group_by_h),
    'Outputs/Models/StackedRF',
-   c('GroupImportanceByH', 'PeakHorizon')
+   c('GroupImportanceByH')
 )
 
 cat("\nScript 03 complete. Plots saved to:", base_dir, "\n")
