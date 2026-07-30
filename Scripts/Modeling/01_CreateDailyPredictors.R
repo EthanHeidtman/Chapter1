@@ -90,7 +90,7 @@ data <- data %>%
    group_by(DateTime) %>%
    summarise(
       Salinity     = max(Salinity,   na.rm = TRUE),
-      Tide         = max(Tide,       na.rm = TRUE) - min(Tide, na.rm = TRUE),
+      TideRange    = max(Tide,       na.rm = TRUE) - min(Tide, na.rm = TRUE),
       TideMean     = mean(Tide,      na.rm = TRUE),
       MaxDischarge = max(Discharge,  na.rm = TRUE),
       across(
@@ -169,26 +169,26 @@ mutate(
 mutate(
    
    # Tidal range
-   TideRange1  = zoo::rollmean(Tide, 1,  fill = NA, align = "right", na.rm = TRUE),
-   TideRange2  = zoo::rollmean(Tide, 2,  fill = NA, align = "right", na.rm = TRUE),
-   TideRange3  = zoo::rollmean(Tide, 3,  fill = NA, align = "right", na.rm = TRUE),
-   TideRange4  = zoo::rollmean(Tide, 4,  fill = NA, align = "right", na.rm = TRUE),
-   TideRange5  = zoo::rollmean(Tide, 5,  fill = NA, align = "right", na.rm = TRUE),
-   TideRange6  = zoo::rollmean(Tide, 6,  fill = NA, align = "right", na.rm = TRUE),
-   TideRange7  = zoo::rollmean(Tide, 7,  fill = NA, align = "right", na.rm = TRUE),
-   TideRange8  = zoo::rollmean(Tide, 8,  fill = NA, align = "right", na.rm = TRUE),
-   TideRange9  = zoo::rollmean(Tide, 9,  fill = NA, align = "right", na.rm = TRUE),
-   TideRange10 = zoo::rollmean(Tide, 10, fill = NA, align = "right", na.rm = TRUE),
-   TideRange11  = zoo::rollmean(Tide, 11,  fill = NA, align = "right", na.rm = TRUE),
-   TideRange12 = zoo::rollmean(Tide, 12, fill = NA, align = "right", na.rm = TRUE),
-   TideRange13  = zoo::rollmean(Tide, 13,  fill = NA, align = "right", na.rm = TRUE),
-   TideRange14 = zoo::rollmean(Tide, 14, fill = NA, align = "right", na.rm = TRUE),
-   TideRange21 = zoo::rollmean(Tide, 21, fill = NA, align = "right", na.rm = TRUE),
-   TideRange30 = zoo::rollmean(Tide, 30, fill = NA, align = "right", na.rm = TRUE),
-   TideRange35 = zoo::rollmean(Tide, 35, fill = NA, align = "right", na.rm = TRUE),
-   TideRange40 = zoo::rollmean(Tide, 40, fill = NA, align = "right", na.rm = TRUE),
-   TideRange50 = zoo::rollmean(Tide, 50, fill = NA, align = "right", na.rm = TRUE),
-   TideRange60 = zoo::rollmean(Tide, 60, fill = NA, align = "right", na.rm = TRUE),
+   TideRange1  = zoo::rollmean(TideRange, 1,  fill = NA, align = "right", na.rm = TRUE),
+   TideRange2  = zoo::rollmean(TideRange, 2,  fill = NA, align = "right", na.rm = TRUE),
+   TideRange3  = zoo::rollmean(TideRange, 3,  fill = NA, align = "right", na.rm = TRUE),
+   TideRange4  = zoo::rollmean(TideRange, 4,  fill = NA, align = "right", na.rm = TRUE),
+   TideRange5  = zoo::rollmean(TideRange, 5,  fill = NA, align = "right", na.rm = TRUE),
+   TideRange6  = zoo::rollmean(TideRange, 6,  fill = NA, align = "right", na.rm = TRUE),
+   TideRange7  = zoo::rollmean(TideRange, 7,  fill = NA, align = "right", na.rm = TRUE),
+   TideRange8  = zoo::rollmean(TideRange, 8,  fill = NA, align = "right", na.rm = TRUE),
+   TideRange9  = zoo::rollmean(TideRange, 9,  fill = NA, align = "right", na.rm = TRUE),
+   TideRange10 = zoo::rollmean(TideRange, 10, fill = NA, align = "right", na.rm = TRUE),
+   TideRange11  = zoo::rollmean(TideRange, 11,  fill = NA, align = "right", na.rm = TRUE),
+   TideRange12 = zoo::rollmean(TideRange, 12, fill = NA, align = "right", na.rm = TRUE),
+   TideRange13  = zoo::rollmean(TideRange, 13,  fill = NA, align = "right", na.rm = TRUE),
+   TideRange14 = zoo::rollmean(TideRange, 14, fill = NA, align = "right", na.rm = TRUE),
+   TideRange21 = zoo::rollmean(TideRange, 21, fill = NA, align = "right", na.rm = TRUE),
+   TideRange30 = zoo::rollmean(TideRange, 30, fill = NA, align = "right", na.rm = TRUE),
+   TideRange35 = zoo::rollmean(TideRange, 35, fill = NA, align = "right", na.rm = TRUE),
+   TideRange40 = zoo::rollmean(TideRange, 40, fill = NA, align = "right", na.rm = TRUE),
+   TideRange50 = zoo::rollmean(TideRange, 50, fill = NA, align = "right", na.rm = TRUE),
+   TideRange60 = zoo::rollmean(TideRange, 60, fill = NA, align = "right", na.rm = TRUE),
    
    # Mean Water Level
    TideMean1  = zoo::rollmean(TideMean, 1,  fill = NA, align = 'right', na.rm = TRUE),
@@ -202,15 +202,15 @@ mutate(
    TideMean9  = zoo::rollmean(TideMean, 9,  fill = NA, align = 'right', na.rm = TRUE),
    TideMean10 = zoo::rollmean(TideMean, 10, fill = NA, align = 'right', na.rm = TRUE),
    TideMean11  = zoo::rollmean(TideMean, 11,  fill = NA, align = 'right', na.rm = TRUE),
-   TideMean12 = zoo::rollmean(TideMean, 12, fill = NA, align = 'right', na.rm = TRUE),
+   TideMean12  = zoo::rollmean(TideMean, 12, fill = NA, align = 'right', na.rm = TRUE),
    TideMean13  = zoo::rollmean(TideMean, 13,  fill = NA, align = 'right', na.rm = TRUE),
    TideMean14 = zoo::rollmean(TideMean, 14, fill = NA, align = 'right', na.rm = TRUE),
    TideMean21 = zoo::rollmean(TideMean, 21, fill = NA, align = 'right', na.rm = TRUE),
    TideMean30 = zoo::rollmean(TideMean, 30, fill = NA, align = 'right', na.rm = TRUE),
-   TideMean35 = zoo::rollmean(TideMean, 30, fill = NA, align = 'right', na.rm = TRUE),
-   TideMean40 = zoo::rollmean(TideMean, 30, fill = NA, align = 'right', na.rm = TRUE),
-   TideMean50 = zoo::rollmean(TideMean, 30, fill = NA, align = 'right', na.rm = TRUE),
-   TideMean60 = zoo::rollmean(TideMean, 30, fill = NA, align = 'right', na.rm = TRUE)
+   TideMean35 = zoo::rollmean(TideMean, 35, fill = NA, align = 'right', na.rm = TRUE),
+   TideMean40 = zoo::rollmean(TideMean, 40, fill = NA, align = 'right', na.rm = TRUE),
+   TideMean50 = zoo::rollmean(TideMean, 50, fill = NA, align = 'right', na.rm = TRUE),
+   TideMean60 = zoo::rollmean(TideMean, 60, fill = NA, align = 'right', na.rm = TRUE)
    
 ) %>%
    
@@ -272,9 +272,9 @@ mutate(
       RollingWindCross8  = zoo::rollmean(WindCross, 8,  fill = NA, align = "right", na.rm = TRUE),
       RollingWindCross9  = zoo::rollmean(WindCross, 9,  fill = NA, align = "right", na.rm = TRUE),
       RollingWindCross10 = zoo::rollmean(WindCross, 10, fill = NA, align = "right", na.rm = TRUE),
-      RollingWindCross11  = zoo::rollmean(WindCross, 11,  fill = NA, align = "right", na.rm = TRUE),
-      RollingWindCross12 = zoo::rollmean(WindCross, 12, fill = NA, align = "right", na.rm = TRUE),
-      RollingWindCross13  = zoo::rollmean(WindCross, 13,  fill = NA, align = "right", na.rm = TRUE),
+      RollingWindCross11  = zoo::rollmean(WindCross, 11, fill = NA, align = "right", na.rm = TRUE),
+      RollingWindCross12  = zoo::rollmean(WindCross, 12, fill = NA, align = "right", na.rm = TRUE),
+      RollingWindCross13  = zoo::rollmean(WindCross, 13, fill = NA, align = "right", na.rm = TRUE),
       RollingWindCross14 = zoo::rollmean(WindCross, 14, fill = NA, align = "right", na.rm = TRUE),
       RollingWindCross21 = zoo::rollmean(WindCross, 21, fill = NA, align = "right", na.rm = TRUE),
       RollingWindCross30 = zoo::rollmean(WindCross, 30, fill = NA, align = "right", na.rm = TRUE),
@@ -306,24 +306,6 @@ mutate(
    RollingDischarge40 = zoo::rollmean(Discharge, 40, fill = NA, align = "right", na.rm = TRUE),
    RollingDischarge50 = zoo::rollmean(Discharge, 50, fill = NA, align = "right", na.rm = TRUE),
    RollingDischarge60 = zoo::rollmean(Discharge, 60, fill = NA, align = "right", na.rm = TRUE),
-   
-   
-   # # Rolling means of discharge anomaly
-   # RollingAnomaly1  = zoo::rollmean(DischargeAnomaly, 1,  fill = NA, align = "right", na.rm = TRUE),
-   # RollingAnomaly2  = zoo::rollmean(DischargeAnomaly, 2,  fill = NA, align = "right", na.rm = TRUE),
-   # RollingAnomaly3  = zoo::rollmean(DischargeAnomaly, 3,  fill = NA, align = "right", na.rm = TRUE),
-   # RollingAnomaly4  = zoo::rollmean(DischargeAnomaly, 4,  fill = NA, align = "right", na.rm = TRUE),
-   # RollingAnomaly6  = zoo::rollmean(DischargeAnomaly, 6,  fill = NA, align = "right", na.rm = TRUE),
-   # RollingAnomaly7  = zoo::rollmean(DischargeAnomaly, 7,  fill = NA, align = "right", na.rm = TRUE),
-   # RollingAnomaly10 = zoo::rollmean(DischargeAnomaly, 10, fill = NA, align = "right", na.rm = TRUE),
-   # RollingAnomaly12 = zoo::rollmean(DischargeAnomaly, 12, fill = NA, align = "right", na.rm = TRUE),
-   # RollingAnomaly14 = zoo::rollmean(DischargeAnomaly, 14, fill = NA, align = "right", na.rm = TRUE),
-   # RollingAnomaly21 = zoo::rollmean(DischargeAnomaly, 21, fill = NA, align = "right", na.rm = TRUE),
-   # RollingAnomaly30 = zoo::rollmean(DischargeAnomaly, 30, fill = NA, align = "right", na.rm = TRUE),
-   # RollingAnomaly35 = zoo::rollmean(DischargeAnomaly, 35, fill = NA, align = "right", na.rm = TRUE),
-   # RollingAnomaly40 = zoo::rollmean(DischargeAnomaly, 40, fill = NA, align = "right", na.rm = TRUE),
-   # RollingAnomaly50 = zoo::rollmean(DischargeAnomaly, 50, fill = NA, align = "right", na.rm = TRUE),
-   # RollingAnomaly60 = zoo::rollmean(DischargeAnomaly, 60, fill = NA, align = "right", na.rm = TRUE),
    
    # Flushing discharge: rolling maxima
    MaxDischarge1  = zoo::rollmax(MaxDischarge, 1,  fill = NA, align = "right", na.rm = TRUE),

@@ -49,21 +49,13 @@ set.seed(123)
 
 # =============================================================================
 # PARALLEL BACKEND SETUP
-#
-# multisession works identically on macOS / Windows / Linux, and can later be
-# swapped for a cluster backend (e.g. future.batchtools with a SLURM/PBS
-# template) by changing ONLY this block -- fit_gam itself does not need to
-# change. Workers are left at detectCores() - 2 by default to leave headroom
-# for the OS on a laptop; override N_WORKERS directly on a dedicated machine
-# or cluster node where full core count is available.
 # =============================================================================
 
 N_WORKERS <- max(1, parallel::detectCores() - 2)
 plan(multisession, workers = N_WORKERS)
 cat(sprintf("Parallel backend: multisession, %d workers\n\n", N_WORKERS))
 
-# Progress bar handler -- prints a live bar in interactive sessions; falls
-# back to periodic text updates when run non-interactively (e.g. Rscript).
+# Progress bar handler
 if (interactive()) {
    handlers("progress")
 } else {
@@ -78,19 +70,16 @@ handlers(global = TRUE)
 H_MAX <- 20
 
 # Manually selected predictors based on RF screening (Scripts 02/03)
-# LagSalinity:         snapshot at issue date, linear main effect
-# RollingDischarge30:  sustained discharge, dominant across most horizons
-# MaxDischarge10:      flushing discharge pulse signal
-# TideMean30:          tide, weak but retained
-# RollingWindCross12:  wind cross-estuary component, with WindDir by-variable
+# LagSalinity:        snapshot at issue date, linear main effect
+# RollingDischarge:  sustained discharge, dominant across most horizons
+# MaxDischarge:      flushing discharge pulse signal
+# TideRange:         tide, weak but retained
+# RollingWindCross:  wind cross-estuary component, with WindDir by-variable
 
-SELECTED_PREDICTORS <- c('h', 'LagSalinity', 'RollingDischarge50',
-                         'MaxDischarge10', 'TideRange60', 'RollingWindCross12')
+SELECTED_PREDICTORS <- c('h', 'LagSalinity', 'RollingDischarge35',
+                         'MaxDischarge9', 'TideRange30', 'RollingWindCross14')
 
-GAM_LEVELS          <- 6   # number of k combos to try when fitting
-# (raise this now that the grid search is parallelized
-# -- e.g. 8-10 for a more thorough search; wall time
-# scales with nrow(k_grid) / N_WORKERS, not nrow(k_grid))
+GAM_LEVELS          <- 6  # number of k combos to try when fitting
 
 # =============================================================================
 # LOAD DATA
@@ -104,7 +93,11 @@ stacked_data <- stacked_data %>%
    filter(h <= H_MAX) %>%
    arrange(DateTime, h)
 
-HIGH_SALINITY_THRESHOLD <- quantile(stacked_data$Salinity_h, 0.75, na.rm = TRUE)
+HIGH_SALINITY_THRESHOLD <- quantile(
+   stacked_data$Salinity_h[stacked_data$h == 1],
+   probs = 0.75,
+   na.rm = TRUE
+)
 
 cat(sprintf("Stacked training rows: %d (h = 1:%d)\n", nrow(stacked_data), H_MAX))
 
@@ -112,14 +105,11 @@ cat(sprintf("Stacked training rows: %d (h = 1:%d)\n", nrow(stacked_data), H_MAX)
 # EXPANDING WINDOW CV FOLDS
 # =============================================================================
 
-folds <- make_expanding_folds(stacked_data, initial_train_length = 6)
+folds <- make_expanding_folds(stacked_data, initial_train_length = 9)
 cat(sprintf("Number of CV folds: %d\n", length(folds)))
 
 # =============================================================================
 # PHASE 1: CV TUNING + CANDIDATE EDF EXTRACTION
-# K-combo grid search is parallelized (see plan() above). Top-N refit for EDF
-# extraction stays serial (cheap; not worth parallelizing). bam objects from
-# the grid search / refit are NOT retained or saved.
 # =============================================================================
 
 cat("\n=== Phase 1: Building Unified Multi-Horizon GAM Candidates ===\n")
@@ -139,7 +129,8 @@ t_phase1 <- system.time({
       n_top_candidates        = 10,
       plot_output_dir         = 'Outputs/Plots/UnifiedGAM/GAMSelection',
       n_workers               = N_WORKERS,
-      show_progress           = TRUE
+      show_progress           = TRUE,
+      wind_ti_by              = TRUE
    )
 })
 
@@ -158,27 +149,14 @@ gc() # Clean the environment for stability in writing files
 write_qs_files(list(gam_candidates), 'Outputs/Models/UnifiedGAM', list('CandidateGAMs_Metadata'))
 
 # =============================================================================
-# PHASE 2: INSPECT PLOTS — stop here, do not run Phase 3 yet
-# 1. Open Outputs/Plots/UnifiedGAM/GAMSelection/
-# 2. Review AccuracyVsComplexity, AccuracyVsConsistency, EDFHeatmap, FoldProfiles
-# 3. ALSO check candidate_summary$n_folds_converged for each candidate --
-#    a candidate with strong RMSE but a low convergence count may be winning
-#    on folds that didn't actually settle to a stable fit. This is a
-#    diagnostic only; nothing is auto-excluded. If you want to inspect WHY a
-#    fold didn't converge, gam_candidates$fold_cv_all$warning_text has the
-#    captured warning message(s) for that (k_index, fold) pair.
-# 4. Choose the candidate with the most physically interpretable smooth
-#    structure among those with competitive high-salinity RMSE and an
-#    acceptable convergence count
-# 5. Set SELECTED_CANDIDATE_RANK below and run Phase 3
+# PHASE 2: INSPECT PLOTS — stop here, do not run Phase 3 before reviewing 
+# candidate GAM plots and selecting a final GAM model
 # =============================================================================
 
-SELECTED_CANDIDATE_RANK <- 1  # <-- update after plot + convergence inspection
+SELECTED_CANDIDATE_RANK <- 5  # <-- update after plot + convergence inspection
 
 # =============================================================================
 # PHASE 3: REFIT SELECTED CANDIDATE + SAVE FINAL MODEL
-# Refits from saved k-values and data_clean. Single fit -- no parallelization
-# needed or used here.
 # =============================================================================
 
 cat(sprintf("\n=== Phase 3: Refitting Candidate Rank %d ===\n", SELECTED_CANDIDATE_RANK))

@@ -7,31 +7,119 @@
 #            on load. Requires gam_colors and base_dir to be defined in the
 #            calling script before source() is called.
 #
-# Functions:
-#   theme_eval()
-#   save_plot(p, name, w, h)
-#   save_plot_dir(p, dir, name, w, h)
-#   add_wind_dir(df, gam_obj)
-#   resolve_predictor_color(var_name, predictor_colors, fallback)
-#   make_pred_grid(pred_var, h_seq, pred_seq, train_df, model_vars, gam_obj,
-#                  wind_var_name, reference_wind_level, reference_wind_value)
-#   extract_ti_column(term_matrix, ti_label)
-#   get_cluster_robust_vcov(model, data, cluster_var_name)
-#   plot_performance_metrics(perf_hold, H_MAX, gam_colors, base_dir)
-#   plot_residual_diagnostics(stacked_hold, H_MAX, HIGH_SALINITY_THRESHOLD,
-#                              gam_colors, base_dir)
-#   plot_calibration(stacked_hold, N_CAL_BINS, gam_colors, base_dir)
-#   plot_acf_pacf(stacked_hold, H_MAX, gam_colors, acf_dir)
-#   plot_1d_smooths(gam_obj, s_labels, stacked_train, model_vars,
-#                   wind_var_name, reference_wind_level, reference_wind_value,
-#                   predictor_colors, smooth_dir)
-#   plot_tensor_full(gam_obj, ti_labels, stacked_train, model_vars,
-#                    wind_var_name, reference_wind_level, reference_wind_value,
-#                    predictor_colors, tensor_negative_color, H_MAX,
-#                    tensor_full_dir)
-#   plot_salinity_forecast_panels(data, date_range, year, horizons,
-#                                  epa_line, threshold, title)
+# GENERALIZATION NOTES (read before modifying):
+#   - Predictor -> physical-group classification is done by classify_predictor()
+#     using the naming-convention rules confirmed with the user:
+#       LagSalinity itself         -> "LagSalinity"
+#       contains "RollingDischarge" -> "SustainedDischarge"
+#       contains "Max" or "ExceedFlux" -> "FlushingDischarge"
+#       contains "Tide"             -> "Tide"
+#       contains "RollingWind"      -> "Wind"
+#     This assumes those conventions hold for any future candidate model. If
+#     they stop holding, classify_predictor() is the only place to update.
+#   - predictor_colors and get_units() are now keyed by GROUP name (the five
+#     strings above), not by literal variable name, so any candidate model's
+#     specific variable (e.g. RollingDischarge35 vs RollingDischarge50) gets
+#     the right color/units automatically.
+#   - GROUP_ORDER fixes the canonical row/plotting order (LagSalinity,
+#     SustainedDischarge, FlushingDischarge, Tide, Wind). The pipeline
+#     currently assumes exactly these 5 groups are present in every final
+#     model; discover_predictor_groups() errors loudly if that's violated.
+#   - WindDir sign convention (which raw wind sign maps to which factor
+#     level) is NOT derivable from names or from stacked_train alone, since
+#     WindDir doesn't exist in stacked_train until add_wind_dir() creates it.
+#     This is a modeling decision from Script 04. get_wind_convention() reads
+#     it from gam_unified$wind_dir_convention if present (recommended: have
+#     Script 04 attach this), and falls back to "2nd factor level in the
+#     model's smooth by.levels = positive" with a warning if absent.
 # =============================================================================
+
+
+# =============================================================================
+# PREDICTOR CLASSIFICATION / GROUPING
+# =============================================================================
+
+GROUP_ORDER <- c("LagSalinity", "SustainedDischarge", "FlushingDischarge", "Tide", "Wind")
+
+classify_predictor <- function(var_name) {
+   if (identical(var_name, "LagSalinity"))        return("LagSalinity")
+   if (grepl("RollingDischarge", var_name))       return("SustainedDischarge")
+   if (grepl("Max", var_name) || grepl("ExceedFlux", var_name)) return("FlushingDischarge")
+   if (grepl("Tide", var_name))                   return("Tide")
+   if (grepl("RollingWind", var_name))            return("Wind")
+   NA_character_
+}
+
+# Given the model's predictor variable names (excluding Response, h, WindDir),
+# returns a named vector: names = GROUP_ORDER, values = the actual variable
+# name in THIS model belonging to that group. Errors if the model doesn't
+# have exactly one variable per group in GROUP_ORDER.
+discover_predictor_groups <- function(model_vars) {
+   candidates <- setdiff(model_vars, "WindDir")
+   grp        <- vapply(candidates, classify_predictor, character(1))
+   named      <- setNames(candidates, grp)
+   named      <- named[!is.na(names(named))]
+   
+   missing_groups <- setdiff(GROUP_ORDER, names(named))
+   dup_groups     <- names(named)[duplicated(names(named))]
+   
+   if (length(missing_groups) > 0) {
+      stop("Could not identify a predictor for group(s): ",
+           paste(missing_groups, collapse = ", "),
+           ". Model variables were: ", paste(candidates, collapse = ", "))
+   }
+   if (length(dup_groups) > 0) {
+      stop("More than one model variable classified into group(s): ",
+           paste(unique(dup_groups), collapse = ", "),
+           ". classify_predictor() rules are ambiguous for this model's variables: ",
+           paste(candidates, collapse = ", "))
+   }
+   
+   named[GROUP_ORDER]
+}
+
+resolve_predictor_color <- function(var_name, predictor_colors, fallback = "#888888") {
+   grp <- classify_predictor(var_name)
+   if (is.na(grp) || is.null(predictor_colors[[grp]])) return(fallback)
+   predictor_colors[[grp]]
+}
+
+get_units <- function(var_name) {
+   grp <- classify_predictor(var_name)
+   if (is.na(grp)) return("")
+   switch(grp,
+          LagSalinity         = "(ppt)",
+          SustainedDischarge  = "(m\u00b3/s)",
+          FlushingDischarge   = "(m\u00b3/s)",
+          Tide                = "(m)",
+          Wind                = "(m/s)",
+          "")
+}
+
+
+# =============================================================================
+# WIND SIGN CONVENTION
+# =============================================================================
+
+# Returns list(levels = c(neg_level, pos_level), positive_level = pos_level).
+# Prefers metadata stored on the model object; falls back to "2nd level in
+# the training factor = positive" (matching old hardcoded behavior) with a
+# warning, since that convention cannot otherwise be recovered.
+get_wind_convention <- function(gam_unified, train_df, wind_dir_var = "WindDir") {
+   if (!is.null(gam_unified$wind_dir_convention)) {
+      conv <- gam_unified$wind_dir_convention
+      if (!is.null(conv$levels) && !is.null(conv$positive_level)) return(conv)
+   }
+   lv <- levels(train_df[[wind_dir_var]])
+   if (length(lv) != 2) stop("Expected exactly 2 ", wind_dir_var, " levels; found ", length(lv))
+   warning(
+      "No wind_dir_convention metadata found on the model object. Falling back to ",
+      "'2nd factor level (", lv[2], ") = positive wind', matching legacy behavior. ",
+      "Verify this is correct, and consider having Script 04 attach ",
+      "gam_unified$wind_dir_convention going forward."
+   )
+   list(levels = lv, positive_level = lv[2])
+}
 
 
 # =============================================================================
@@ -68,67 +156,43 @@ save_plot_dir <- function(p, dir, name, w = 10, h = 6) {
 
 
 # =============================================================================
-# HELPER: add WindDir consistent with fit_gam convention
+# HELPER: add WindDir consistent with the model's training convention.
+# See get_wind_convention() above for how the sign->level mapping is sourced.
 # =============================================================================
 
-add_wind_dir <- function(df, gam_obj) {
-   wind_var <- setdiff(all.vars(formula(gam_obj)),
-                       c("Response", "h", "LagSalinity", "RollingDischarge30",
-                         "MaxDischarge10", "TideMean30", "WindDir"))
-   wind_var <- wind_var[grepl("^RollingWind", wind_var)]
-   if (length(wind_var) != 1) stop("Could not uniquely identify wind predictor.")
-   
-   wind_smooth <- Filter(function(s) grepl("WindDir", s$label), gam_obj$smooth)
-   if (length(wind_smooth) == 0) stop("No WindDir smooth found.")
-   wind_levels <- sapply(wind_smooth, `[[`, "by.level")
-   
-   if (all(c("LeftBank", "RightBank") %in% wind_levels)) {
-      df$WindDir <- factor(ifelse(df[[wind_var]] >= 0, "RightBank", "LeftBank"),
-                           levels = c("LeftBank", "RightBank"))
-   } else if (all(c("UpEstuary", "DownEstuary") %in% wind_levels)) {
-      df$WindDir <- factor(ifelse(df[[wind_var]] >= 0, "UpEstuary", "DownEstuary"),
-                           levels = c("DownEstuary", "UpEstuary"))
-   } else {
-      stop("Unknown WindDir levels.")
-   }
+add_wind_dir <- function(df, gam_obj, wind_var_name, wind_convention) {
+   df[[wind_convention$levels[1]]] # no-op reference to trigger clean errors if malformed
+   pos_level <- wind_convention$positive_level
+   neg_level <- setdiff(wind_convention$levels, pos_level)
+   df$WindDir <- factor(
+      ifelse(df[[wind_var_name]] >= 0, pos_level, neg_level),
+      levels = wind_convention$levels
+   )
    df
 }
 
 
 # =============================================================================
-# HELPER: resolve predictor color by prefix match
-# Matches on the longest key in predictor_colors that is a prefix of var_name.
-# =============================================================================
-
-resolve_predictor_color <- function(var_name, predictor_colors, fallback = "#888888") {
-   keys       <- names(predictor_colors)
-   match_mask <- startsWith(var_name, keys)
-   if (!any(match_mask)) return(fallback)
-   best_key   <- keys[match_mask][which.max(nchar(keys[match_mask]))]
-   predictor_colors[[best_key]]
-}
-
-
-# =============================================================================
 # HELPER: build a median-filled prediction grid
-# See detailed WindDir handling notes in script 05 header.
 # =============================================================================
 
 make_pred_grid <- function(pred_var, h_seq, pred_seq, train_df, model_vars,
-                           gam_obj, wind_var_name,
+                           gam_obj, wind_var_name, wind_convention,
                            reference_wind_level, reference_wind_value) {
    
    grid           <- expand.grid(h = h_seq, .x = pred_seq)
    names(grid)[2] <- pred_var
    is_wind_grid   <- (pred_var == wind_var_name)
-   wind_levels    <- levels(train_df$WindDir)
+   wind_levels    <- wind_convention$levels
+   pos_level      <- wind_convention$positive_level
+   neg_level      <- setdiff(wind_levels, pos_level)
    
    for (v in model_vars) {
       if (v %in% names(grid)) next
       if (v == "WindDir") {
          if (is_wind_grid) {
             grid$WindDir <- factor(
-               ifelse(grid[[pred_var]] >= 0, wind_levels[2], wind_levels[1]),
+               ifelse(grid[[pred_var]] >= 0, pos_level, neg_level),
                levels = wind_levels
             )
          } else {
@@ -150,8 +214,6 @@ make_pred_grid <- function(pred_var, h_seq, pred_seq, train_df, model_vars,
 
 # =============================================================================
 # HELPER: extract partial ti() column from a terms matrix by exact label match.
-# grep(pred_var, ...) can match s() columns or other predictors sharing a
-# substring — exact match on the full ti_label is required.
 # =============================================================================
 
 extract_ti_column <- function(term_matrix, ti_label) {
@@ -182,20 +244,14 @@ get_cluster_robust_vcov <- function(model, data, cluster_var_name) {
    complete_idx <- complete.cases(data[, vars_to_check, drop = FALSE])
    clean_data <- data[complete_idx, ]
    
-   # Bread: penalized Bayesian covariance matrix
    bread <- vcov(model, unconditional = FALSE)
-   p_raw <- ncol(bread)          # raw basis dimension (all coefficients)
-   p_edf <- sum(model$edf)       # effective degrees of freedom
+   p_raw <- ncol(bread)
+   p_edf <- sum(model$edf)
    
    cat(sprintf("Raw basis dimension (ncol(bread)): %d\n", p_raw))
    cat(sprintf("Effective df (sum(model$edf)):      %.2f\n", p_edf))
    cat("Using p = sum(model$edf) for sig2 fallback and df correction.\n")
    
-   # Force exact (non-discretized) prediction path.
-   # model$dinfo is non-NULL here (fit with bam(discrete=TRUE)); the default
-   # predict.bam path bins covariates and evaluates the basis once per bin,
-   # which was verified to diverge materially from the exact evaluation for
-   # this model. discrete = FALSE forces per-observation exact evaluation.
    cat("Extracting exact (non-discretized) design matrix...\n")
    X <- predict(model, newdata = clean_data, type = "lpmatrix", discrete = FALSE)
    
@@ -205,7 +261,6 @@ get_cluster_robust_vcov <- function(model, data, cluster_var_name) {
    y <- clean_data[[response_var_name]]
    res <- y - y_hat
    
-   # Scale parameter (sigma^2) -- use p_edf consistently
    sig2 <- model$sig2
    if (is.null(sig2)) sig2 <- sum(res^2) / (nrow(X) - p_edf)
    
@@ -228,7 +283,6 @@ get_cluster_robust_vcov <- function(model, data, cluster_var_name) {
    
    meat <- meat / (sig2^2)
    
-   # Small-sample cluster correction using effective df, not raw basis size
    df_correction <- (G / (G - 1)) * ((N - 1) / (N - p_edf))
    meat <- meat * df_correction
    
@@ -240,11 +294,10 @@ get_cluster_robust_vcov <- function(model, data, cluster_var_name) {
 }
 
 # =============================================================================
-# PERFORMANCE METRICS — distilled to a single two-panel figure:
-# A) RMSE/MAE by lead time, B) R2 by lead time.
+# PERFORMANCE METRICS
 # =============================================================================
 
-plot_performance_metrics <- function(perf_hold, H_MAX, gam_colors, base_dir) {
+plot_performance_metrics <- function(perf_hold, H_MAX, gam_colors, dir) {
    
    p_error <- perf_hold %>%
       select(LeadTime, RMSE, MAE, RMSE_High, MAE_High) %>%
@@ -274,7 +327,6 @@ plot_performance_metrics <- function(perf_hold, H_MAX, gam_colors, base_dir) {
             plot.title = element_text(face = "bold", size = 16, hjust = 0,
                                       margin = margin(b = 2)))
    
-   # R2 uses tertiary color
    p_r2 <- perf_hold %>%
       ggplot(aes(x = LeadTime, y = R2)) +
       geom_line(linewidth = 1.2, color = gam_colors$tertiary) +
@@ -289,31 +341,34 @@ plot_performance_metrics <- function(perf_hold, H_MAX, gam_colors, base_dir) {
    
    p_combined <- p_error | p_r2
    
-   save_plot(p_error, "Error_ByLeadTime", w = 10, h = 6)
-   save_plot(p_r2,    "R2_ByLeadTime",    w = 10, h = 6)
-   ggsave(file.path(base_dir, "Performance_Combined.png"), plot = p_combined, width = 14, height = 6, dpi = 600)
-   ggsave(file.path(base_dir, "Performance_Combined.svg"), plot = p_combined, width = 14, height = 6)
+   save_plot_dir(p_error, dir, "Error_ByLeadTime", w = 10, h = 6)
+   save_plot_dir(p_r2,  dir,  "R2_ByLeadTime",    w = 10, h = 6)
+   ggsave(file.path(dir, "Performance_Combined.png"), plot = p_combined, width = 14, height = 6, dpi = 600)
+   ggsave(file.path(dir, "Performance_Combined.svg"), plot = p_combined, width = 14, height = 6)
    
    invisible(list(error = p_error, r2 = p_r2, combined = p_combined))
 }
 
 # =============================================================================
-# RESIDUAL DIAGNOSTICS — observed-vs-predicted scatter plots dropped (both
-# the overall and by-horizon-bin versions). QQ, residual histogram, and
-# residuals-vs-fitted retained.
+# RESIDUAL DIAGNOSTICS
+# H_MAX-derived bin breaks: 4 bins spanning 1..H_MAX regardless of H_MAX value.
 # =============================================================================
 
 plot_residual_diagnostics <- function(stacked_hold, H_MAX,
                                       HIGH_SALINITY_THRESHOLD,
-                                      gam_colors, base_dir) {
+                                      gam_colors, dir) {
    
-   h_breaks <- c(0, 5, 10, 15, 20)
-   h_labels <- c("h = 1\u20135", "h = 6\u201310", "h = 11\u201315", "h = 16\u201320")
+   h_breaks <- unique(round(seq(0, H_MAX, length.out = 5)))
+   h_labels <- sapply(seq_len(length(h_breaks) - 1), function(i) {
+      lo <- h_breaks[i] + 1
+      hi <- h_breaks[i + 1]
+      if (lo == hi) paste0("h = ", lo) else paste0("h = ", lo, "\u2013", hi)
+   })
    
    resid_df <- stacked_hold %>%
       filter(!is.na(Residual)) %>%
       mutate(HBin = cut(h, breaks = h_breaks, labels = h_labels)) %>%
-      filter(!is.na(HBin)) # Drop any dangling horizons outside bounds
+      filter(!is.na(HBin))
    
    p_qq <- ggplot(resid_df, aes(sample = Residual)) +
       stat_qq(size = 0.6, alpha = 0.4, color = gam_colors$secondary) +
@@ -345,27 +400,27 @@ plot_residual_diagnostics <- function(stacked_hold, H_MAX,
            y     = "Residual (ppt)") +
       theme_eval()
    
-   save_plot(p_qq,           "QQ_ByHBin",             w = 10, h = 8)
-   save_plot(p_resid_hist,   "ResidHist_ByHBin",      w = 10, h = 8)
-   save_plot(p_resid_fitted, "ResidVsFitted_ByHBin",  w = 10, h = 8)
+   save_plot_dir(p_qq,   dir,        "QQ_ByHBin",             w = 10, h = 8)
+   save_plot_dir(p_resid_hist,  dir,  "ResidHist_ByHBin",      w = 10, h = 8)
+   save_plot_dir(p_resid_fitted, dir,  "ResidVsFitted_ByHBin",  w = 10, h = 8)
    
    invisible(list(qq = p_qq, hist = p_resid_hist, resid_fitted = p_resid_fitted))
 }
 
 # =============================================================================
-# CALIBRATION — vertical error bars on the observed dimension removed (there
-# was no principled reason for them here: N-based SE on the observed mean
-# within a predicted-quantile bin doesn't represent calibration uncertainty
-# the way the horizontal predicted-dimension bars do). Horizontal bars on
-# the predicted dimension retained.
+# CALIBRATION
 # =============================================================================
 
-plot_calibration <- function(stacked_hold, N_CAL_BINS, gam_colors, base_dir) {
+plot_calibration <- function(stacked_hold, H_MAX, N_CAL_BINS, gam_colors, dir) {
    library(dplyr)
    library(ggplot2)
    
-   h_breaks <- c(0, 5, 10, 15, 20)
-   h_labels <- c("h = 1\u20135", "h = 6\u201310", "h = 11\u201315", "h = 16\u201320")
+   h_breaks <- unique(round(seq(0, H_MAX, length.out = 5)))
+   h_labels <- sapply(seq_len(length(h_breaks) - 1), function(i) {
+      lo <- h_breaks[i] + 1
+      hi <- h_breaks[i + 1]
+      if (lo == hi) paste0("h = ", lo) else paste0("h = ", lo, "\u2013", hi)
+   })
    
    cal_df <- stacked_hold %>%
       filter(!is.na(Salinity_h), !is.na(Predicted)) %>%
@@ -409,8 +464,8 @@ plot_calibration <- function(stacked_hold, N_CAL_BINS, gam_colors, base_dir) {
          axis.text        = element_text(color = "black")
       )
    
-   ggsave(file.path(base_dir, "Model_Calibration.png"), plot = p_cal, width = 10, height = 8, dpi = 600)
-   ggsave(file.path(base_dir, "Model_Calibration.svg"), plot = p_cal, width = 10, height = 8)
+   ggsave(file.path(dir, "Model_Calibration.png"), plot = p_cal, width = 10, height = 8, dpi = 600)
+   ggsave(file.path(dir, "Model_Calibration.svg"), plot = p_cal, width = 10, height = 8)
    
    invisible(p_cal)
 }
@@ -430,7 +485,6 @@ plot_acf_pacf <- function(stacked_hold, H_MAX, gam_colors, acf_dir) {
          pull(Residual)
       if (length(resid_h) < 20) next
       
-      # Dynamic, clean slice length for robust CI bounds
       n_obs <- length(resid_h)
       ci    <- qnorm(0.975) / sqrt(n_obs)
       
@@ -450,9 +504,6 @@ plot_acf_pacf <- function(stacked_hold, H_MAX, gam_colors, acf_dir) {
    acf_df  <- do.call(rbind, acf_records)
    pacf_df <- do.call(rbind, pacf_records)
    
-   # Explicit numeric-ordered factor for facet labels, built once from the
-   # actual h values present (so it still works if some horizons were
-   # dropped above for having <20 residuals).
    h_levels_numeric <- sort(unique(c(acf_df$h, pacf_df$h)))
    h_level_labels   <- paste0("h = ", h_levels_numeric)
    
@@ -488,22 +539,27 @@ plot_acf_pacf <- function(stacked_hold, H_MAX, gam_colors, acf_dir) {
 }
 
 # =============================================================================
-# 1D MARGINAL SMOOTH PLOTS — Returns the plot objects (not just saves
-# them) so build_paired_grid() can assemble them downstream.
+# 1D MARGINAL SMOOTH PLOTS
+#
+# Two-pass design: (1) compute all curve data frames (wind-combined and all
+# other 1D smooths) WITHOUT plotting, tracking the global min/max of the
+# partial-effect scale across every curve; (2) plot each with a shared xlim
+# derived from that global range, so all panels share an axis regardless of
+# what range this particular model's fitted effects happen to span.
 #
 # Requires: get_units() to be sourced first.
 # =============================================================================
 
 plot_1d_smooths <- function(gam_obj, s_labels, stacked_train, model_vars,
-                            wind_var_name, reference_wind_level, reference_wind_value,
-                            predictor_colors, smooth_dir, h_fallback_color = "#002030") {
+                            wind_var_name, wind_convention,
+                            reference_wind_level, reference_wind_value,
+                            predictor_colors, smooth_dir, h_fallback_color = "#002030",
+                            wind_level_labels = NULL, xlim_pad = 0.05) {
    
    wind_s_labels  <- s_labels[grepl(paste0("^s\\(", wind_var_name, "\\)"), s_labels)]
    other_s_labels <- setdiff(s_labels, wind_s_labels)
    wind_levels    <- levels(stacked_train$WindDir)
    wind_color     <- resolve_predictor_color(wind_var_name, predictor_colors)
-   
-   plots <- list()  # named by variable, for downstream pairing
    
    predict_terms_safe <- function(newdata, label) {
       tryCatch(
@@ -512,7 +568,10 @@ plot_1d_smooths <- function(gam_obj, s_labels, stacked_train, model_vars,
       )
    }
    
-   # ---- (A) Combined wind smooth ----
+   curve_data <- list()  # named by variable -> data.frame(s) of fit/lower/upper
+   
+   # ---- (A) Combined wind smooth: compute curve data ----
+   wind_df <- NULL
    if (length(wind_s_labels) > 0) {
       wind_curves <- lapply(wind_s_labels, function(s_label) {
          obj <- Filter(function(s) s$label == s_label, gam_obj$smooth)
@@ -535,40 +594,20 @@ plot_1d_smooths <- function(gam_obj, s_labels, stacked_train, model_vars,
          data.frame(x = newdata[[wind_var_name]], fit = preds$fit[, col_match],
                     se  = preds$se.fit[, col_match], Level = by_level)
       })
-      
       wind_df <- do.call(rbind, Filter(Negate(is.null), wind_curves))
       if (!is.null(wind_df) && nrow(wind_df) > 0) {
          wind_df <- wind_df %>% mutate(lower = fit - 1.96 * se, upper = fit + 1.96 * se)
-         
-         label_df <- wind_df %>% group_by(Level) %>% slice_min(abs(x - mean(range(x))), n = 1, with_ties = FALSE) %>%
-            ungroup() %>% mutate(LabelText = case_when(Level == "LeftBank" ~ "Easterly", Level == "RightBank" ~ "Westerly", TRUE ~ as.character(Level)))
-         
-         wind_units_str <- get_units(wind_var_name)
-         wind_y_label    <- if (wind_units_str != "") paste(wind_var_name, wind_units_str) else wind_var_name
-         
-         p_wind <- ggplot(wind_df, aes(x = fit, y = x, group = Level)) +
-            geom_vline(xintercept = 0, linetype = "dashed", color = "#002030", linewidth = 0.5) +
-            geom_hline(yintercept = 0, linetype = "dotted", color = "#002030", linewidth = 0.4) +
-            geom_ribbon(aes(xmin = lower, xmax = upper), fill = wind_color, alpha = 0.18, color = NA) +
-            geom_path(color = wind_color, linewidth = 1.1) +
-            geom_text(data = label_df, aes(label = LabelText), vjust = 0.3, hjust = -0.2, color = wind_color, size = 3.5, fontface = "italic") +
-            geom_rug(data = data.frame(x = stacked_train[[wind_var_name]]), aes(y = x), inherit.aes = FALSE, sides = "l", alpha = 0.12, color = "#002030") +
-            labs(title = paste0("Partial Dependence Plot: s(", wind_var_name, ") by Wind Direction"),
-                 y     = wind_y_label, x     = "Partial Effect (ppt)") +
-            theme_eval() + theme(legend.position = "none")
-         
-         save_plot_dir(p_wind, smooth_dir, paste0("Smooth_", wind_var_name, "_Combined"), w = 8, h = 5)
-         plots[[wind_var_name]] <- p_wind
+         curve_data[[wind_var_name]] <- wind_df
       }
    }
    
-   # ---- (B) All other 1D smooths ----
+   # ---- (B) All other 1D smooths: compute curve data ----
+   other_curves <- list()
    for (s_label in other_s_labels) {
       inner    <- gsub("^s\\(|\\).*$", "", s_label)
       var_name <- trimws(strsplit(inner, ",")[[1]])[1]
       if (!var_name %in% names(stacked_train)) next
       
-      line_color <- if (var_name == "h") h_fallback_color else resolve_predictor_color(var_name, predictor_colors, fallback = "#888888")
       x_range <- range(stacked_train[[var_name]], na.rm = TRUE)
       newdata <- setNames(data.frame(seq(x_range[1], x_range[2], length.out = 200)), var_name)
       
@@ -588,8 +627,62 @@ plot_1d_smooths <- function(gam_obj, s_labels, stacked_train, model_vars,
       pred_df <- data.frame(x = newdata[[var_name]], fit = preds$fit[, col_match], se = preds$se.fit[, col_match]) %>%
          mutate(lower = fit - 1.96 * se, upper = fit + 1.96 * se)
       
-      units_str <- get_units(var_name)
-      y_label   <- if (units_str != "") paste(var_name, units_str) else var_name
+      other_curves[[var_name]] <- list(s_label = s_label, df = pred_df)
+      curve_data[[var_name]] <- pred_df
+   }
+   
+   # ---- Shared xlim across every curve computed above ----
+   all_bounds <- unlist(lapply(curve_data, function(d) c(d$lower, d$upper)))
+   if (length(all_bounds) == 0 || all(is.na(all_bounds))) {
+      shared_xlim <- c(-1, 1)  # degenerate fallback; shouldn't occur in practice
+   } else {
+      rng  <- range(all_bounds, na.rm = TRUE)
+      pad  <- diff(rng) * xlim_pad
+      if (pad == 0) pad <- 0.1 * max(abs(rng), 1)
+      shared_xlim <- c(rng[1] - pad, rng[2] + pad)
+   }
+   
+   plots <- list()
+   
+   # ---- (A) Plot combined wind smooth ----
+   if (!is.null(wind_df) && nrow(wind_df) > 0) {
+      label_df <- wind_df %>%
+         group_by(Level) %>%
+         slice_min(abs(x - mean(range(x))), n = 1, with_ties = FALSE) %>%
+         ungroup() %>%
+         mutate(LabelText = if (!is.null(wind_level_labels) && all(Level %in% names(wind_level_labels))) {
+            unname(wind_level_labels[Level])
+         } else {
+            as.character(Level)
+         })
+      
+      wind_units_str <- get_units(wind_var_name)
+      wind_y_label    <- if (wind_units_str != "") paste(wind_var_name, wind_units_str) else wind_var_name
+      
+      p_wind <- ggplot(wind_df, aes(x = fit, y = x, group = Level)) +
+         geom_vline(xintercept = 0, linetype = "dashed", color = "#002030", linewidth = 0.5) +
+         geom_hline(yintercept = 0, linetype = "dotted", color = "#002030", linewidth = 0.4) +
+         geom_ribbon(aes(xmin = lower, xmax = upper), fill = wind_color, alpha = 0.18, color = NA) +
+         geom_path(color = wind_color, linewidth = 1.1) +
+         geom_text(data = label_df, aes(label = LabelText), vjust = 0.3, hjust = -0.2, color = wind_color, size = 3.5, fontface = "italic") +
+         geom_rug(data = data.frame(x = stacked_train[[wind_var_name]]), aes(y = x), inherit.aes = FALSE, sides = "l", alpha = 0.12, color = "#002030") +
+         labs(title = paste0("Partial Dependence Plot: s(", wind_var_name, ") by Wind Direction"),
+              y     = wind_y_label, x     = "Partial Effect (ppt)") +
+         theme_eval() + theme(legend.position = "none") +
+         xlim(shared_xlim)
+      
+      save_plot_dir(p_wind, smooth_dir, paste0("Smooth_", wind_var_name, "_Combined"), w = 8, h = 5)
+      plots[[wind_var_name]] <- p_wind
+   }
+   
+   # ---- (B) Plot all other 1D smooths ----
+   for (var_name in names(other_curves)) {
+      s_label <- other_curves[[var_name]]$s_label
+      pred_df <- other_curves[[var_name]]$df
+      
+      line_color <- if (var_name == "h") h_fallback_color else resolve_predictor_color(var_name, predictor_colors, fallback = "#888888")
+      units_str  <- get_units(var_name)
+      y_label    <- if (units_str != "") paste(var_name, units_str) else var_name
       
       p_smooth <- ggplot(pred_df, aes(x = fit, y = x)) +
          geom_vline(xintercept = 0, linetype = "dashed", color = "#002030", linewidth = 0.5) +
@@ -598,7 +691,8 @@ plot_1d_smooths <- function(gam_obj, s_labels, stacked_train, model_vars,
          geom_rug(data = data.frame(x = stacked_train[[var_name]]), aes(y = x), inherit.aes = FALSE, sides = "l", alpha = 0.2, color = "#002030") +
          labs(title = paste0("Partial Dependence Plot: s(", var_name, ")"),
               y     = y_label, x     = "Partial Effect (ppt)") +
-         theme_eval()
+         theme_eval() +
+         xlim(shared_xlim)
       
       safe_name <- gsub("[^A-Za-z0-9_]", "", s_label)
       save_plot_dir(p_smooth, smooth_dir, paste0("Smooth_", safe_name), w = 8, h = 5)
@@ -609,16 +703,11 @@ plot_1d_smooths <- function(gam_obj, s_labels, stacked_train, model_vars,
 }
 
 # =============================================================================
-# LagSalinity has no marginal s() term — it enters the model only through
-# ti(h, LagSalinity). This produces a rug/density panel so its row in the
-# paired grid stays structurally consistent with the others, rather than
-# leaving a blank cell that could be mistaken for a missing plot.
-#
+# LagSalinity (or whichever group has no marginal s() term) rug/density panel.
 # Requires: get_units() to be sourced first.
 # =============================================================================
 
-plot_lag_salinity_rug <- function(stacked_train, predictor_colors,
-                                  var_name = "LagSalinity") {
+plot_lag_salinity_rug <- function(stacked_train, predictor_colors, var_name) {
    color_val <- resolve_predictor_color(var_name, predictor_colors, fallback = "#888888")
    units_str <- get_units(var_name)
    y_label   <- if (units_str != "") paste(var_name, units_str) else var_name
@@ -630,31 +719,28 @@ plot_lag_salinity_rug <- function(stacked_train, predictor_colors,
       geom_density(aes(x = after_stat(density)), fill = color_val, alpha = 0.25,
                    color = color_val, orientation = "y") +
       labs(title = paste0(var_name, ": No Marginal Smooth"),
-           subtitle = "Enters the model only through ti(h, LagSalinity) \u2014\nno additive s() term exists to plot",
+           subtitle = paste0(var_name, " enters the model only through a tensor interaction \u2014\n",
+                             "no additive s() term exists to plot"),
            y = y_label, x = "Density") +
       theme_eval()
 }
 
-get_units <- function(var) {
-   if (grepl("Salinity", var))  return("(ppt)")
-   if (grepl("Discharge", var)) return("(m\u00b3/s)") # m^3/s
-   if (grepl("Tide", var))      return("(m)")
-   if (grepl("Wind", var))      return("(m/s)")
-   return("")
-}
+# =============================================================================
+# ROBUST TENSOR SURFACES
+# =============================================================================
 
 plot_robust_tensor_surfaces <- function(gam_obj, ti_labels, stacked_train, model_vars,
-                                        wind_var_name, reference_wind_level, reference_wind_value,
+                                        wind_var_name, wind_convention,
+                                        reference_wind_level, reference_wind_value,
                                         predictor_colors, H_MAX, output_dir,
-                                        sig_z = 1.96,        # 95% two-sided z critical value for the baseline-difference test
-                                        nonsig_alpha = 0.30, # opacity for cells not significantly different from baseline
-                                        grid_n_pred = 150) { # predictor-axis grid resolution
+                                        sig_z = 1.96,
+                                        nonsig_alpha = 0.30,
+                                        grid_n_pred = 150) {
    library(mgcv)
    library(dplyr)
    library(ggplot2)
    library(lubridate)
    
-   # 1. Define Seasonal Regimes
    dry_data <- stacked_train %>% filter(month(DateTime) %in% c(8, 9, 10))
    wet_data <- stacked_train %>% filter(month(DateTime) %in% c(3, 4, 5))
    
@@ -667,23 +753,27 @@ plot_robust_tensor_surfaces <- function(gam_obj, ti_labels, stacked_train, model
       dir.create(file.path(output_dir, regime_name), recursive = TRUE, showWarnings = FALSE)
    }
    
-   # Return structure: plots_out[[regime_name]][[pred_var]] -> ggplot object.
-   # If a term has a 'by' variable, plots_out[[regime_name]][[pred_var]] is
-   # itself a named list keyed by level.
    plots_out <- setNames(vector("list", length(regimes)), names(regimes))
    
-   # 2. Iterate through tensor terms
-   for (ti_label in ti_labels) {
-      inner    <- gsub("ti\\(|\\)", "", ti_label)
-      vars_in  <- trimws(strsplit(inner, ",")[[1]])
+   # ---------------------------------------------------------------------
+   # Group ti() smooth objects by their underlying term set, collapsing
+   # by-level duplicates (e.g. a factor by= producing WindDirLeftBank /
+   # WindDirRightBank as separate smooth objects) into one group. This
+   # reads structure off gam_obj$smooth directly rather than parsing
+   # label strings, since mgcv's label format for a factor `by=` term
+   # (e.g. "ti(h,RollingWindCross14):WindDirLeftBank") does not contain
+   # a parseable "by=" substring the way a continuous `by=` term does.
+   # ---------------------------------------------------------------------
+   ti_smooth_objs <- Filter(function(s) grepl("^ti\\(", s$label), gam_obj$smooth)
+   ti_keys        <- sapply(ti_smooth_objs, function(s) paste(s$term, collapse = ","))
+   ti_groups      <- split(ti_smooth_objs, ti_keys)
+   
+   for (ti_key in names(ti_groups)) {
+      group      <- ti_groups[[ti_key]]
+      ref_smooth <- group[[1]]
       
-      # Extract 'by' variable if present (e.g., "by = WindDir")
-      by_var   <- NULL
-      by_part  <- vars_in[grepl("^by\\s*=", vars_in)]
-      if (length(by_part) > 0) {
-         by_var  <- trimws(sub("^by\\s*=\\s*", "", by_part))
-         vars_in <- vars_in[!grepl("^by\\s*=", vars_in)] # strip 'by' part out
-      }
+      vars_in <- ref_smooth$term
+      by_var  <- if (!is.null(ref_smooth$by) && !identical(ref_smooth$by, "NA")) ref_smooth$by else NULL
       
       pred_var <- vars_in[vars_in != "h"]
       if (length(pred_var) != 1 || !pred_var %in% names(stacked_train)) next
@@ -693,14 +783,12 @@ plot_robust_tensor_surfaces <- function(gam_obj, ti_labels, stacked_train, model
       y_label    <- if (units_str != "") paste(pred_var, units_str) else pred_var
       
       h_seq     <- 1:H_MAX
-      # Full observed range, matching the smooth-plot rug distribution 
       pred_range <- range(stacked_train[[pred_var]], na.rm = TRUE)
       pred_seq   <- seq(pred_range[1], pred_range[2], length.out = grid_n_pred)
       
       for (regime_name in names(regimes)) {
          regime_data <- regimes[[regime_name]]
          
-         # --- Precompute baseline values ONCE per regime ---
          regime_baselines <- list()
          for (v in model_vars) {
             if (v %in% names(regime_data)) {
@@ -713,18 +801,31 @@ plot_robust_tensor_surfaces <- function(gam_obj, ti_labels, stacked_train, model
             }
          }
          
-         by_levels <- if (!is.null(by_var)) levels(stacked_train[[by_var]]) else list(NULL)
+         is_wind_grid <- (pred_var == wind_var_name)
+         wind_levels  <- wind_convention$levels
+         pos_level    <- wind_convention$positive_level
+         neg_level    <- setdiff(wind_levels, pos_level)
+         
+         # Detect when the ti()'s by= term IS the wind sign-split variable itself.
+         # In this case we stitch one surface from both bases rather than looping levels.
+         stitch_wind_by <- is_wind_grid && !is.null(by_var) && by_var == "WindDir"
+         
+         by_levels <- if (!is.null(by_var) && !stitch_wind_by) levels(stacked_train[[by_var]]) else list(NULL)
          
          for (by_lev in by_levels) {
             
-            # --- Build the Surface Grid ---
             base_grid <- expand.grid(h = h_seq, pred_target = pred_seq)
             names(base_grid)[2] <- pred_var
             
             for (v in model_vars) {
                if (v == "h" || v == pred_var) next
-               if (v %in% names(regime_baselines)) {
-                  if (!is.null(by_var) && v == by_var) {
+               if (v == "WindDir" && is_wind_grid) {
+                  base_grid$WindDir <- factor(
+                     ifelse(base_grid[[pred_var]] >= 0, pos_level, neg_level),
+                     levels = wind_levels
+                  )
+               } else if (v %in% names(regime_baselines)) {
+                  if (!is.null(by_var) && v == by_var && !stitch_wind_by) {
                      base_grid[[v]] <- factor(by_lev, levels = levels(regime_data[[v]]))
                   } else {
                      base_grid[[v]] <- regime_baselines[[v]]
@@ -732,24 +833,19 @@ plot_robust_tensor_surfaces <- function(gam_obj, ti_labels, stacked_train, model
                }
             }
             
-            # Single-row seasonal baseline condition (mean of every
-            # variable, held at the regime's typical value) used as the
-            # reference point for the significance test below: is the
-            # prediction at each grid cell meaningfully different from the
-            # "typical day" for this season?
             baseline_row <- list()
             for (v in model_vars) {
                if (v %in% names(regime_baselines)) baseline_row[[v]] <- regime_baselines[[v]]
             }
             baseline_row[["h"]] <- mean(regime_data$h, na.rm = TRUE)
-            if (!is.null(by_var)) baseline_row[[by_var]] <- factor(by_lev, levels = levels(regime_data[[by_var]]))
+            if (!is.null(by_var) && !stitch_wind_by) {
+               baseline_row[[by_var]] <- factor(by_lev, levels = levels(regime_data[[by_var]]))
+            } else if (stitch_wind_by) {
+               baseline_row[["WindDir"]]     <- factor(reference_wind_level, levels = wind_levels)
+               baseline_row[[wind_var_name]] <- reference_wind_value
+            }
             baseline_df <- as.data.frame(baseline_row)
             
-            # --- Predict Full Conditional Response ---
-            # type = "response" pulls the whole linear predictor (all terms,
-            # including intercept), so this is the actual predicted salinity
-            # under the seasonal-mean baseline at each grid cell, not a
-            # partial effect.
             resp_predictions <- tryCatch(
                predict(gam_obj, newdata = base_grid, type = "response"),
                error = function(e) NULL
@@ -757,15 +853,6 @@ plot_robust_tensor_surfaces <- function(gam_obj, ti_labels, stacked_train, model
             if (is.null(resp_predictions)) next
             base_grid$PredictedSalinity <- pmax(0, as.numeric(resp_predictions))
             
-            # --- Significance vs. the seasonal baseline (delta method) ---
-            # Tests whether each grid cell's prediction is significantly
-            # different from the "typical day" baseline for this season/
-            # level, at the model's identity-link response scale. Uses the
-            # lpmatrix rather than separately summing SEs, since the grid
-            # prediction and the baseline prediction are correlated (they
-            # share most fitted terms) — the delta-method SE of the
-            # difference correctly accounts for that covariance via the
-            # already-verified cluster-robust Vp.
             sig_result <- tryCatch({
                X_grid <- predict(gam_obj, newdata = base_grid, type = "lpmatrix")
                X_base <- predict(gam_obj, newdata = baseline_df, type = "lpmatrix")
@@ -778,18 +865,13 @@ plot_robust_tensor_surfaces <- function(gam_obj, ti_labels, stacked_train, model
             if (!is.null(sig_result)) {
                base_grid$Significant95 <- abs(sig_result$z) >= sig_z
             } else {
-               base_grid$Significant95 <- TRUE  # fail open: show full opacity rather than silently blank
+               base_grid$Significant95 <- TRUE
             }
             
-            # Per-panel max color ceiling — a shared fixed ceiling (e.g. 2.0
-            # ppt, the observed event peak) washed out every predictor except
-            # LagSalinity, since most conditions never approach that value.
             panel_max <- max(base_grid$PredictedSalinity, na.rm = TRUE)
-            if (panel_max <= 0) panel_max <- 1  # guard against a degenerate all-zero panel
+            if (panel_max <= 0) panel_max <- 1
             
-            # --- Plotting: fill = predicted salinity, alpha = significance vs. baseline ---
-            season_title  <- ifelse(regime_name == "DrySeason", "Dry Season (Aug-Oct)", "Wet Season (Mar-May)")
-            title_suffix  <- if (!is.null(by_var)) paste0(" (", by_lev, ")") else ""
+            title_suffix <- if (!is.null(by_var) && !stitch_wind_by) paste0(" (", by_lev, ")") else ""
             
             p <- ggplot(base_grid, aes(x = h, y = .data[[pred_var]])) +
                geom_tile(aes(fill = PredictedSalinity, alpha = Significant95)) +
@@ -797,23 +879,26 @@ plot_robust_tensor_surfaces <- function(gam_obj, ti_labels, stacked_train, model
                                    limits = c(0, panel_max),
                                    name = "Predicted Salinity (ppt)") +
                scale_alpha_manual(values = c("TRUE" = 1, "FALSE" = nonsig_alpha), guide = "none") +
-               scale_x_continuous(breaks = seq(2, H_MAX, 2)) +
+               scale_x_continuous(breaks = seq(2, H_MAX, 2), expand = c(0, 0)) +
+               scale_y_continuous(expand = c(0, 0)) +
                labs(title = paste0("Predicted Salinity Surface: ", pred_var, " \u00d7 Horizon", title_suffix),
-                    # subtitle = paste0("Conditional on baseline covariates for ", season_title,
-                    #                   " | faded = not significantly different from seasonal baseline (p<0.05)"),
                     x = "Forecast Horizon (days)",
                     y = y_label) +
-               theme_eval()
+               theme_eval() +
+               theme(
+                  panel.grid       = element_blank(),
+                  panel.background = element_rect(fill = "grey92", color = NA)
+               )
             
             safe_name <- gsub("[^A-Za-z0-9_]", "", pred_var)
-            if (!is.null(by_var)) {
+            if (!is.null(by_var) && !stitch_wind_by) {
                safe_name <- paste0(safe_name, "_", gsub("[^A-Za-z0-9_]", "", by_lev))
             }
             
             out_path <- file.path(output_dir, regime_name)
             save_plot_dir(p, out_path, paste0("ResponseSurface_", safe_name), w = 10, h = 6)
             
-            if (is.null(by_var)) {
+            if (is.null(by_var) || stitch_wind_by) {
                plots_out[[regime_name]][[pred_var]] <- p
             } else {
                if (is.null(plots_out[[regime_name]][[pred_var]])) plots_out[[regime_name]][[pred_var]] <- list()
@@ -821,41 +906,19 @@ plot_robust_tensor_surfaces <- function(gam_obj, ti_labels, stacked_train, model
             }
          }
       }
-      message("  Saved seasonal response surfaces for: ", pred_var, if (!is.null(by_var)) paste0(" (by ", by_var, ")") else "")
+      message("  Saved seasonal response surfaces for: ", pred_var, if (!is.null(by_var) && !stitch_wind_by) paste0(" (by ", by_var, ")") else "")
    }
    
    invisible(plots_out)
 }
 
 # =============================================================================
-# PAIRED GRID — smooth (left column) x tensor surface (right column),
-# one row per predictor, 2 x 5 layout. Call once per season, since each
-# tensor surface is season-specific (tensor_plots is the already-subsetted
-# per-season list, e.g. tensor_output$DrySeason from
-# plot_robust_tensor_surfaces()).
-#
-# Layout choices:
-# - Every individual panel gets its own letter, reading left-to-right then
-#   top-to-bottom (A = row1-left, B = row1-right, C = row2-left, ...), tucked
-#   close above its panel rather than floating with default ggplot spacing.
-# - Y-axis shows units only (e.g. "(ppt)"), not "Variable (ppt)" — the row
-#   position/color already identifies which predictor a row belongs to, so
-#   repeating the name on every axis was redundant.
-# - Right column mirrors the left column's y-range (verified upstream — same
-#   full observed predictor range feeds both), so its left-side axis text is
-#   dropped (ticks kept) and the numbers are mirrored onto a secondary axis
-#   on the right instead, avoiding a redundant duplicate label in the middle
-#   of the figure.
-# - Each tensor panel keeps its own horizontal, top-positioned legend
-#   (not a single collected legend), positioned close to its panel.
-#
-# Requires: library(patchwork). Requires get_units() to be sourced.
+# PAIRED GRID — row_order and H_MAX are now required arguments (no hardcoded
+# defaults), derived by the caller from the model's discovered predictor
+# groups. See Script 05.
 # =============================================================================
 
-build_paired_grid <- function(smooth_plots, tensor_plots,
-                              row_order = c("LagSalinity", "RollingDischarge50",
-                                            "RollingWindCross12", "MaxDischarge10",
-                                            "TideRange60"),
+build_paired_grid <- function(smooth_plots, tensor_plots, row_order,
                               output_dir, season_name,
                               legend_key_width_cm = 1.3) {
    library(patchwork)
@@ -920,9 +983,148 @@ build_paired_grid <- function(smooth_plots, tensor_plots,
    invisible(combined)
 }
 
+build_smooth_grid <- function(smooth_plots, var_order,
+                              output_dir, ncol = 2, nrow = 2) {
+   library(patchwork)
+   
+   letters_used <- LETTERS[seq_along(var_order)]
+   panels <- list()
+   
+   n_panels <- length(var_order)
+   n_rows   <- ceiling(n_panels / ncol)
+   row_idx  <- ceiling(seq_along(var_order) / ncol)
+   col_idx  <- ((seq_along(var_order) - 1) %% ncol) + 1
+   
+   for (i in seq_along(var_order)) {
+      var <- var_order[i]
+      p   <- smooth_plots[[var]]
+      if (is.null(p)) {
+         message("  Skipping smooth panel for ", var, " \u2014 not found")
+         next
+      }
+      
+      units_str       <- get_units(var)
+      unit_only_label <- if (units_str != "") units_str else NULL
+      
+      show_x_axis  <- (row_idx[i] == n_rows)
+      is_right_col <- (col_idx[i] != 1)
+      
+      p <- p +
+         labs(title = paste0(letters_used[i], ") ", var), subtitle = NULL,
+              y = if (is_right_col) NULL else unit_only_label) +
+         theme(plot.title   = element_text(face = "bold", hjust = 0, size = 16,
+                                           margin = margin(b = 1)),
+               plot.margin  = margin(t = 0, r = 5, b = 5, l = 5),
+               axis.text.x  = if (show_x_axis) element_text() else element_blank(),
+               axis.ticks.x = if (show_x_axis) element_line() else element_blank())
+      
+      if (is_right_col) {
+         p <- p +
+            scale_y_continuous(sec.axis = dup_axis(name = unit_only_label)) +
+            theme(
+               axis.text.y.left   = element_blank(),
+               axis.title.y.left  = element_blank(),
+               axis.ticks.y.left  = element_line(),
+               axis.text.y.right  = element_text(),
+               axis.title.y.right = element_text(size = 14, face = "bold")
+            )
+      }
+      
+      panels[[length(panels) + 1]] <- p
+   }
+   
+   combined <- wrap_plots(panels, ncol = ncol, nrow = nrow)
+   
+   dir.create(output_dir, recursive = TRUE, showWarnings = FALSE)
+   ggsave(file.path(output_dir, "SmoothGrid_Supplemental.png"),
+          combined, width = 5 * ncol, height = 5 * nrow, dpi = 600)
+   ggsave(file.path(output_dir, "SmoothGrid_Supplemental.svg"),
+          combined, width = 5 * ncol, height = 5 * nrow, dpi = 600)
+   
+   invisible(combined)
+}
+
+build_tensor_grid <- function(tensor_plots, var_order, H_MAX,
+                              output_dir, season_name, ncol = 3, nrow = 2) {
+   library(patchwork)
+   library(ggh4x)
+   
+   letters_used <- LETTERS[seq_along(var_order)]
+   panels <- list()
+   
+   n_panels <- length(var_order)
+   n_rows   <- ceiling(n_panels / ncol)
+   row_idx  <- ceiling(seq_along(var_order) / ncol)
+   col_idx  <- ((seq_along(var_order) - 1) %% ncol) + 1
+   
+   for (i in seq_along(var_order)) {
+      var <- var_order[i]
+      p   <- tensor_plots[[var]]
+      if (is.null(p)) {
+         message("  Skipping tensor panel for ", var, " \u2014 not found")
+         next
+      }
+      
+      is_right_col <- (col_idx[i] != 1)
+      is_bottom    <- (row_idx[i] == n_rows)
+      col_has_panel_below <- any(col_idx == col_idx[i] & row_idx > row_idx[i])
+      show_x_labels <- is_bottom || !col_has_panel_below
+      
+      p <- p +
+         labs(title = paste0(letters_used[i], ") ", var), subtitle = NULL) +
+         scale_x_continuous(
+            expand       = c(0, 0),
+            breaks       = seq(2, H_MAX, 2),
+            minor_breaks = seq(1, H_MAX, 1),
+            guide        = guide_axis_minor()
+         ) +
+         scale_y_continuous(
+            expand    = c(0, 0),
+            guide     = guide_axis_minor(),
+            sec.axis  = dup_axis(name = if (is_right_col) derive() else NULL,
+                                 labels = if (is_right_col) waiver() else NULL)
+         ) +
+         theme(
+            plot.title          = element_text(face = "bold", hjust = 0, size = 16,
+                                               margin = margin(b = 1)),
+            legend.position     = "top",
+            legend.direction    = "horizontal",
+            legend.title        = element_text(size = 9, face = "bold"),
+            legend.text         = element_text(size = 8),
+            legend.key.width    = unit(1.3, "cm"),
+            legend.key.height   = unit(0.35, "cm"),
+            legend.box.spacing  = unit(0.05, "cm"),
+            plot.margin         = margin(t = 0, r = 5, b = 5, l = 5),
+            axis.ticks.y.left   = element_line(),
+            axis.ticks.y.right  = element_line(),
+            axis.text.y.right   = if (is_right_col) element_text() else element_blank(),
+            axis.text.y.left    = if (is_right_col) element_blank() else element_text(),
+            axis.title.y.left   = if (is_right_col) element_blank() else element_text(),
+            axis.title.y.right  = if (is_right_col) element_text() else element_blank(),
+            ggh4x.axis.ticks.length.minor = rel(0.5),
+            axis.ticks.x        = element_line(),
+            axis.text.x         = if (show_x_labels) element_text() else element_blank(),
+            axis.title.x        = if (show_x_labels) element_text() else element_blank()
+         )
+      
+      panels[[length(panels) + 1]] <- p
+   }
+   
+   combined <- wrap_plots(panels, ncol = ncol, nrow = nrow)
+   
+   dir.create(output_dir, recursive = TRUE, showWarnings = FALSE)
+   ggsave(file.path(output_dir, paste0("TensorGrid_", season_name, ".png")),
+          combined, width = 6 * ncol, height = 6 * nrow, dpi = 600)
+   ggsave(file.path(output_dir, paste0("TensorGrid_", season_name, ".svg")),
+          combined, width = 6 * ncol, height = 6 * nrow, dpi = 600)
+   
+   invisible(combined)
+}
 
 # =============================================================================
-# FORECAST PANELS
+# FORECAST PANELS — unchanged in substance; no predictor-name hardcoding
+# existed here to begin with (it operates on Salinity_h/Predicted/h/
+# DateTime, which are fixed pipeline column names, not candidate-specific).
 # =============================================================================
 
 plot_salinity_forecast_panels <- function(data,
@@ -932,7 +1134,8 @@ plot_salinity_forecast_panels <- function(data,
                                           epa_line   = TRUE,
                                           threshold  = 0.5,
                                           title      = NULL,
-                                          NCOL       = 2) {
+                                          NCOL       = 2,
+                                          y_expand   = c(0.05, 0.05)) {
    
    observed_linewidth <- 0.9
    model_linewidth    <- 1.3
@@ -940,8 +1143,7 @@ plot_salinity_forecast_panels <- function(data,
    model_alpha        <- 1.0
    observed_color     <- "#f58220"
    axis_dark          <- "#002030"
-   model_palette      <- c("#3b7ea1", "#6a994e", "#8338ec", "#bc4b51",
-                           "#fb5607", "#ffbe0b", "#06ffa5", "#c4820e")
+   model_color        <- "#009bba"
    
    if (is.null(horizons)) stop("horizons must be specified.")
    
@@ -963,6 +1165,17 @@ plot_salinity_forecast_panels <- function(data,
       base_data <- data
    }
    
+   shared_y_range <- base_data %>%
+      dplyr::mutate(
+         Lower = Predicted - (1.96 * Predicted_SE),
+         Upper = Predicted + (1.96 * Predicted_SE)
+      ) %>%
+      dplyr::summarise(
+         lo = min(c(Salinity_h, Lower, if (epa_line) threshold else NA), na.rm = TRUE),
+         hi = max(c(Salinity_h, Upper, if (epa_line) threshold else NA), na.rm = TRUE)
+      )
+   shared_y_limits <- c(shared_y_range$lo, shared_y_range$hi)
+   
    add_segments <- function(df) {
       df %>%
          dplyr::arrange(TargetDate) %>%
@@ -973,7 +1186,7 @@ plot_salinity_forecast_panels <- function(data,
          )
    }
    
-   make_panel <- function(h_val, model_color,
+   make_panel <- function(h_val,
                           show_x_axis  = FALSE,
                           show_y_title = FALSE,
                           mirror_axis  = FALSE,
@@ -1025,6 +1238,8 @@ plot_salinity_forecast_panels <- function(data,
                                        setNames(model_linewidth, series_label))) +
          scale_alpha_manual(values = c("Observed" = observed_alpha,
                                        setNames(model_alpha, series_label))) +
+         scale_x_datetime(expand = c(0, 0)) +
+         scale_y_continuous(limits = shared_y_limits, expand = expansion(mult = y_expand)) +
          labs(x = if (show_x_axis) "Date" else NULL,
               y = if (show_y_title) "Daily Maximum Salinity (ppt)" else NULL,
               title = panel_title) +
@@ -1044,12 +1259,9 @@ plot_salinity_forecast_panels <- function(data,
          )
       
       if (mirror_axis) {
-         # Right-column panels: ticks stay on the left (for visual
-         # continuity with the left column), numbers move to a secondary
-         # axis on the right, and no left-side title (the left column
-         # already carries it).
          p <- p +
-            scale_y_continuous(sec.axis = dup_axis(name = NULL)) +
+            scale_y_continuous(limits = shared_y_limits, expand = expansion(mult = y_expand),
+                               sec.axis = dup_axis(name = NULL)) +
             theme(
                axis.text.y.left  = element_blank(),
                axis.title.y.left = element_blank(),
@@ -1063,7 +1275,6 @@ plot_salinity_forecast_panels <- function(data,
    
    n_panels     <- length(horizons)
    n_rows       <- ceiling(n_panels / NCOL)
-   panel_colors <- model_palette[(seq_along(horizons) - 1) %% length(model_palette) + 1]
    letters_used <- LETTERS[seq_along(horizons)]
    
    row_idx <- ceiling(seq_along(horizons) / NCOL)
@@ -1072,7 +1283,6 @@ plot_salinity_forecast_panels <- function(data,
    panels <- purrr::pmap(
       list(
          h_val        = horizons,
-         model_color  = panel_colors,
          show_x_axis  = (row_idx == n_rows),
          show_y_title = (col_idx == 1),
          mirror_axis  = (col_idx != 1),

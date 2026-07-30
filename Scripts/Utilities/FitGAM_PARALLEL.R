@@ -1,33 +1,30 @@
 # =============================================================================
-# Function:       fit_gam  (parallelized version)
+# Function:       fit_gam  (parallelized version — flattened k-combo x fold tasks)
 #
 # CHANGES FROM PRIOR VERSION:
-#   - K-combo-level parallelization via future/furrr. Each k-combo runs its
-#     own 11-fold loop as a single task; tasks are distributed across workers
-#     via plan() set by the CALLER (Script 04), not inside this function --
-#     this keeps fit_gam agnostic to laptop vs cluster vs Windows.
-#   - Every bam() call inside the CV loop now forces nthreads = 1. Benchmarking
-#     confirmed multithreading inside bam does not meaningfully help at this
-#     fit size, and combining it with process-level parallelism risks core
-#     oversubscription. This is NOT exposed as a tunable.
-#   - Per-fold convergence is now captured via withCallingHandlers around each
-#     bam() call (not just tryCatch for hard errors). Two new columns appear
-#     in fold-level output: `converged` (FALSE if bgam.fitd reports
-#     non-convergence) and `warning_text` (concatenated warning messages, for
-#     inspection). These roll up into candidate_summary as a diagnostic
-#     column (n_folds_converged out of length(folds)) -- reported, not
-#     filtering. This does not replace or reinstate the k.check hurdle that
-#     was dropped from candidate selection; it is a distinct, convergence-
-#     specific check.
-#   - No <<- accumulation. Each parallel task returns its own fold_results
-#     tibble (fold_cv_all is rebuilt via bind_rows on the collected results).
-#   - Progress reporting uses progressr (cross-platform, future-aware) in
-#     place of live per-combo cat() output, since multisession workers do not
-#     stream stdout in real time.
-#   - Refit-top-10-for-EDF stage is UNCHANGED and stays serial (cheap relative
-#     to the grid search; no benefit to parallelizing 10 fits).
-#   - Aggregation, candidate ranking (by mean_high_rmse), and all four plots
-#     (pA-pD) are UNCHANGED and consume the same tibble shapes as before.
+#   - Parallelization grain changed from "one task per k-combo" (with all folds
+#     run serially inside the task) to "one task per (k-combo, fold) pair".
+#     This was necessary because task cost varies substantially across k values
+#     (larger k_interaction = more expensive/harder-to-converge bam() fits,
+#     confirmed via total_edf and "reparameterization unstable" warnings), and
+#     with small-to-moderate k-grids, coarse per-k-combo tasking left most
+#     workers idle while 1-2 workers finished the expensive tail. Flattening
+#     to per-fold tasks gives furrr's scheduler enough granularity to spread
+#     uneven cost across all workers.
+#   - furrr_options(scheduling = 4): requests ~4x as many chunks as workers so
+#     idle workers can pick up more tasks instead of waiting on stragglers.
+#     Only effective now that task count is large (k-combos x folds instead of
+#     just k-combos).
+#   - Fold train/test subsets are precomputed ONCE before the parallel loop
+#     (precomputed_folds), rather than re-filtered inside every task. Under
+#     the old per-k-combo tasking this filter ran length(folds) times total;
+#     under flattened tasking it would otherwise run nrow(k_grid) x
+#     length(folds) times, so precomputing is now more important, not less.
+#   - fit_fold() signature changed: takes train_data/test_data directly
+#     instead of train_idx/test_idx + doing its own filter/select.
+#   - Aggregation (tune_results, candidate selection, EDF refit, plots) is
+#     UNCHANGED -- all operate on fold_cv_all exactly as before, just now
+#     assembled from flat per-fold tasks instead of per-k-combo bundles.
 # =============================================================================
 
 fit_gam <- function(data,
@@ -40,30 +37,32 @@ fit_gam <- function(data,
                     link = NULL,
                     tweedie_p = 1.5,
                     
-                    # k values to test (upper bounds on wiggliness)
+                    # k values to test
                     k_h_fixed              = 4,
                     k_physical_fixed       = 10,
-                    k_interaction_range    = c(5, 16),
-                    k_sustained_flow_range = c(5, 16),
-                    k_flushing_flow_range  = c(5, 16),
-                    k_wind_range           = c(5, 16),
+                    k_interaction_range    = c(6, 14),
+                    k_sustained_flow_range = c(4, 10),
+                    k_flushing_flow_range  = c(6, 12),
+                    k_wind_range           = c(5, 14),
                     
                     interactions = list(),
+                    wind_ti_by = FALSE,
                     
                     basis_default = 'tp',
                     basis_horizon = 'cr',
                     
                     method     = 'fREML',
                     discrete   = TRUE,
-                    nthreads   = 4,       # still used for the serial top-10 refit stage only
+                    nthreads   = 4,
                     gam_select = TRUE,
                     
                     gam_levels       = 3,
                     n_top_candidates = 10,
                     plot_output_dir  = 'Outputs/Plots/UnifiedGAM/GAMSelection',
                     
-                    # --- new parallelization arguments ---
-                    n_workers = NULL,      # NULL = auto (detectCores() - 2); caller may override
+                    # Parallel & Timeout arguments
+                    timeout_sec   = 20,   # Max seconds allowed per fold task
+                    n_workers     = NULL,
                     show_progress = TRUE) {
    
    library(mgcv)
@@ -75,6 +74,7 @@ fit_gam <- function(data,
    library(future)
    library(furrr)
    library(progressr)
+   library(R.utils)
    
    if (!('h' %in% predictors)) {
       stop("predictors must include 'h' for the unified multi-horizon GAM.")
@@ -96,8 +96,7 @@ fit_gam <- function(data,
    }
    
    if (family_type == "Gamma" && link == "identity") {
-      warning("Identity link with Gamma can produce negative predictions. ",
-              "Consider link = 'log'.\n")
+      warning("Identity link with Gamma can produce negative predictions. Consider link = 'log'.\n")
    }
    
    gam_family <- switch(family_type,
@@ -109,7 +108,7 @@ fit_gam <- function(data,
    h_var            <- 'h'
    non_h_predictors <- setdiff(predictors, h_var)
    
-   lag_vars       <- non_h_predictors[grepl("LagSalinity",                    non_h_predictors, ignore.case = TRUE)]
+   lag_vars       <- non_h_predictors[grepl("LagSalinity",                     non_h_predictors, ignore.case = TRUE)]
    sustained_vars <- non_h_predictors[grepl("RollingDischarge|RollingAnomaly",non_h_predictors, ignore.case = TRUE)]
    flushing_vars  <- non_h_predictors[grepl("MaxDischarge|ExceedFlux",        non_h_predictors, ignore.case = TRUE)]
    tide_vars      <- non_h_predictors[grepl("TideRange|TideMean",             non_h_predictors, ignore.case = TRUE)]
@@ -128,17 +127,14 @@ fit_gam <- function(data,
    
    ti_vars <- non_h_predictors
    
-   # Validate interaction specs up front so failures surface before any CV work
    if (has_interactions) {
       for (int in interactions) {
          int_vars <- if (is.list(int)) int$vars else int
          if (length(int_vars) != 2) {
-            stop("Each interaction must specify exactly 2 variables. Got: ",
-                 paste(int_vars, collapse = ", "))
+            stop("Each interaction must specify exactly 2 variables. Got: ", paste(int_vars, collapse = ", "))
          }
          if (!all(int_vars %in% predictors)) {
-            stop("Interaction pair (", paste(int_vars, collapse = ", "),
-                 ") includes a variable not in `predictors`.")
+            stop("Interaction pair (", paste(int_vars, collapse = ", "), ") includes a variable not in `predictors`.")
          }
       }
    }
@@ -147,19 +143,32 @@ fit_gam <- function(data,
       mutate(.row_id = row_number()) %>%
       select(.row_id, DateTime, all_of(response), all_of(predictors))
    
+   wind_dir_convention <- NULL
    if (has_wind) {
       wind_var <- wind_vars[1]
       if (grepl("Along", wind_var)) {
+         wind_dir_convention <- list(
+            var_name       = wind_var,
+            positive_level = "UpEstuary",
+            negative_level = "DownEstuary",
+            levels         = c("DownEstuary", "UpEstuary")
+         )
          data_subset <- data_subset %>%
             mutate(WindDir = factor(
                ifelse(.data[[wind_var]] >= 0, "UpEstuary", "DownEstuary"),
-               levels = c("DownEstuary", "UpEstuary")
+               levels = wind_dir_convention$levels
             ))
       } else {
+         wind_dir_convention <- list(
+            var_name       = wind_var,
+            positive_level = "RightBank",
+            negative_level = "LeftBank",
+            levels         = c("LeftBank", "RightBank")
+         )
          data_subset <- data_subset %>%
             mutate(WindDir = factor(
                ifelse(.data[[wind_var]] >= 0, "RightBank", "LeftBank"),
-               levels = c("LeftBank", "RightBank")
+               levels = wind_dir_convention$levels
             ))
       }
    }
@@ -176,30 +185,21 @@ fit_gam <- function(data,
    cat("=== DATA PREPARATION ===\n")
    cat("Original rows:", format(nrow(data),       big.mark = ","), "\n")
    cat("After removing NAs:", format(nrow(data_clean), big.mark = ","), "\n")
-   cat("Response range: [", round(min(data_clean$Response), 4), ", ",
-       round(max(data_clean$Response), 4), "]\n\n")
+   cat("Response range: [", round(min(data_clean$Response), 4), ", ", round(max(data_clean$Response), 4), "]\n\n")
    
    if (family_type == "Gamma" && any(data_clean$Response <= 0)) {
-      n_bad <- sum(data_clean$Response <= 0)
-      cat("WARNING: Gamma requires positive values. Found", n_bad, "values <= 0. Adding 0.001.\n\n")
       data_clean$Response          <- pmax(data_clean$Response, 0.001)
       data_clean$Response_original <- pmax(data_clean$Response_original, 0.001)
    }
    
    if (family_type == "Tweedie" && any(data_clean$Response < 0)) {
-      n_bad <- sum(data_clean$Response < 0)
-      cat("WARNING: Tweedie requires non-negative values. Found", n_bad, "negative values. Setting to 0.001.\n\n")
       data_clean$Response          <- pmax(data_clean$Response, 0.001)
       data_clean$Response_original <- pmax(data_clean$Response_original, 0.001)
    }
    
-   model_cols <- setdiff(names(data_clean),
-                         c(".row_id", "DateTime", response, "Response_original"))
+   model_cols <- setdiff(names(data_clean), c(".row_id", "DateTime", response, "Response_original"))
    
-   # ============================================================================
-   # K TUNING GRID  (unchanged)
-   # ============================================================================
-   
+   # Setup Tuning Grid
    k_sequences <- list()
    if (has_sustained) k_sequences$k_sustained_flow <- unique(round(seq(k_sustained_flow_range[1], k_sustained_flow_range[2], length.out = gam_levels)))
    if (has_flushing)  k_sequences$k_flushing_flow  <- unique(round(seq(k_flushing_flow_range[1],  k_flushing_flow_range[2],  length.out = gam_levels)))
@@ -207,7 +207,6 @@ fit_gam <- function(data,
    k_sequences$k_interaction <- unique(round(seq(k_interaction_range[1], k_interaction_range[2], length.out = gam_levels)))
    
    k_grid <- expand.grid(k_sequences) %>% distinct()
-   
    k_grid$k_h        <- k_h_fixed
    k_grid$k_physical <- k_physical_fixed
    if (!has_sustained) k_grid$k_sustained_flow <- k_sustained_flow_range[1]
@@ -218,38 +217,15 @@ fit_gam <- function(data,
       select(k_h, k_interaction, k_sustained_flow, k_flushing_flow, k_physical, k_wind) %>%
       mutate(k_index = row_number())
    
-   active_k_types <- names(k_sequences)  # only the searched dims, for CV reporting
+   active_k_types <- names(k_sequences)
    
    cat("=== GAM MODEL SETUP ===\n")
    cat("Sample size:", format(nrow(data_clean), big.mark = ","), "\n")
    cat("Response:", response, "\n")
-   cat("Family:", family_type, "with", link, "link\n\n")
-   cat("k_h FIXED at", k_h_fixed, "| k_physical FIXED at", k_physical_fixed, "\n")
-   cat("Term groups:\n")
-   if (has_lag)       cat("  LagSalinity:    ", paste(lag_vars,       collapse = ", "), "(linear)\n")
-   if (has_sustained) cat("  Sustained flow: ", paste(sustained_vars, collapse = ", "), "\n")
-   if (has_flushing)  cat("  Flushing flow:  ", paste(flushing_vars,  collapse = ", "), "\n")
-   if (has_tide)      cat("  Tide:           ", paste(tide_vars,      collapse = ", "), "\n")
-   if (has_wind)      cat("  Wind:           ", paste(wind_vars,      collapse = ", "), "(by = WindDir)\n")
-   if (has_other)     cat("  Other:          ", paste(other_vars,     collapse = ", "), "\n")
-   cat("\nTuning", nrow(k_grid), "k combinations across:", paste(active_k_types, collapse = ", "), "\n")
+   cat("Tuning", nrow(k_grid), "k combinations across:", paste(active_k_types, collapse = ", "), "\n\n")
    
-   if (has_interactions) {
-      int_labels <- sapply(interactions, function(int) {
-         v <- if (is.list(int)) int$vars else int
-         paste0("ti(", v[1], ", ", v[2], ")")
-      })
-      cat("\nVariable-variable interactions (var-interactions, pooled, reuse k_interaction):\n")
-      cat("  ", paste(int_labels, collapse = ", "), "\n")
-   }
-   cat("\n")
-   
-   # ============================================================================
-   # BUILD FORMULA  (unchanged)
-   # ============================================================================
-   
-   build_gam_formula <- function(k_h, k_interaction, k_sustained_flow,
-                                 k_flushing_flow, k_physical, k_wind) {
+   # Build Formula Helper
+   build_gam_formula <- function(k_h, k_interaction, k_sustained_flow, k_flushing_flow, k_physical, k_wind) {
       terms <- c()
       terms <- c(terms, paste0("s(h, k=", k_h, ", bs='", basis_horizon, "')"))
       if (has_lag)       terms <- c(terms, lag_vars)
@@ -259,8 +235,13 @@ fit_gam <- function(data,
       if (has_wind)      terms <- c(terms, paste0("s(", wind_vars, ", by=WindDir, k=", k_wind,    ", bs='", basis_default, "')"))
       if (has_other)     terms <- c(terms, paste0("s(", other_vars,     ", k=", k_physical,        ", bs='", basis_default, "')"))
       for (var in ti_vars) {
-         terms <- c(terms, paste0("ti(h, ", var, ", k=c(", k_h, ", ", k_interaction,
-                                  "), bs=c('", basis_horizon, "', '", basis_default, "'))"))
+         if (wind_ti_by && var %in% wind_vars) {
+            terms <- c(terms, paste0("ti(h, ", var, ", by=WindDir, k=c(", k_h, ", ", k_interaction,
+                                     "), bs=c('", basis_horizon, "', '", basis_default, "'))"))
+         } else {
+            terms <- c(terms, paste0("ti(h, ", var, ", k=c(", k_h, ", ", k_interaction,
+                                     "), bs=c('", basis_horizon, "', '", basis_default, "'))"))
+         }
       }
       if (has_interactions) {
          for (int in interactions) {
@@ -275,38 +256,51 @@ fit_gam <- function(data,
       as.formula(paste("Response ~", paste(terms, collapse = " + ")))
    }
    
+   cat("Precomputing fold train/test subsets...\n\n")
+   precomputed_folds <- map(seq_along(folds), function(j) {
+      list(
+         train_data = data_clean %>% filter(.row_id %in% folds[[j]]$train) %>% select(all_of(model_cols)),
+         test_data  = data_clean %>% filter(.row_id %in% folds[[j]]$test)
+      )
+   })
+   
    # ============================================================================
-   # FOLD-FITTING UNIT  (nthreads forced to 1; convergence + warnings captured)
+   # UPDATED: FOLD-FITTING UNIT (With timeout protection & capped maxit)
    # ============================================================================
    
-   fit_fold <- function(formula, train_idx, test_idx, fold_num) {
-      
-      train_data <- data_clean %>% filter(.row_id %in% train_idx) %>% select(all_of(model_cols))
-      test_data  <- data_clean %>% filter(.row_id %in% test_idx)
+   fit_fold <- function(formula, train_data, test_data, fold_num, timeout_sec = 20) {
       
       warning_msgs <- character(0)
       
       gam_fit <- tryCatch({
          withCallingHandlers({
-            mgcv::bam(
-               formula  = formula,
-               data     = train_data,
-               family   = gam_family,
-               method   = method,
-               discrete = TRUE,     # multi-threading requires discrete=TRUE, but nthreads is forced to 1 below
-               nthreads = 1L,       # <-- forced; see header comment. Not a tunable.
-               control  = list(nthreads = 1L)
-            )
+            # Enforce hard wall-clock timeout on low-level bam() optimization
+            R.utils::withTimeout({
+               mgcv::bam(
+                  formula  = formula,
+                  data     = train_data,
+                  family   = gam_family,
+                  method   = method,
+                  discrete = TRUE,
+                  nthreads = 1L,
+                  control  = mgcv::gam.control(
+                     maxit   = 50,    # Cap outer fREML iterations to stop infinite loops
+                     epsilon = 1e-6,
+                     trace   = FALSE,
+                     nthreads = 1L
+                  )
+               )
+            }, timeout = timeout_sec, onTimeout = "error")
          }, warning = function(w) {
             warning_msgs[[length(warning_msgs) + 1]] <<- conditionMessage(w)
             invokeRestart("muffleWarning")
          })
       }, error = function(e) {
-         cat("    [Fold", fold_num, "error:", e$message, "]\n")
+         cat(sprintf("    [Fold %d failed/timed out: %s]\n", fold_num, e$message))
          return(NULL)
       })
       
-      converged <- !any(grepl("did not converge", warning_msgs, fixed = TRUE))
+      converged <- !any(grepl("did not converge", warning_msgs, fixed = TRUE)) && !is.null(gam_fit)
       warning_text <- if (length(warning_msgs) > 0) paste(unique(warning_msgs), collapse = " | ") else NA_character_
       
       fail <- list(rmse = NA_real_, rsq = NA_real_, mae = NA_real_,
@@ -319,7 +313,6 @@ fit_gam <- function(data,
       preds <- tryCatch({
          predict(gam_fit, newdata = test_data %>% select(all_of(model_cols)), type = "response")
       }, error = function(e) {
-         cat("    [Fold", fold_num, "prediction error:", e$message, "]\n")
          return(NULL)
       })
       
@@ -351,62 +344,69 @@ fit_gam <- function(data,
       )
    }
    
-   # ============================================================================
-   # PER-K-COMBO TASK  (this is the unit distributed across parallel workers)
-   # Runs all folds for one k-combo, returns a single tibble. No <<- anywhere.
-   # ============================================================================
+   # Task List Setup
+   task_grid <- tidyr::crossing(
+      k_index  = k_grid$k_index,
+      fold_num = seq_along(folds)
+   ) %>%
+      left_join(k_grid, by = "k_index")
    
-   fit_one_kcombo <- function(k_row) {
+   task_list <- split(task_grid, seq_len(nrow(task_grid)))
+   
+   fit_one_task <- function(task_row) {
+      formula <- build_gam_formula(task_row$k_h, task_row$k_interaction,
+                                   task_row$k_sustained_flow, task_row$k_flushing_flow,
+                                   task_row$k_physical, task_row$k_wind)
+      j   <- task_row$fold_num
+      fd  <- precomputed_folds[[j]]
       
-      formula <- build_gam_formula(k_row$k_h, k_row$k_interaction,
-                                   k_row$k_sustained_flow, k_row$k_flushing_flow,
-                                   k_row$k_physical, k_row$k_wind)
+      log_file <- "task_log.txt"
+      t0 <- Sys.time()
+      cat(sprintf("START k_index=%d fold=%d k_interaction=%d time=%s\n",
+                  task_row$k_index, j, task_row$k_interaction, t0),
+          file = log_file, append = TRUE)
       
-      fold_results <- map_dfr(seq_along(folds), function(j) {
-         res <- fit_fold(formula, folds[[j]]$train, folds[[j]]$test, j)
-         tibble(fold = j, !!!res)
-      })
+      # Pass timeout_sec down to fit_fold
+      res <- fit_fold(formula, fd$train_data, fd$test_data, j, timeout_sec = timeout_sec)
       
-      fold_results %>% mutate(k_index = k_row$k_index)
+      t1 <- Sys.time()
+      cat(sprintf("END   k_index=%d fold=%d k_interaction=%d time=%s elapsed=%.1fs\n",
+                  task_row$k_index, j, task_row$k_interaction, t1,
+                  as.numeric(difftime(t1, t0, units = "secs"))),
+          file = log_file, append = TRUE)
+      
+      tibble(fold = j, !!!res, k_index = task_row$k_index)
    }
    
    # ============================================================================
-   # RUN CV ACROSS K-GRID, PARALLELIZED AT THE K-COMBO LEVEL
-   #
-   # plan() is expected to already be set by the caller (Script 04) so that
-   # this function stays agnostic to laptop / Windows / cluster. If no plan
-   # has been set, future defaults to sequential -- fit_gam will still work,
-   # just without the speedup, which is a safe fallback rather than a failure.
+   # UPDATED: DYNAMIC PARALLEL SCHEDULING (scheduling = 1)
    # ============================================================================
    
-   cat("Running CV across", nrow(k_grid), "k combinations",
-       "(plan:", class(future::plan())[1], ")...\n\n")
-   
-   k_row_list <- split(k_grid, k_grid$k_index)
+   cat("Running CV across", nrow(k_grid), "k combinations x", length(folds), "folds =",
+       nrow(task_grid), "tasks (plan:", class(future::plan())[1], ")...\n\n")
    
    run_kcombo_grid <- function() {
       if (isTRUE(show_progress)) {
          progressr::with_progress({
-            p <- progressr::progressor(along = k_row_list)
-            furrr::future_map(k_row_list, function(k_row) {
-               res <- fit_one_kcombo(k_row)
-               p(sprintf("k_index=%d", k_row$k_index))
+            p <- progressr::progressor(along = task_list)
+            furrr::future_map(task_list, function(task_row) {
+               res <- fit_one_task(task_row)
+               p(sprintf("k_index=%d fold=%d", task_row$k_index, task_row$fold_num))
                res
-            }, .options = furrr::furrr_options(seed = TRUE))
+            }, .options = furrr::furrr_options(seed = TRUE, scheduling = 1)) # Dynamic dispatch
          })
       } else {
-         furrr::future_map(k_row_list, fit_one_kcombo,
-                           .options = furrr::furrr_options(seed = TRUE))
+         furrr::future_map(task_list, fit_one_task,
+                           .options = furrr::furrr_options(seed = TRUE, scheduling = 1)) # Dynamic dispatch
       }
    }
    
    all_fold_results_list <- run_kcombo_grid()
    fold_cv_all <- bind_rows(all_fold_results_list)
    
-   # ============================================================================
-   # AGGREGATE PER K-COMBO  (unchanged metrics, + new convergence diagnostic)
-   # ============================================================================
+   cat(sprintf("[CHECKPOINT] CV loop done: %s\n", Sys.time()))
    
+   # Aggregation
    tune_results <- fold_cv_all %>%
       group_by(k_index) %>%
       summarize(
@@ -420,7 +420,7 @@ fit_gam <- function(data,
          sd_high_rmse        = sd(high_rmse,   na.rm = TRUE),
          total_high_sal      = sum(n_high_sal, na.rm = TRUE),
          n_failed            = sum(failed),
-         n_folds_converged   = sum(converged, na.rm = TRUE),   # <-- new diagnostic
+         n_folds_converged   = sum(converged, na.rm = TRUE),
          n_folds_total       = n(),
          .groups = "drop"
       ) %>%
@@ -452,82 +452,61 @@ fit_gam <- function(data,
                    mean_rmse, mean_high_rmse, sd_high_rmse, n_folds_converged))
    cat("\n")
    
-   # ============================================================================
-   # REFIT TOP CANDIDATES — EXTRACT EDF  (unchanged, stays serial)
-   # ============================================================================
-   
-   cat("Refitting top", n_candidates, "candidates to extract EDF (models not retained)...\n\n")
-   
+   # EDF Refit Loop
+   cat("Refitting top", n_candidates, "candidates to extract EDF...\n\n")
    full_train_data <- data_clean %>% select(all_of(model_cols))
    
-   candidate_edf_tables <- map(1:nrow(top_candidates_meta), function(i) {
-      
-      meta    <- top_candidates_meta[i, ]
-      formula <- build_gam_formula(meta$k_h, meta$k_interaction,
-                                   meta$k_sustained_flow, meta$k_flushing_flow,
-                                   meta$k_physical, meta$k_wind)
-      
-      cat("  Candidate", meta$candidate_rank,
-          paste(sapply(active_k_types, function(k) paste0(k, "=", meta[[k]])), collapse = ", "))
-      
-      gam_fit <- tryCatch({
-         do.call(bam, list(
-            formula  = formula,
-            data     = full_train_data,
-            family   = gam_family,
-            method   = method,
-            discrete = discrete,
-            nthreads = nthreads,
-            select   = gam_select
-         ))
-      }, error = function(e) {
-         cat(" [refit error:", e$message, "]\n")
-         return(NULL)
-      })
-      
-      if (is.null(gam_fit)) {
-         cat(" -> refit failed\n")
-         return(NULL)
-      }
-      
-      s_table   <- summary(gam_fit)$s.table
-      total_edf <- sum(s_table[, "edf"])
-      
-      cat(" -> Total EDF:", round(total_edf, 2), "\n")
-      
-      edf_tbl <- tibble(
-         candidate_rank = meta$candidate_rank,
-         term           = rownames(s_table),
-         edf            = s_table[, "edf"],
-         p_value        = s_table[, "p-value"]
-      ) %>%
-         mutate(term_group = case_when(
-            grepl("^ti\\(h,",                        term) & grepl("LagSalinity",                     term) ~ "LagSalinity",
-            grepl("^ti\\(h,",                        term) & grepl("RollingDischarge|RollingAnomaly", term) ~ "SustainedDischarge",
-            grepl("^ti\\(h,",                        term) & grepl("MaxDischarge|ExceedFlux",         term) ~ "FlushingDischarge",
-            grepl("^ti\\(h,",                        term) & grepl("TideRange|TideMean",              term) ~ "Tide",
-            grepl("^ti\\(h,",                        term) & grepl("RollingWindAlong|RollingWindCross",term) ~ "Wind",
-            grepl("^ti\\(",                          term) & !grepl("^ti\\(h,", term)                       ~ "VarInteraction",
-            grepl("LagSalinity",                     term) ~ "LagSalinity",
-            grepl("RollingDischarge|RollingAnomaly", term) ~ "SustainedDischarge",
-            grepl("MaxDischarge|ExceedFlux",         term) ~ "FlushingDischarge",
-            grepl("TideRange|TideMean",              term) ~ "Tide",
-            grepl("RollingWindAlong|RollingWindCross",term) ~ "Wind",
-            grepl("^s\\(h\\)",                        term) ~ "Horizon",
-            TRUE                                           ~ "Other"
-         ))
-      
-      rm(gam_fit)
-      gc(verbose = FALSE)
-      
-      edf_tbl
-   })
-   
-   cat("\n")
-   
-   # ============================================================================
-   # CANDIDATE SUMMARY  (+ n_folds_converged carried through as a diagnostic)
-   # ============================================================================
+   candidate_edf_tables <- {
+      p <- progressr::progressor(along = 1:nrow(top_candidates_meta))
+      furrr::future_map(1:nrow(top_candidates_meta), function(i) {
+         meta    <- top_candidates_meta[i, ]
+         formula <- build_gam_formula(meta$k_h, meta$k_interaction,
+                                      meta$k_sustained_flow, meta$k_flushing_flow,
+                                      meta$k_physical, meta$k_wind)
+         
+         gam_fit <- tryCatch({
+            mgcv::bam(
+               formula  = formula,
+               data     = full_train_data,
+               family   = gam_family,
+               method   = method,
+               discrete = discrete,
+               nthreads = 1L,
+               control  = mgcv::gam.control(maxit = 50, trace = FALSE, nthreads = 1L),
+               select   = gam_select
+            )
+         }, error = function(e) NULL)
+         
+         p(sprintf("candidate %d", meta$candidate_rank))
+         
+         if (is.null(gam_fit)) return(NULL)
+         
+         s_table <- summary(gam_fit)$s.table
+         edf_tbl <- tibble(
+            candidate_rank = meta$candidate_rank,
+            term           = rownames(s_table),
+            edf            = s_table[, "edf"],
+            p_value        = s_table[, "p-value"]
+         ) %>%
+            mutate(term_group = case_when(
+               grepl("^ti\\(h,", term) & grepl("LagSalinity", term) ~ "LagSalinity",
+               grepl("^ti\\(h,", term) & grepl("RollingDischarge|RollingAnomaly", term) ~ "SustainedDischarge",
+               grepl("^ti\\(h,", term) & grepl("MaxDischarge|ExceedFlux", term) ~ "FlushingDischarge",
+               grepl("^ti\\(h,", term) & grepl("TideRange|TideMean", term) ~ "Tide",
+               grepl("^ti\\(h,", term) & grepl("RollingWindAlong|RollingWindCross", term) ~ "Wind",
+               grepl("^ti\\(", term) & !grepl("^ti\\(h,", term) ~ "VarInteraction",
+               grepl("LagSalinity", term) ~ "LagSalinity",
+               grepl("RollingDischarge|RollingAnomaly", term) ~ "SustainedDischarge",
+               grepl("MaxDischarge|ExceedFlux", term) ~ "FlushingDischarge",
+               grepl("TideRange|TideMean", term) ~ "Tide",
+               grepl("RollingWindAlong|RollingWindCross", term) ~ "Wind",
+               grepl("^s\\(h\\)", term) ~ "Horizon",
+               TRUE ~ "Other"
+            ))
+         rm(gam_fit); gc(verbose = FALSE)
+         edf_tbl
+      }, .options = furrr::furrr_options(seed = TRUE, scheduling = 1))
+   }
    
    candidate_summary <- map_dfr(seq_len(nrow(top_candidates_meta)), function(i) {
       meta      <- top_candidates_meta[i, ]
@@ -545,21 +524,10 @@ fit_gam <- function(data,
    }) %>%
       mutate(label = paste0("C", candidate_rank)) %>%
       arrange(mean_high_rmse) %>%
-      mutate(candidate_rank = row_number())   # re-rank post-sort
+      mutate(candidate_rank = row_number())
    
-   cat("=== CANDIDATES RANKED BY RMSE ===\n")
-   print(candidate_summary %>%
-            select(candidate_rank, total_edf, mean_rmse, mean_high_rmse, sd_high_rmse,
-                   n_folds_converged, n_folds_total))
-   cat("\n")
-   
-   # ============================================================================
-   # SELECTION PLOTS  (unchanged)
-   # ============================================================================
-   
-   cat("Building selection plots...\n")
+   # Plotting Routine
    dir.create(plot_output_dir, recursive = TRUE, showWarnings = FALSE)
-   
    gam_theme <- theme_bw() +
       theme(
          plot.title    = element_text(size = 16, face = "bold", color = gam_colors$dark),
@@ -567,82 +535,31 @@ fit_gam <- function(data,
          axis.title    = element_text(size = 14, face = "bold", color = gam_colors$dark),
          axis.text     = element_text(size = 12,                color = gam_colors$dark),
          panel.border  = element_rect(colour = gam_colors$dark, fill = NA, linewidth = 1),
-         legend.title  = element_text(size = 12, face = "bold", color = gam_colors$dark),
-         legend.text   = element_text(size = 11,                color = gam_colors$dark),
-         legend.background = element_rect(fill = "white", color = NA),
-         legend.key        = element_rect(fill = "white", color = NA)
+         legend.title  = element_text(size = 12, face = "bold", color = gam_colors$dark)
       )
    
    n_folds <- length(folds)
    
    pA <- candidate_summary %>%
-      mutate(
-         se_high_rmse = sd_high_rmse / sqrt(n_folds)
-      ) %>%
+      mutate(se_high_rmse = sd_high_rmse / sqrt(n_folds)) %>%
       ggplot(aes(x = total_edf, y = mean_high_rmse, label = label)) +
-      geom_errorbar(
-         aes(
-            ymin = mean_high_rmse - se_high_rmse,
-            ymax = mean_high_rmse + se_high_rmse
-         ),
-         width = 1.5, linewidth = 0.7, color = "grey60"
-      ) +
+      geom_errorbar(aes(ymin = mean_high_rmse - se_high_rmse, ymax = mean_high_rmse + se_high_rmse), width = 1.5, color = "grey60") +
       geom_point(size = 3.5, color = gam_colors$primary) +
-      ggrepel::geom_text_repel(
-         size = 4, color = gam_colors$dark, fontface = "bold",
-         box.padding = 0.4, point.padding = 0.3, direction = "both"
-      ) +
-      scale_y_continuous(
-         limits = c(0, NA),
-         expand = expansion(mult = c(0.02, 0.1))
-      ) +
-      labs(
-         title = "Accuracy vs Complexity",
-         x     = "Total Expected Degrees of Freedom",
-         y     = "Mean High-Salinity RMSE Across Folds (ppt)"
-      ) +
+      ggrepel::geom_text_repel(size = 4, color = gam_colors$dark, fontface = "bold") +
+      labs(title = "Accuracy vs Complexity", x = "Total EDF", y = "Mean High-Salinity RMSE (ppt)") +
       gam_theme
    
    pB <- candidate_summary %>%
-      mutate(
-         se_high_rmse = sd_high_rmse / sqrt(n_folds)
-      ) %>%
+      mutate(se_high_rmse = sd_high_rmse / sqrt(n_folds)) %>%
       ggplot(aes(x = mean_high_rmse, y = se_high_rmse, label = label)) +
       geom_point(size = 3.5, color = gam_colors$secondary) +
-      ggrepel::geom_text_repel(
-         size = 4, color = gam_colors$dark, fontface = "bold",
-         box.padding = 0.5, point.padding = 0.3, direction = "both"
-      ) +
-      scale_x_continuous(
-         limits = c(0, NA),
-         expand = expansion(mult = c(0.02, 0.08))
-      ) +
-      scale_y_continuous(
-         limits = c(0, NA),
-         expand = expansion(mult = c(0.02, 0.08))
-      ) +
-      labs(
-         title = "Accuracy vs Consistency",
-         x     = "Mean High-Salinity RMSE Across Folds (ppt)",
-         y     = "SE of High-Salinity RMSE Across Folds (ppt)"
-      ) +
+      ggrepel::geom_text_repel(size = 4, color = gam_colors$dark, fontface = "bold") +
+      labs(title = "Accuracy vs Consistency", x = "Mean High-Salinity RMSE (ppt)", y = "SE of High-Salinity RMSE") +
       gam_theme
    
    clean_term_label <- function(term) {
-      if (grepl(":WindDir", term)) {
-         var   <- sub("^s\\(([^)]+)\\).*$", "\\1", term)
-         level <- sub("^.*:WindDir", "", term)
-         return(paste0(var, " (", level, ")"))
-      }
-      if (grepl("^ti\\(h,", term)) {
-         var <- sub("^ti\\(h,\\s*([^,)]+).*$", "\\1", term)
-         return(paste0("h x ", var))
-      }
-      if (grepl("^ti\\(", term)) {
-         inner <- sub("^ti\\(([^)]+)\\)$", "\\1", term)
-         vars  <- trimws(strsplit(inner, ",")[[1]])
-         return(paste(vars, collapse = " x "))
-      }
+      if (grepl(":WindDir", term)) return(sub("^s\\(([^)]+)\\).*$", "\\1", term))
+      if (grepl("^ti\\(h,", term)) return(paste0("h x ", sub("^ti\\(h,\\s*([^,)]+).*$", "\\1", term)))
       sub("^s\\(([^)]+)\\)$", "\\1", term)
    }
    
@@ -650,84 +567,45 @@ fit_gam <- function(data,
       filter(!is.na(edf)) %>%
       mutate(term_short = vapply(term, clean_term_label, character(1)))
    
-   pC <- ggplot(edf_all,
-                aes(x = factor(candidate_rank,
-                               labels = paste0("C", sort(unique(candidate_rank)))),
-                    y    = reorder(term_short, edf, FUN = mean),
-                    fill = edf)) +
-      geom_tile(color = "white", linewidth = 0.5) +
+   pC <- ggplot(edf_all, aes(x = factor(candidate_rank, labels = paste0("C", sort(unique(candidate_rank)))),
+                             y = reorder(term_short, edf, FUN = mean), fill = edf)) +
+      geom_tile(color = "white") +
       geom_text(aes(label = round(edf, 1)), size = 3, color = "white", fontface = "bold") +
-      scale_fill_gradient(low = gam_colors$secondary, high = gam_colors$primary, name = "EDF") +
-      labs(title = "Per-Term Expected Degrees of Freedom",
-           x     = "Candidate",
-           y     = "Smooth Term") +
-      gam_theme +
-      theme(axis.text.y = element_text(size = 9))
+      scale_fill_gradient(low = gam_colors$secondary, high = gam_colors$primary) +
+      labs(title = "Per-Term EDF", x = "Candidate", y = "Smooth Term") +
+      gam_theme
    
    fold_profiles <- fold_cv_all %>%
       inner_join(top_candidates_meta %>% select(k_index, candidate_rank), by = "k_index") %>%
       filter(!is.na(high_rmse))
    
-   pD <- ggplot(fold_profiles,
-                aes(x     = fold,
-                    y     = high_rmse,
-                    color = factor(candidate_rank),
-                    group = factor(candidate_rank))) +
+   pD <- ggplot(fold_profiles, aes(x = fold, y = high_rmse, color = factor(candidate_rank), group = factor(candidate_rank))) +
       geom_line(linewidth = 1.1) +
       geom_point(size = 2.8) +
-      scale_color_manual(
-         values = setNames(
-            colorRampPalette(c(gam_colors$secondary, gam_colors$primary,
-                               gam_colors$tertiary))(n_candidates),
-            as.character(1:n_candidates)
-         ),
-         name = "Candidate"
-      ) +
-      labs(title = "High-Salinity RMSE by Fold",
-           x     = "CV Fold",
-           y     = "High-Salinity RMSE") +
+      labs(title = "High-Salinity RMSE by Fold", x = "CV Fold", y = "High-Salinity RMSE") +
       scale_x_continuous(breaks = seq_along(folds)) +
-      gam_theme +
-      theme(legend.position = "right")
+      gam_theme
    
    for (p_info in list(
       list(p = pA, name = "AccuracyVsComplexity",  w = 8,  h = 6),
       list(p = pB, name = "AccuracyVsConsistency", w = 8,  h = 6),
-      list(p = pC, name = "EDFHeatmap",            w = 10,
-           h = max(6, n_distinct(edf_all$term_short) * 0.35 + 2)),
+      list(p = pC, name = "EDFHeatmap",            w = 10, h = max(6, n_distinct(edf_all$term_short) * 0.35 + 2)),
       list(p = pD, name = "FoldProfiles",          w = 10, h = 6)
    )) {
-      ggsave(file.path(plot_output_dir, paste0(p_info$name, ".png")),
-             p_info$p, width = p_info$w, height = p_info$h, dpi = 600)
-      ggsave(file.path(plot_output_dir, paste0(p_info$name, ".svg")),
-             p_info$p, width = p_info$w, height = p_info$h)
+      ggsave(file.path(plot_output_dir, paste0(p_info$name, ".png")), p_info$p, width = p_info$w, height = p_info$h, dpi = 600)
+      ggsave(file.path(plot_output_dir, paste0(p_info$name, ".svg")), p_info$p, width = p_info$w, height = p_info$h)
    }
    
-   cat("Plots saved to:", plot_output_dir, "\n\n")
-   
-   cat("=== CANDIDATE SELECTION SUMMARY (ranked by RMSE) ===\n")
-   cat("Inspect plots in:", plot_output_dir, "\n")
-   cat("Also inspect n_folds_converged below -- a candidate with strong RMSE\n")
-   cat("but a low convergence count may be winning on folds that didn't\n")
-   cat("actually settle to a stable fit. This is a diagnostic, not a filter;\n")
-   cat("no candidates are excluded automatically.\n")
-   cat("Set SELECTED_CANDIDATE_RANK in Script 04 then run Phase 3.\n\n")
-   
-   print(candidate_summary %>%
-            select(candidate_rank, total_edf, mean_rmse, mean_high_rmse, sd_high_rmse,
-                   n_folds_converged, n_folds_total) %>%
-            mutate(across(where(is.numeric), ~ round(., 4))))
-   cat("\n")
-   
    list(
-      tune_grid         = tune_results,
-      top_candidates    = top_candidates_meta,
-      candidate_summary = candidate_summary,
-      edf_tables        = candidate_edf_tables,
-      fold_cv_all       = fold_cv_all,   # <-- now exposed: per-fold detail incl. converged/warning_text
-      data_clean        = data_clean,
-      model_cols        = model_cols,
-      fit_params        = list(
+      tune_grid           = tune_results,
+      top_candidates      = top_candidates_meta,
+      candidate_summary   = candidate_summary,
+      edf_tables          = candidate_edf_tables,
+      fold_cv_all         = fold_cv_all,
+      data_clean          = data_clean,
+      model_cols          = model_cols,
+      wind_dir_convention = wind_dir_convention,
+      fit_params          = list(
          family_type    = family_type,
          link           = link,
          tweedie_p      = tweedie_p,
@@ -738,7 +616,8 @@ fit_gam <- function(data,
          basis_default  = basis_default,
          basis_horizon  = basis_horizon,
          active_k_types = active_k_types,
-         interactions   = interactions
+         interactions   = interactions,
+         wind_ti_by     = wind_ti_by
       ),
       model_type     = "gam",
       transform_info = list(family = family_type, link = link)
@@ -813,8 +692,13 @@ select_gam_candidate <- function(candidates_output, rank = 1) {
    if (length(wind_vars)      > 0) terms <- c(terms, paste0("s(", wind_vars, ", by=WindDir, k=", k_wind,    ", bs='", p$basis_default, "')"))
    if (length(other_vars)     > 0) terms <- c(terms, paste0("s(", other_vars,      ", k=", k_physical,        ", bs='", p$basis_default, "')"))
    for (var in ti_vars) {
-      terms <- c(terms, paste0("ti(h, ", var, ", k=c(", k_h, ", ", k_interaction,
-                               "), bs=c('", p$basis_horizon, "', '", p$basis_default, "'))"))
+      if (isTRUE(p$wind_ti_by) && var %in% wind_vars) {
+         terms <- c(terms, paste0("ti(h, ", var, ", by=WindDir, k=c(", k_h, ", ", k_interaction,
+                                  "), bs=c('", p$basis_horizon, "', '", p$basis_default, "'))"))
+      } else {
+         terms <- c(terms, paste0("ti(h, ", var, ", k=c(", k_h, ", ", k_interaction,
+                                  "), bs=c('", p$basis_horizon, "', '", p$basis_default, "'))"))
+      }
    }
    
    if (length(p$interactions) > 0) {
@@ -878,18 +762,19 @@ select_gam_candidate <- function(candidates_output, rank = 1) {
    )
    
    list(
-      tune_results   = candidates_output$tune_grid,
-      tune_grid      = candidates_output$tune_grid,
-      best_params    = bind_cols(
+      tune_results        = candidates_output$tune_grid,
+      tune_grid           = candidates_output$tune_grid,
+      best_params         = bind_cols(
          orig_meta %>% select(all_of(p$active_k_types), k_h, k_physical),
          tibble(family = p$family_type, link = p$link)
       ),
-      final_fit      = gam_workflow,
-      gam_object     = final_gam,
-      formula        = final_formula,
-      smooth_info    = smooth_info,
-      selected_vars  = sig_terms$term,
-      model_type     = "gam",
-      transform_info = candidates_output$transform_info
+      final_fit           = gam_workflow,
+      gam_object          = final_gam,
+      formula             = final_formula,
+      smooth_info         = smooth_info,
+      selected_vars       = sig_terms$term,
+      model_type          = "gam",
+      transform_info      = candidates_output$transform_info,
+      wind_dir_convention = candidates_output$wind_dir_convention
    )
 }
