@@ -1,5 +1,5 @@
 # =============================================================================
-# Script 06 — Sensitivity Analyes
+# Script 06 — Sensitivity Analyses
 # Unified GAM | October 2016 Event
 #
 # For each horizon h=1:20, perturb raw discharge and wind in scenario windows,
@@ -36,7 +36,7 @@ ESTUARY_AXIS_DEG <- 0
 WIND_SHIFTS  <- seq(0.25, 2.0, by = 0.25)
 SHIFT_LABELS <- sprintf("-%.2f m/s", WIND_SHIFTS)
 
-OUT_DIR <- "Outputs/Plots/SensitivitySimulations"
+OUT_DIR <- "Outputs/Plots/UnifiedGAMSensitivitySimulations"
 dir.create(file.path(OUT_DIR, "Discharge"), recursive = TRUE, showWarnings = FALSE)
 dir.create(file.path(OUT_DIR, "Wind"),      recursive = TRUE, showWarnings = FALSE)
 dir.create(file.path(OUT_DIR, "Combined"),  recursive = TRUE, showWarnings = FALSE)
@@ -79,6 +79,7 @@ raw_data <- as.data.frame(read_qs_files("Data/Tidied/Final/Daily/DailyRawData.qs
    mutate(DateTime = as.Date(DateTime)) %>%
    arrange(DateTime)
 
+# Threshold and Climatology calculations
 FLUSH_THRESHOLD <- quantile(
    raw_data$MaxDischarge[month(raw_data$DateTime) %in% c(8, 9, 10, 11)],
    0.90, na.rm = TRUE
@@ -90,7 +91,15 @@ clim_discharge <- raw_data %>%
    summarise(ClimDischarge = mean(Discharge, na.rm = TRUE), .groups = "drop") %>%
    mutate(ClimDischarge = zoo::rollmean(ClimDischarge, 15, fill = "extend", align = "center"))
 
-add_wind_dir_observed <- make_wind_dir_adder(raw_data, gam_obj, wind_var)
+# Wind mapper factory initialization
+add_wind_dir_observed <- build_wind_direction_mapper(
+   raw_data        = raw_data,
+   gam_obj         = gam_obj,
+   wind_var        = wind_var,
+   clim_discharge  = clim_discharge,
+   flush_threshold = FLUSH_THRESHOLD,
+   estuary_axis_deg = ESTUARY_AXIS_DEG
+)
 
 # =============================================================================
 # SCENARIO DEFINITIONS — Discharge
@@ -158,30 +167,51 @@ wind_scenarios <- lapply(seq_along(WIND_SHIFTS), function(i) {
 # =============================================================================
 cat("\n--- Discharge scenarios ---\n")
 discharge_summary <- run_sensitivity_scenarios(
-   raw_data, gam_obj, discharge_scenarios,
-   YEAR, H_MAX, HORIZONS, EVENT_START, EVENT_END,
-   add_wind_dir_observed, req_cols, extra_col_name = "Group"
+   raw_data         = raw_data,
+   gam_obj          = gam_obj,
+   scenarios        = discharge_scenarios,
+   year             = YEAR,
+   h_max            = H_MAX,
+   horizons         = HORIZONS,
+   event_start      = EVENT_START,
+   event_end        = EVENT_END,
+   add_wind_dir_fn  = add_wind_dir_observed,
+   req_cols         = req_cols,
+   clim_discharge   = clim_discharge,
+   flush_threshold  = FLUSH_THRESHOLD,
+   estuary_axis_deg = ESTUARY_AXIS_DEG,
+   extra_col_name   = "Group"
 ) %>%
    mutate(Scenario = factor(Scenario, levels = sapply(discharge_scenarios, `[[`, "label")),
           Group    = factor(Group, levels = c("Pre-event", "Pulse", "Combined")))
 
 cat("\n--- Wind scenarios ---\n")
 wind_summary <- run_sensitivity_scenarios(
-   raw_data, gam_obj, wind_scenarios,
-   YEAR, H_MAX, HORIZONS, EVENT_START, EVENT_END,
-   add_wind_dir_observed, req_cols, extra_col_name = "Shift"
+   raw_data         = raw_data,
+   gam_obj          = gam_obj,
+   scenarios        = wind_scenarios,
+   year             = YEAR,
+   h_max            = H_MAX,
+   horizons         = HORIZONS,
+   event_start      = EVENT_START,
+   event_end        = EVENT_END,
+   add_wind_dir_fn  = add_wind_dir_observed,
+   req_cols         = req_cols,
+   clim_discharge   = clim_discharge,
+   flush_threshold  = FLUSH_THRESHOLD,
+   estuary_axis_deg = ESTUARY_AXIS_DEG,
+   extra_col_name   = "Shift"
 )
 
 # =============================================================================
-# SHARED Y-AXIS — computed from the actual combined data range, not fixed,
-# so it accommodates either sign depending on what the current model produces
+# SHARED Y-AXIS
 # =============================================================================
 y_range   <- range(c(discharge_summary$Difference, wind_summary$Difference), na.rm = TRUE)
 y_pad     <- diff(y_range) * 0.08
 Y_LIMITS  <- c(y_range[1] - y_pad, y_range[2] + y_pad)
 
 # =============================================================================
-# INDIVIDUAL PLOTS (standalone outputs preserved)
+# INDIVIDUAL PLOTS
 # =============================================================================
 p_discharge <- ggplot(discharge_summary,
                       aes(x = Horizon, y = Difference, color = Scenario, group = Scenario)) +
@@ -216,9 +246,6 @@ ggsave(file.path(OUT_DIR, "Wind", "Wind_Sensitivity_ByHorizon.svg"), p_wind, wid
 
 # =============================================================================
 # COMBINED TWO-PANEL PLOT
-# Left panel: full y-axis title + text. Right panel: ticks on both sides,
-# no y-axis numbers/title, so the shared scale reads cleanly without
-# repeated labels.
 # =============================================================================
 p_discharge_combo <- p_discharge +
    labs(title = "A) Discharge Scenario Sensitivity") +

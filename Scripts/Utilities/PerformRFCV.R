@@ -1,11 +1,10 @@
-
 build_group_map <- function(predictor_cols) {
    list(
-      LagSalinity        = grep("LagSalinity",                    predictor_cols, value = TRUE),
-      Tide               = grep("TideRange|TideMean",             predictor_cols, value = TRUE),
-      Wind               = grep("RollingWind",                    predictor_cols, value = TRUE),
-      SustainedDischarge = grep("RollingDischarge|RollingAnomaly",predictor_cols, value = TRUE),
-      FlushingDischarge  = grep("MaxDischarge|ExceedFlux",        predictor_cols, value = TRUE)
+      LagSalinity        = grep("LagSalinity",                     predictor_cols, value = TRUE),
+      Tide               = grep("TideRange|TideMean",              predictor_cols, value = TRUE),
+      Wind               = grep("RollingWind",                     predictor_cols, value = TRUE),
+      SustainedDischarge = grep("RollingDischarge|RollingAnomaly", predictor_cols, value = TRUE),
+      FlushingDischarge  = grep("MaxDischarge|ExceedFlux",         predictor_cols, value = TRUE)
    )
 }
 
@@ -18,7 +17,6 @@ assign_group <- function(var, group_map) {
 }
 
 screen_predictors_per_group <- function(rf_result, predictor_cols, group_map, n_screen = 10) {
-   
    pooled_test_imp <- rf_result$importance_test %>%
       group_by(Variable) %>%
       summarise(TestMag = mean(IncMSE_Test, na.rm = TRUE), .groups = 'drop') %>%
@@ -37,21 +35,20 @@ screen_predictors_per_group <- function(rf_result, predictor_cols, group_map, n_
    union(survivors$Variable, singleton_groups$Variable)
 }
 
-get_oob_predictions <- function(rf_model, data, oob_mask, num_threads) {
-   pred_all <- predict(rf_model, data = data, predict.all = TRUE,
-                       num.threads = num_threads)$predictions
-   masked <- pred_all
-   masked[!oob_mask] <- NA
-   list(pred = rowMeans(masked, na.rm = TRUE), n_oob_trees = rowSums(oob_mask))
+# Vectorized, NA-free OOB prediction calculation
+get_oob_predictions <- function(rf_model, data, oob_mask, num_threads = 1) {
+   pred_all <- predict(rf_model, data = data, predict.all = TRUE, num.threads = num_threads)$predictions
+   n_oob <- rowSums(oob_mask)
+   pred_sum <- rowSums(pred_all * oob_mask)
+   list(pred = pred_sum / n_oob, n_oob_trees = n_oob)
 }
 
 compute_h_importance <- function(rf_result, predictor_cols, group_map,
                                  n_repeats = 1, num_threads = 1, vars_per_chunk = 2) {
    
-   h_importance_list <- list()
+   h_importance_list <- vector("list", length(rf_result$folds))
    
    for (i in seq_along(rf_result$folds)) {
-      
       fold_result <- rf_result$folds[[i]]
       if (is.null(fold_result)) next
       
@@ -60,65 +57,76 @@ compute_h_importance <- function(rf_result, predictor_cols, group_map,
       if (is.null(rf_model) || is.null(train_data)) next
       
       inbag_mat <- do.call(cbind, rf_model$inbag.counts)
-      oob_mask  <- inbag_mat == 0
+      oob_mask  <- (inbag_mat == 0)
       n_all     <- nrow(train_data)
       
-      base_result   <- get_oob_predictions(rf_model, train_data, oob_mask, num_threads)
-      valid         <- base_result$n_oob_trees >= 5
-      obs_all       <- train_data[['Salinity_h']]
-      h_all         <- train_data[['h']]
+      base_result <- get_oob_predictions(rf_model, train_data, oob_mask, num_threads)
+      valid       <- base_result$n_oob_trees >= 5
+      valid_idx   <- which(valid)
       
-      base_rmse_by_h <- tapply(seq_len(n_all)[valid], h_all[valid], function(rows) {
-         sqrt(mean((obs_all[rows] - base_result$pred[rows])^2))
-      })
+      obs_all     <- train_data[['Salinity_h']]
+      h_all       <- train_data[['h']]
       
-      rm(base_result); gc(FALSE)
+      obs_v       <- obs_all[valid_idx]
+      h_v         <- h_all[valid_idx]
+      
+      base_rmse_by_h <- tapply((obs_v - base_result$pred[valid_idx])^2, h_v, function(x) sqrt(mean(x)))
+      rm(base_result)
       
       var_chunks    <- split(predictor_cols, ceiling(seq_along(predictor_cols) / vars_per_chunk))
       fold_imp_list <- vector("list", length(var_chunks))
       
       for (ch in seq_along(var_chunks)) {
-         
          chunk_vars <- var_chunks[[ch]]
          n_blocks   <- length(chunk_vars) * n_repeats
          block_list <- vector("list", n_blocks)
-         block_meta <- vector("list", n_blocks)
-         idx <- 1
          
+         meta_df <- data.frame(
+            BlockID  = seq_len(n_blocks),
+            Variable = rep(chunk_vars, each = n_repeats),
+            Repeat   = rep(seq_len(n_repeats), times = length(chunk_vars)),
+            stringsAsFactors = FALSE
+         )
+         
+         idx <- 1
          for (var in chunk_vars) {
             for (r in seq_len(n_repeats)) {
-               perm              <- train_data
-               perm[[var]]       <- sample(perm[[var]])
+               perm        <- train_data
+               perm[[var]] <- sample(perm[[var]])
                block_list[[idx]] <- perm
-               block_meta[[idx]] <- data.frame(Variable = var, Repeat = r, BlockID = idx)
                idx <- idx + 1
             }
          }
          
-         stacked_perm <- data.table::rbindlist(block_list) %>% as.data.frame()
-         meta         <- data.table::rbindlist(block_meta) %>% as.data.frame()
-         rm(block_list, block_meta)
+         stacked_perm <- data.table::rbindlist(block_list)
+         rm(block_list)
          
-         oob_mask_stacked  <- do.call(rbind, replicate(n_blocks, oob_mask, simplify = FALSE))
-         perm_result       <- get_oob_predictions(rf_model, stacked_perm, oob_mask_stacked, num_threads)
+         perm_pred_all <- predict(rf_model, data = stacked_perm, predict.all = TRUE, num.threads = num_threads)$predictions
+         rm(stacked_perm)
          
-         rm(stacked_perm, oob_mask_stacked); gc(FALSE)
+         block_results <- vector("list", n_blocks)
          
-         obs_rep      <- rep(obs_all, times = n_blocks)
-         h_rep        <- rep(h_all,   times = n_blocks)
-         valid_rep    <- rep(valid,   times = n_blocks)
-         block_id_rep <- rep(meta$BlockID, each = n_all)
+         for (b in seq_len(n_blocks)) {
+            row_start <- (b - 1) * n_all
+            pred_mat_b <- perm_pred_all[(row_start + 1):(row_start + n_all), , drop = FALSE]
+            
+            pred_b_oob <- rowSums(pred_mat_b * oob_mask) / rowSums(oob_mask)
+            pred_b_v   <- pred_b_oob[valid_idx]
+            
+            sq_err <- (obs_v - pred_b_v)^2
+            perm_rmse <- sqrt(tapply(sq_err, h_v, mean))
+            
+            inc_rmse <- perm_rmse - base_rmse_by_h[names(perm_rmse)]
+            
+            block_results[[b]] <- data.frame(
+               Variable = meta_df$Variable[b],
+               h        = as.numeric(names(inc_rmse)),
+               IncRMSE  = as.vector(inc_rmse),
+               stringsAsFactors = FALSE
+            )
+         }
          
-         fold_imp_list[[ch]] <- data.frame(
-            BlockID = block_id_rep, h = h_rep, obs = obs_rep,
-            pred = perm_result$pred, valid = valid_rep
-         ) %>%
-            filter(valid) %>%
-            group_by(BlockID, h) %>%
-            summarise(PermRMSE = sqrt(mean((obs - pred)^2)), .groups = 'drop') %>%
-            left_join(meta, by = 'BlockID') %>%
-            mutate(BaseRMSE = base_rmse_by_h[as.character(h)],
-                   IncRMSE  = PermRMSE - BaseRMSE)
+         fold_imp_list[[ch]] <- do.call(rbind, block_results)
       }
       
       h_importance_list[[i]] <- do.call(rbind, fold_imp_list) %>%
@@ -127,9 +135,10 @@ compute_h_importance <- function(rf_result, predictor_cols, group_map,
          mutate(Fold = i)
    }
    
-   if (length(h_importance_list) == 0) return(NULL)
+   valid_h_imp <- compact(h_importance_list)
+   if (length(valid_h_imp) == 0) return(NULL)
    
-   do.call(rbind, h_importance_list) %>%
+   do.call(rbind, valid_h_imp) %>%
       group_by(Variable, h) %>%
       summarise(
          MeanImportance = mean(Importance, na.rm = TRUE),
@@ -140,27 +149,20 @@ compute_h_importance <- function(rf_result, predictor_cols, group_map,
       arrange(Group, Variable, h)
 }
 
-
-calculate_test_importance <- function(rf_model, test_data, response_col, predictor_cols) {
+calculate_test_importance <- function(rf_model, test_data, response_col, predictor_cols, num_threads = 1) {
+   baseline_preds <- predict(rf_model, data = test_data, num.threads = num_threads)$predictions
+   baseline_mse   <- mean((test_data[[response_col]] - baseline_preds)^2)
    
-   # Get baseline predictions and MSE
-   baseline_preds <- predict(rf_model, data = test_data)$predictions
-   baseline_mse <- mean((test_data[[response_col]] - baseline_preds)^2)
-   
-   # Calculate importance for each variable
    importance_values <- numeric(length(predictor_cols))
    names(importance_values) <- predictor_cols
    
    for (var in predictor_cols) {
-      # Permute this variable
       test_permuted <- test_data
       test_permuted[[var]] <- sample(test_permuted[[var]])
       
-      # Get predictions with permuted variable
-      permuted_preds <- predict(rf_model, data = test_permuted)$predictions
-      permuted_mse <- mean((test_data[[response_col]] - permuted_preds)^2)
+      permuted_preds <- predict(rf_model, data = test_permuted, num.threads = num_threads)$predictions
+      permuted_mse   <- mean((test_data[[response_col]] - permuted_preds)^2)
       
-      # Importance = increase in MSE
       importance_values[var] <- permuted_mse - baseline_mse
    }
    
@@ -168,152 +170,137 @@ calculate_test_importance <- function(rf_model, test_data, response_col, predict
 }
 
 run_rf_cv <- function(data, folds, response_col, predictor_cols, 
-                      ntree = 500, mtry = NULL) {
+                      ntree = 300, mtry = NULL, num_threads = 1, calc_test_imp = TRUE) {
    
-   # Allow column indices
    if (is.numeric(response_col)) response_col <- names(data)[response_col]
    if (is.numeric(predictor_cols)) predictor_cols <- names(data)[predictor_cols]
    
    results <- list()
    
    for (i in seq_along(folds)) {
-      cat("Running fold", i, "of", length(folds), "...\n")
-      
       train_idx <- folds[[i]]$train
       test_idx  <- folds[[i]]$test
       
       train_data <- data[train_idx, ]
       test_data  <- data[test_idx, ]
       
-      # Remove rows with NA in response
       train_data <- train_data[!is.na(train_data[[response_col]]), ]
       test_data  <- test_data[!is.na(test_data[[response_col]]), ]
       
-      # Skip if no valid data
-      if (nrow(test_data) == 0 | nrow(train_data) == 0) {
+      if (nrow(test_data) == 0 || nrow(train_data) == 0) {
          warning(paste("Fold", i, "has no valid train/test data — skipping"))
          next
       }
       
-      # Monthly median imputation for predictors
+      # Fast vectorized monthly median imputation
+      train_medians <- train_data %>%
+         group_by(Month) %>%
+         summarise(across(all_of(predictor_cols), \(x) median(x, na.rm = TRUE)), .groups = "drop")
+      
       for (col in predictor_cols) {
-         train_data[[col]] <- ifelse(
-            is.na(train_data[[col]]),
-            ave(train_data[[col]], train_data$Month, FUN = function(x) median(x, na.rm = TRUE)),
-            train_data[[col]]
-         )
-         test_data[[col]] <- ifelse(
-            is.na(test_data[[col]]),
-            ave(train_data[[col]], train_data$Month, FUN = function(x) median(x, na.rm = TRUE))[match(test_data$Month, train_data$Month)],
-            test_data[[col]]
-         )
+         na_train <- which(is.na(train_data[[col]]))
+         if (length(na_train) > 0) {
+            med_map <- setNames(train_medians[[col]], train_medians$Month)
+            train_data[[col]][na_train] <- med_map[as.character(train_data$Month[na_train])]
+         }
+         
+         na_test <- which(is.na(test_data[[col]]))
+         if (length(na_test) > 0) {
+            med_map <- setNames(train_medians[[col]], train_medians$Month)
+            test_data[[col]][na_test] <- med_map[as.character(test_data$Month[na_test])]
+         }
       }
       
-      # Formula
-      rf_formula <- as.formula(
-         paste(response_col, "~", paste(predictor_cols, collapse = " + "))
-      )
+      rf_formula <- as.formula(paste(response_col, "~", paste(predictor_cols, collapse = " + ")))
       
-      # Train ranger with OOB importance
-      cat("  Training model...\n")
       rf_model <- ranger(
-         formula = rf_formula,
-         data = train_data,
-         num.trees = ntree,
-         mtry = mtry,
-         importance = "permutation",  # OOB importance
-         num.threads = 6,
+         formula      = rf_formula,
+         data         = train_data,
+         num.trees    = ntree,
+         mtry         = mtry,
+         importance   = "permutation",
+         num.threads  = num_threads,
          write.forest = TRUE,
-         keep.inbag = TRUE
+         keep.inbag   = TRUE
       )
       
-      # Predict on test set
-      preds <- predict(rf_model, data = test_data)$predictions
-      obs <- test_data[[response_col]]
+      preds <- predict(rf_model, data = test_data, num.threads = num_threads)$predictions
+      obs   <- test_data[[response_col]]
       
-      # Metrics
       rmse_val <- Metrics::rmse(obs, preds)
       mae_val  <- Metrics::mae(obs, preds)
       
-      # OOB Variable importance (from training)
       oob_imp <- data.frame(
          Variable    = names(rf_model$variable.importance),
          IncMSE_OOB  = rf_model$variable.importance,
-         BaselineMSE = rf_model$prediction.error,   # OOB MSE of the full fitted model, needed to convert IncMSE -> RMSE increase downstream
+         BaselineMSE = rf_model$prediction.error,
          Fold        = i,
          row.names   = NULL
       )
       
-      # Test set importance
-      cat("  Calculating test set importance...\n")
-      test_imp_values <- calculate_test_importance(rf_model, test_data, 
-                                                   response_col, predictor_cols)
+      if (calc_test_imp) {
+         test_imp_values <- calculate_test_importance(rf_model, test_data, response_col, predictor_cols, num_threads = num_threads)
+         test_imp <- data.frame(
+            Variable    = names(test_imp_values),
+            IncMSE_Test = test_imp_values,
+            Fold        = i,
+            row.names   = NULL
+         )
+         combined_imp <- merge(oob_imp, test_imp, by = c("Variable", "Fold"))
+      } else {
+         test_imp <- NULL
+         combined_imp <- oob_imp
+      }
       
-      test_imp <- data.frame(
-         Variable = names(test_imp_values),
-         IncMSE_Test = test_imp_values,
-         Fold = i,
-         row.names = NULL
-      )
-      
-      # Combine both importance measures
-      combined_imp <- merge(oob_imp, test_imp, by = c("Variable", "Fold"))
-      
-      # Store results
       results[[i]] <- list(
-         model = rf_model,
-         fold = i,
-         train_years = folds[[i]]$train_years,
-         test_years = folds[[i]]$test_years,
-         train_data = train_data, 
-         metrics = data.frame(
-            Fold = i,
+         model           = rf_model,
+         fold            = i,
+         train_years     = folds[[i]]$train_years,
+         test_years      = folds[[i]]$test_years,
+         train_data      = train_data, 
+         metrics         = data.frame(
+            Fold        = i,
             Train_Years = paste(folds[[i]]$train_years, collapse = "-"),
-            Test_Years = paste(folds[[i]]$test_years, collapse = "-"),
-            RMSE = rmse_val,
-            MAE = mae_val
+            Test_Years  = paste(folds[[i]]$test_years, collapse = "-"),
+            RMSE        = rmse_val,
+            MAE         = mae_val
          ),
-         importance = combined_imp,
-         importance_oob = oob_imp,
+         importance      = combined_imp,
+         importance_oob  = oob_imp,
          importance_test = test_imp
       )
    }
    
-   # Combine results
-   metrics_all <- do.call(rbind, lapply(results, `[[`, "metrics"))
-   importance_all <- do.call(rbind, lapply(results, `[[`, "importance"))
-   importance_oob_all <- do.call(rbind, lapply(results, `[[`, "importance_oob"))
-   importance_test_all <- do.call(rbind, lapply(results, `[[`, "importance_test"))
+   metrics_all         <- do.call(rbind, lapply(results, `[[`, "metrics"))
+   importance_all      <- do.call(rbind, lapply(results, `[[`, "importance"))
+   importance_oob_all  <- do.call(rbind, lapply(results, `[[`, "importance_oob"))
+   importance_test_all <- if (calc_test_imp) do.call(rbind, lapply(results, `[[`, "importance_test")) else NULL
    
    return(list(
-      folds = results,
-      metrics = metrics_all,
-      importance = importance_all,  # Combined (both OOB and Test)
-      importance_oob = importance_oob_all,  # Just OOB
-      importance_test = importance_test_all  # Just Test
+      folds           = results,
+      metrics         = metrics_all,
+      importance      = importance_all,
+      importance_oob  = importance_oob_all,
+      importance_test = importance_test_all
    ))
 }
 
-# Convenience function to compare OOB vs Test importance
 compare_importance_types <- function(importance_df, fold_num = NULL) {
-   
    if (!is.null(fold_num)) {
       importance_df <- importance_df %>% filter(Fold == fold_num)
    }
    
-   # Calculate correlations by fold
    cor_by_fold <- importance_df %>%
       group_by(Fold) %>%
       summarise(
          Correlation = cor(IncMSE_OOB, IncMSE_Test, use = "complete.obs"),
-         Spearman = cor(IncMSE_OOB, IncMSE_Test, method = "spearman", use = "complete.obs"),
-         .groups = "drop"
+         Spearman    = cor(IncMSE_OOB, IncMSE_Test, method = "spearman", use = "complete.obs"),
+         .groups     = "drop"
       )
    
    cat("\n=== OOB vs Test Importance Correlation ===\n")
    print(cor_by_fold)
    
-   # Overall statistics
    cat("\nOverall Mean Correlation:", mean(cor_by_fold$Correlation, na.rm = TRUE), "\n")
    cat("Overall Mean Spearman:", mean(cor_by_fold$Spearman, na.rm = TRUE), "\n")
    

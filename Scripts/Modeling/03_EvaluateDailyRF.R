@@ -27,7 +27,7 @@ H_MAX <- 20
 base_dir <- "Outputs/Plots/StackedRF"
 if (!dir.exists(base_dir)) dir.create(base_dir, recursive = TRUE)
 
-within_group_dir <- file.path(base_dir, 'WithinGroup')
+within_group_dir <- file.path(base_dir, 'GroupHeatmaps')
 if (!dir.exists(within_group_dir)) dir.create(within_group_dir, recursive = TRUE)
 
 group_colors <- c(

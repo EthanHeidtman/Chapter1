@@ -34,8 +34,8 @@ renv/local/
 # ======================
 # Large files
 # ======================
-*.qs
 *.json
+*.qs
 
 # ======================
 #  Python Artifacts

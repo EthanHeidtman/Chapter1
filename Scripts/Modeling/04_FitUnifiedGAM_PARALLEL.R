@@ -115,7 +115,7 @@ cat(sprintf("Number of CV folds: %d\n", length(folds)))
 cat("\n=== Phase 1: Building Unified Multi-Horizon GAM Candidates ===\n")
 cat("Predictors:", paste(SELECTED_PREDICTORS, collapse = ", "), "\n\n")
 
-t_phase1 <- system.time({
+gam_fitting <- system.time({
    gam_candidates <- fit_gam(
       data                    = stacked_data,
       response                = 'Salinity_h',
@@ -134,7 +134,7 @@ t_phase1 <- system.time({
    )
 })
 
-cat(sprintf("\nPhase 1 wall time: %.1f min\n\n", t_phase1["elapsed"] / 60))
+cat(sprintf("\nPhase 1 wall time: %.1f min\n\n", gam_fitting["elapsed"] / 60))
 
 gc() # Clean the environment for stability in writing files
 

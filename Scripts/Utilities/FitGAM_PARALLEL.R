@@ -558,8 +558,33 @@ fit_gam <- function(data,
       gam_theme
    
    clean_term_label <- function(term) {
-      if (grepl(":WindDir", term)) return(sub("^s\\(([^)]+)\\).*$", "\\1", term))
-      if (grepl("^ti\\(h,", term)) return(paste0("h x ", sub("^ti\\(h,\\s*([^,)]+).*$", "\\1", term)))
+      
+      # Wind interactions
+      if (grepl("^ti\\(h,RollingWindCross", term)) {
+         days <- sub(".*RollingWindCross([0-9]+).*", "\\1", term)
+         
+         if (grepl("WindDirLeftBank", term))
+            return(paste0("h x ", days, " Day Westerly Wind"))
+         
+         if (grepl("WindDirRightBank", term))
+            return(paste0("h x ", days, " Day Easterly Wind"))
+      }
+      
+      # Other h interactions
+      if (grepl("^ti\\(h,", term))
+         return(paste0("h x ", sub("^ti\\(h,([^,)]+).*$", "\\1", term)))
+      
+      # Ordinary smooths
+      if (grepl("^s\\(RollingWindCross", term)) {
+         days <- sub(".*RollingWindCross([0-9]+).*", "\\1", term)
+         
+         if (grepl("WindDirLeftBank", term))
+            return(paste0(days, " Day Westerly Wind"))
+         
+         if (grepl("WindDirRightBank", term))
+            return(paste0(days, " Day Easterly Wind"))
+      }
+      
       sub("^s\\(([^)]+)\\)$", "\\1", term)
    }
    

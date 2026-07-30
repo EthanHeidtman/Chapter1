@@ -23,6 +23,7 @@ source('Scripts/Utilities/ReadQS.R')
 source('Scripts/Utilities/WriteQS.R')
 source('Scripts/Utilities/MakeCVFolds.R')
 source('Scripts/Utilities/PerformRFCV.R')
+
 # =============================================================================
 # PARAMETERS
 # =============================================================================
@@ -30,12 +31,12 @@ source('Scripts/Utilities/PerformRFCV.R')
 SEED             <- 123
 ntree            <- 300
 mtry             <- 10  
-N_STABLE_SEEDS   <- 10    # how many seeds to try
-N_REPEATS        <- 2    # For stability analysis: how many times to reshuffle a variable
+N_STABLE_SEEDS   <- 10    
+N_REPEATS        <- 2    
 N_SCREEN         <- 10
 VARS_PER_CHUNK   <- 2
 N_WORKERS        <- 4
-N_THREADS_SERIAL <- parallel::detectCores(logical = TRUE) - 1
+N_THREADS_SERIAL <- max(1, parallel::detectCores(logical = FALSE) - 1)
 
 checkpoint_dir <- 'Outputs/Models/StackedRF/SeedCheckpoints'
 if (!dir.exists(checkpoint_dir)) dir.create(checkpoint_dir, recursive = TRUE)
@@ -57,19 +58,23 @@ group_map      <- build_group_map(predictor_cols)
 cat(sprintf("Total predictors (including h): %d\n", length(predictor_cols)))
 
 set.seed(SEED)
-folds <- make_expanding_folds(stacked_data, initial_train_length = 7)
+folds <- make_expanding_folds(stacked_data, initial_train_length = 9)
 
 # =============================================================================
-# MAIN RF RUN + SCREENING (serial, once)
+# MAIN RF RUN + SCREENING
 # =============================================================================
 
 cat("\nRunning main RF (seed =", SEED, ")...\n")
 set.seed(SEED)
 
-rf_stacked <- run_rf_cv(
-   data = stacked_data, folds = folds, response_col = 'Salinity_h',
-   predictor_cols = predictor_cols, ntree = ntree, mtry = mtry
-)
+main_rf <- system.time({
+   rf_stacked <- run_rf_cv(
+      data = stacked_data, folds = folds, response_col = 'Salinity_h',
+      predictor_cols = predictor_cols, ntree = ntree, mtry = mtry,
+      num_threads = N_THREADS_SERIAL, calc_test_imp = TRUE
+   )
+})
+cat(sprintf("\nMain RF time: %.1f min\n\n", main_rf["elapsed"] / 60))
 print(rf_stacked$metrics)
 gc()
 
@@ -79,19 +84,20 @@ cat(sprintf("Screening: %d of %d predictors retained for h-stratified step\n",
             length(screened_cols), length(predictor_cols)))
 
 cat("\nComputing primary h-stratified importance for main RF...\n")
-h_importance <- compute_h_importance(rf_stacked, screened_cols, group_map,
-                                     n_repeats = N_REPEATS, num_threads = N_THREADS_SERIAL,
-                                     vars_per_chunk = VARS_PER_CHUNK)
+
+main_rf_importance <- system.time({
+   h_importance <- compute_h_importance(rf_stacked, screened_cols, group_map,
+                                        n_repeats = N_REPEATS, num_threads = N_THREADS_SERIAL,
+                                        vars_per_chunk = VARS_PER_CHUNK)
+   
+})
+
+cat(sprintf("\nMain RF Importance calculations time: %.1f min\n\n", main_rf_importance["elapsed"] / 60))
 
 gc()
 
 # =============================================================================
 # STABILITY ANALYSIS -- PARALLELIZED ACROSS SEEDS
-# Each worker: sources this same utility file, retrains RF on the full
-# predictor_cols (for consistency with the main-seed screening decision),
-# then computes h-stratified importance only on the fixed screened_cols.
-# Checkpointed per seed so a crash doesn't lose completed work; per-seed
-# tryCatch so one failure doesn't abort the batch.
 # =============================================================================
 
 cat(sprintf("\n=== STABILITY ANALYSIS (%d seeds, %d workers) ===\n",
@@ -99,14 +105,12 @@ cat(sprintf("\n=== STABILITY ANALYSIS (%d seeds, %d workers) ===\n",
 
 stable_seeds <- (1:N_STABLE_SEEDS) * 17
 utils_path   <- here('Scripts', 'Utilities', 'PerformRFCV.R')
-cv_path      <- here('Scripts', 'Utilities', 'PerformRFCV.R')
 
 run_one_seed <- function(seed_s, stacked_data, folds, predictor_cols, screened_cols,
                          group_map, ntree, mtry, n_repeats, vars_per_chunk,
-                         utils_path, cv_path, checkpoint_dir) {
+                         utils_path, checkpoint_dir) {
    
    source(utils_path)
-   source(cv_path)
    library(dplyr); library(ranger)
    
    checkpoint_file <- file.path(checkpoint_dir, sprintf('seed_%d.rds', seed_s))
@@ -115,9 +119,11 @@ run_one_seed <- function(seed_s, stacked_data, folds, predictor_cols, screened_c
    result <- tryCatch({
       
       set.seed(seed_s)
+      # Skip test-set importance during stability seeds (calc_test_imp = FALSE)
       rf_s <- run_rf_cv(
          data = stacked_data, folds = folds, response_col = 'Salinity_h',
-         predictor_cols = predictor_cols, ntree = ntree, mtry = mtry
+         predictor_cols = predictor_cols, ntree = ntree, mtry = mtry,
+         num_threads = 1, calc_test_imp = FALSE
       )
       
       h_imp_s <- compute_h_importance(rf_s, screened_cols, group_map,
@@ -149,14 +155,19 @@ run_one_seed <- function(seed_s, stacked_data, folds, predictor_cols, screened_c
 
 plan(multisession, workers = N_WORKERS)
 
-seed_results <- future_map(
-   stable_seeds, run_one_seed,
-   stacked_data = stacked_data, folds = folds, predictor_cols = predictor_cols,
-   screened_cols = screened_cols, group_map = group_map, ntree = ntree, mtry = mtry,
-   n_repeats = N_REPEATS, vars_per_chunk = VARS_PER_CHUNK,
-   utils_path = utils_path, cv_path = cv_path, checkpoint_dir = checkpoint_dir,
-   .options = furrr_options(seed = TRUE), .progress = TRUE
-)
+
+rf_seeds <- system.time({
+   seed_results <- future_map(
+      stable_seeds, run_one_seed,
+      stacked_data = stacked_data, folds = folds, predictor_cols = predictor_cols,
+      screened_cols = screened_cols, group_map = group_map, ntree = ntree, mtry = mtry,
+      n_repeats = N_REPEATS, vars_per_chunk = VARS_PER_CHUNK,
+      utils_path = utils_path, checkpoint_dir = checkpoint_dir,
+      .options = furrr_options(seed = TRUE), .progress = TRUE
+   )
+})
+
+cat(sprintf("\nRF all seeds time: %.1f min\n\n", rf_seeds["elapsed"] / 60))
 
 plan(sequential)
 

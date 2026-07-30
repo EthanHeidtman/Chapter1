@@ -24,29 +24,31 @@ theme_rf <- function() {
 }
 
 # =============================================================================
-# STACKING — identical structure to Script 01
+# STACKING HELPER
+# Safe fallback if not already sourced from ComputePredictors.R
 # =============================================================================
-stack_horizons <- function(daily_data, h_max) {
-   salinity_lookup <- daily_data %>%
-      dplyr::select(DateTime, Salinity) %>%
-      rename(target_date = DateTime, Salinity_h = Salinity)
-   predictor_data <- daily_data %>% dplyr::select(-Salinity)
-   purrr::map_dfr(1:h_max, function(h) {
-      predictor_data %>%
-         mutate(h = h, target_date = DateTime + h) %>%
-         left_join(salinity_lookup, by = "target_date") %>%
-         dplyr::select(-target_date)
-   }) %>%
-      filter(!is.na(Salinity_h)) %>%
-      arrange(DateTime, h) %>%
-      relocate(h, Salinity_h, .after = DateTime)
+if (!exists("stack_horizons")) {
+   stack_horizons <- function(daily_data, h_max) {
+      salinity_lookup <- daily_data %>%
+         dplyr::select(DateTime, Salinity) %>%
+         rename(target_date = DateTime, Salinity_h = Salinity)
+      
+      predictor_data <- daily_data %>% dplyr::select(-Salinity)
+      
+      purrr::map_dfr(1:h_max, function(h) {
+         predictor_data %>%
+            mutate(h = h, target_date = DateTime + h) %>%
+            left_join(salinity_lookup, by = "target_date") %>%
+            dplyr::select(-target_date)
+      }) %>%
+         filter(!is.na(Salinity_h)) %>%
+         arrange(DateTime, h) %>%
+         relocate(h, Salinity_h, .after = DateTime)
+   }
 }
 
 # =============================================================================
 # AUTO-DETECTION FROM THE FITTED MODEL
-# No predictor names are ever hardcoded in a calling script — everything
-# needed is pulled from gam_obj$model, so this stays correct across any
-# future candidate model or transferred system.
 # =============================================================================
 detect_wind_var <- function(gam_pred_vars) {
    wv <- gam_pred_vars[grepl("RollingWind", gam_pred_vars) & !grepl("Dir", gam_pred_vars)]
@@ -56,30 +58,36 @@ detect_wind_var <- function(gam_pred_vars) {
 
 get_req_cols <- function(gam_obj) {
    form_vars <- all.vars(formula(gam_obj))
-   resp_var  <- form_vars[1]          # first term in the formula is the response
+   resp_var  <- form_vars[1]          # first term in formula is response
    setdiff(form_vars, resp_var)
 }
 
 # =============================================================================
-# WindDir — always derived from OBSERVED wind sign, never from perturbed
-# wind, so scenarios stay inside the training distribution for direction.
+# WIND DIRECTION MAPPER FACTORY
+# Builds a closure function mapping WindDir based on OBSERVED wind sign so that
+# sensitivity scenarios stay inside training distribution for direction.
 # =============================================================================
-make_wind_dir_adder <- function(raw_data, gam_obj, wind_var) {
-   obs_model_data    <- build_model_data(raw_data)
-   obs_winddir_daily <- obs_model_data %>% dplyr::select(DateTime, !!wind_var)
-   is_along <- grepl("Along", wind_var)
+build_wind_direction_mapper <- function(raw_data, gam_obj, wind_var,
+                                        clim_discharge, flush_threshold,
+                                        estuary_axis_deg = 0) {
+   
+   obs_model_data    <- build_model_data(raw_data, clim_discharge, flush_threshold, estuary_axis_deg)
+   obs_winddir_daily <- obs_model_data %>% dplyr::select(DateTime, !!sym(wind_var))
+   
+   is_along   <- grepl("Along", wind_var)
+   levels_vec <- if (is_along) c("DownEstuary", "UpEstuary") else c("LeftBank", "RightBank")
+   pos_label  <- if (is_along) "UpEstuary" else "RightBank"
+   neg_label  <- if (is_along) "DownEstuary" else "LeftBank"
    
    function(stacked) {
       stacked %>%
          left_join(
-            obs_winddir_daily %>% rename(obs_wind_join = !!wind_var),
+            obs_winddir_daily %>% rename(obs_wind_join = !!sym(wind_var)),
             by = "DateTime"
          ) %>%
          mutate(WindDir = factor(
-            ifelse(obs_wind_join >= 0,
-                   if (is_along) "UpEstuary" else "RightBank",
-                   if (is_along) "DownEstuary" else "LeftBank"),
-            levels = levels(gam_obj$model$WindDir)
+            if_else(obs_wind_join >= 0, pos_label, neg_label),
+            levels = levels_vec
          )) %>%
          dplyr::select(-obs_wind_join)
    }
@@ -87,20 +95,19 @@ make_wind_dir_adder <- function(raw_data, gam_obj, wind_var) {
 
 # =============================================================================
 # GENERIC SCENARIO RUNNER
-# scenarios: list of list(label=, group_or_shift_field=, modifier=function(d))
-# extra_cols: named list of extra columns to attach to each summary row
-#             (e.g. Group for discharge, Shift for wind)
 # =============================================================================
 run_sensitivity_scenarios <- function(raw_data, gam_obj, scenarios,
                                       year, h_max, horizons,
                                       event_start, event_end,
                                       add_wind_dir_fn, req_cols,
+                                      clim_discharge, flush_threshold,
+                                      estuary_axis_deg = 0,
                                       extra_col_name = NULL) {
    
    in_event_window <- function(dates) as.Date(dates) >= event_start & as.Date(dates) <= event_end
    
    build_stack <- function(daily_raw) {
-      build_model_data(daily_raw) %>%
+      build_model_data(daily_raw, clim_discharge, flush_threshold, estuary_axis_deg) %>%
          stack_horizons(h_max) %>%
          add_wind_dir_fn() %>%
          filter(Year == year)
