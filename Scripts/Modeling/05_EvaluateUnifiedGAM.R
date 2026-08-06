@@ -61,9 +61,9 @@ for (d in c(base_dir, error_dir, smooth_dir, acf_dir, panel_dir, panel_grids_dir
 # LOAD MODEL AND DATA
 # =============================================================================
 
-gam_unified   <- read_qs_files('Outputs/Models/UnifiedGAM/GamUnified.qs')
-stacked_train <- as.data.frame(read_qs_files('Data/Tidied/Final/Daily/StackedModelData.qs'))
-stacked_hold  <- as.data.frame(read_qs_files('Data/Tidied/Final/Daily/StackedHoldoutData.qs'))
+gam_unified   <- read_qs_files('Outputs/Models/UnifiedGAM/GamUnified.qs2')
+stacked_train <- as.data.frame(read_qs_files('Data/Tidied/Final/Daily/StackedModelData.qs2'))
+stacked_hold  <- as.data.frame(read_qs_files('Data/Tidied/Final/Daily/StackedHoldoutData.qs2'))
 
 gam_obj <- gam_unified$gam_object
 

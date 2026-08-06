@@ -46,7 +46,7 @@ if (!dir.exists(checkpoint_dir)) dir.create(checkpoint_dir, recursive = TRUE)
 # =============================================================================
 
 stacked_data <- as.data.frame(
-   read_qs_files('Data/Tidied/Final/Daily/StackedModelData.qs')
+   read_qs_files('Data/Tidied/Final/Daily/StackedModelData.qs2')
 ) %>% arrange(DateTime, h)
 
 non_predictor_cols <- c('DateTime', 'Year', 'Month', 'Day', 'DayOfYear',

@@ -36,7 +36,7 @@ ESTUARY_AXIS_DEG <- 0
 WIND_SHIFTS  <- seq(0.25, 2.0, by = 0.25)
 SHIFT_LABELS <- sprintf("-%.2f m/s", WIND_SHIFTS)
 
-OUT_DIR <- "Outputs/Plots/UnifiedGAMSensitivitySimulations"
+OUT_DIR <- "Outputs/Plots/UnifiedGAM/SensitivitySimulations"
 dir.create(file.path(OUT_DIR, "Discharge"), recursive = TRUE, showWarnings = FALSE)
 dir.create(file.path(OUT_DIR, "Wind"),      recursive = TRUE, showWarnings = FALSE)
 dir.create(file.path(OUT_DIR, "Combined"),  recursive = TRUE, showWarnings = FALSE)
@@ -65,7 +65,7 @@ WIND_GRADIENT <- c(low = "#d4b8e0", high = "#8B4789")
 # =============================================================================
 # LOAD MODEL AND RAW DATA
 # =============================================================================
-gam_unified   <- read_qs_files("Outputs/Models/UnifiedGAM/GamUnified_Adjusted.qs")
+gam_unified   <- read_qs_files("Outputs/Models/UnifiedGAM/GamUnified_Adjusted.qs2")
 gam_obj       <- gam_unified$gam_object
 gam_pred_vars <- names(gam_obj$model)
 gam_pred_vars <- gam_pred_vars[gam_pred_vars != "Salinity_h"]
@@ -75,7 +75,7 @@ req_cols <- get_req_cols(gam_obj)
 cat(sprintf("Detected wind predictor: %s\n", wind_var))
 cat(sprintf("Detected required columns: %s\n", paste(req_cols, collapse = ", ")))
 
-raw_data <- as.data.frame(read_qs_files("Data/Tidied/Final/Daily/DailyRawData.qs")) %>%
+raw_data <- as.data.frame(read_qs_files("Data/Tidied/Final/Daily/DailyRawData.qs2")) %>%
    mutate(DateTime = as.Date(DateTime)) %>%
    arrange(DateTime)
 

@@ -2,14 +2,14 @@ write_qs_files <- function(
       obj_list,
       dir_path,
       file_names = NULL,
-      format = c("qs", "json", "csv"),
-      preset = "high"
+      format = c("qs2", "json", "csv"),
+      compress_level = 3L
 ) {
    format <- match.arg(format)
    
    # Check required packages
-   if (format == "qs" && !requireNamespace("qs", quietly = TRUE)) {
-      stop("Package 'qs' is required to write .qs files.")
+   if (format == "qs2" && !requireNamespace("qs2", quietly = TRUE)) {
+      stop("Package 'qs2' is required to write .qs2 files.")
    }
    if (format == "json" && !requireNamespace("jsonlite", quietly = TRUE)) {
       stop("Package 'jsonlite' is required to write .json files.")
@@ -24,7 +24,7 @@ write_qs_files <- function(
       file_names <- names(obj_list)
    } else {
       stopifnot(length(file_names) == length(obj_list))
-      file_names <- sub("\\.(qs|json|csv)$", "", file_names)
+      file_names <- sub("\\.(qs2|qs|json|csv)$", "", file_names)
    }
    
    file_names <- paste0(file_names, ".", format)
@@ -32,8 +32,8 @@ write_qs_files <- function(
    
    mapply(function(obj, path) {
       switch(format,
-             qs = {
-                qs::qsave(obj, file = path, preset = preset)
+             qs2 = {
+                qs2::qs_save(obj, file = path, compress_level = compress_level)
              },
              json = {
                 jsonlite::write_json(obj, path, pretty = TRUE, auto_unbox = TRUE, null = "null")

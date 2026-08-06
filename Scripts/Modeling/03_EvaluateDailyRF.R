@@ -68,9 +68,9 @@ theme_rf <- function() {
 # LOAD AND PREPARE
 # =============================================================================
 
-rf_stacked        <- read_qs_files('Outputs/Models/StackedRF/RFStacked.qs')
-stability_summary <- read_qs_files('Outputs/Models/StackedRF/RFStabilitySummary.qs')
-h_importance      <- read_qs_files('Outputs/Models/StackedRF/RFImportanceByHorizonSeeded.qs')
+rf_stacked        <- read_qs_files('Outputs/Models/StackedRF/RFStacked.qs2')
+stability_summary <- read_qs_files('Outputs/Models/StackedRF/RFStabilitySummary.qs2')
+h_importance      <- read_qs_files('Outputs/Models/StackedRF/RFImportanceByHorizonSeeded.qs2')
 
 # Floor negatives, filter to physical groups
 h_imp <- h_importance %>%

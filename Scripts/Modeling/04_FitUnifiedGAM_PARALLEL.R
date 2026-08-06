@@ -86,7 +86,7 @@ GAM_LEVELS          <- 6  # number of k combos to try when fitting
 # =============================================================================
 
 stacked_data <- as.data.frame(
-   read_qs_files('Data/Tidied/Final/Daily/StackedModelData.qs')
+   read_qs_files('Data/Tidied/Final/Daily/StackedModelData.qs2')
 )
 
 stacked_data <- stacked_data %>%
@@ -126,7 +126,7 @@ gam_fitting <- system.time({
       high_salinity_threshold = HIGH_SALINITY_THRESHOLD,
       gam_levels              = GAM_LEVELS,
       nthreads                = 4,   # used only for the serial top-10 EDF refit stage
-      n_top_candidates        = 10,
+      n_top_candidates        = 500,
       plot_output_dir         = 'Outputs/Plots/UnifiedGAM/GAMSelection',
       n_workers               = N_WORKERS,
       show_progress           = TRUE,

@@ -551,9 +551,10 @@ fit_gam <- function(data,
    
    pB <- candidate_summary %>%
       mutate(se_high_rmse = sd_high_rmse / sqrt(n_folds)) %>%
-      ggplot(aes(x = mean_high_rmse, y = se_high_rmse, label = label)) +
-      geom_point(size = 3.5, color = gam_colors$secondary) +
+      ggplot(aes(x = mean_high_rmse, y = se_high_rmse, color = total_edf, label = label)) +
+      geom_point(size = 3.5) +
       ggrepel::geom_text_repel(size = 4, color = gam_colors$dark, fontface = "bold") +
+      scale_color_gradient(low = gam_colors$secondary, high = gam_colors$primary, name = "Total EDF") +
       labs(title = "Accuracy vs Consistency", x = "Mean High-Salinity RMSE (ppt)", y = "SE of High-Salinity RMSE") +
       gam_theme
    
@@ -604,6 +605,15 @@ fit_gam <- function(data,
       inner_join(top_candidates_meta %>% select(k_index, candidate_rank), by = "k_index") %>%
       filter(!is.na(high_rmse))
    
+   candidate_summary_top10 <- candidate_summary %>%
+      slice_head(n = 10)
+   
+   edf_all_top10 <- edf_all %>%
+      filter(candidate_rank %in% candidate_summary_top10$candidate_rank)
+   
+   fold_profiles_top10 <- fold_profiles %>%
+      filter(candidate_rank %in% candidate_summary_top10$candidate_rank)
+   
    pD <- ggplot(fold_profiles, aes(x = fold, y = high_rmse, color = factor(candidate_rank), group = factor(candidate_rank))) +
       geom_line(linewidth = 1.1) +
       geom_point(size = 2.8) +
@@ -611,14 +621,76 @@ fit_gam <- function(data,
       scale_x_continuous(breaks = seq_along(folds)) +
       gam_theme
    
+   # =============================================================================
+   # TOP-10 PLOTS
+   # =============================================================================
+   
+   pA_top10 <- candidate_summary_top10 %>%
+      mutate(se_high_rmse = sd_high_rmse / sqrt(n_folds)) %>%
+      ggplot(aes(x = total_edf, y = mean_high_rmse, color = total_edf, label = label)) +
+      geom_errorbar(aes(ymin = mean_high_rmse - se_high_rmse, ymax = mean_high_rmse + se_high_rmse),
+                    width = 1.5, color = "grey60") +
+      geom_point(size = 3.5) +
+      ggrepel::geom_text_repel(size = 4, color = gam_colors$dark, fontface = "bold") +
+      scale_color_gradient(low = gam_colors$secondary, high = gam_colors$primary, name = "Total EDF") +
+      labs(title = "Accuracy vs Complexity (Top 10)",
+           x = "Total EDF",
+           y = "Mean High-Salinity RMSE (ppt)") +
+      gam_theme
+   
+   
+   pB_top10 <- candidate_summary_top10 %>%
+      mutate(se_high_rmse = sd_high_rmse / sqrt(n_folds)) %>%
+      ggplot(aes(x = mean_high_rmse, y = se_high_rmse, color = total_edf, label = label)) +
+      geom_point(size = 3.5) +
+      ggrepel::geom_text_repel(size = 4, color = gam_colors$dark, fontface = "bold") +
+      scale_color_gradient(low = gam_colors$secondary, high = gam_colors$primary, name = "Total EDF") +
+      labs(title = "Accuracy vs Consistency (Top 10)",
+           x = "Mean High-Salinity RMSE (ppt)",
+           y = "SE of High-Salinity RMSE") +
+      gam_theme
+   
+   
+   pC_top10 <- ggplot(
+      edf_all_top10,
+      aes(x = factor(candidate_rank, labels = paste0("C", sort(unique(candidate_rank)))),
+          y = reorder(term_short, edf, FUN = mean),
+          fill = edf)
+   ) +
+      geom_tile(color = "white") +
+      geom_text(aes(label = round(edf, 1)), size = 3, color = "white", fontface = "bold") +
+      scale_fill_gradient(low = gam_colors$secondary, high = gam_colors$primary) +
+      labs(title = "Per-Term EDF (Top 10)", x = "Candidate", y = "Smooth Term") +
+      gam_theme
+   
+   
+   pD_top10 <- ggplot(
+      fold_profiles_top10,
+      aes(x = fold, y = high_rmse, color = factor(candidate_rank), group = factor(candidate_rank))
+   ) +
+      geom_line(linewidth = 1.1) +
+      geom_point(size = 2.8) +
+      labs(title = "High-Salinity RMSE by Fold (Top 10)",
+           x = "CV Fold",
+           y = "High-Salinity RMSE") +
+      scale_x_continuous(breaks = seq_along(folds)) +
+      gam_theme
+   
    for (p_info in list(
-      list(p = pA, name = "AccuracyVsComplexity",  w = 8,  h = 6),
-      list(p = pB, name = "AccuracyVsConsistency", w = 8,  h = 6),
-      list(p = pC, name = "EDFHeatmap",            w = 10, h = max(6, n_distinct(edf_all$term_short) * 0.35 + 2)),
-      list(p = pD, name = "FoldProfiles",          w = 10, h = 6)
+      list(p = pA,       name = "AccuracyVsComplexity",       w = 8,  h = 6),
+      list(p = pB,       name = "AccuracyVsConsistency",      w = 8,  h = 6),
+      list(p = pC,       name = "EDFHeatmap",                 w = 10, h = max(6, n_distinct(edf_all$term_short) * 0.35 + 2)),
+      list(p = pD,       name = "FoldProfiles",               w = 10, h = 6),
+      list(p = pA_top10, name = "AccuracyVsComplexity_Top10", w = 8,  h = 6),
+      list(p = pB_top10, name = "AccuracyVsConsistency_Top10",w = 8,  h = 6),
+      list(p = pC_top10, name = "EDFHeatmap_Top10",           w = 10, h = max(6, n_distinct(edf_all_top10$term_short) * 0.35 + 2)),
+      list(p = pD_top10, name = "FoldProfiles_Top10",         w = 10, h = 6)
    )) {
-      ggsave(file.path(plot_output_dir, paste0(p_info$name, ".png")), p_info$p, width = p_info$w, height = p_info$h, dpi = 600)
-      ggsave(file.path(plot_output_dir, paste0(p_info$name, ".svg")), p_info$p, width = p_info$w, height = p_info$h)
+      ggsave(file.path(plot_output_dir, paste0(p_info$name, ".png")),
+             p_info$p, width = p_info$w, height = p_info$h, dpi = 600)
+      
+      ggsave(file.path(plot_output_dir, paste0(p_info$name, ".svg")),
+             p_info$p, width = p_info$w, height = p_info$h)
    }
    
    list(

@@ -36,6 +36,7 @@ renv/local/
 # ======================
 *.json
 *.qs
+*.qs2
 
 # ======================
 #  Python Artifacts

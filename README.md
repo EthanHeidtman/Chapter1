@@ -1,4 +1,4 @@
-## A unified forecasting framework for saltwater intrusion in the tidal Susquehanna River
+## Predicting extreme estuarine saltwater intrusion events using a novel GAM forecastign approach
 
 This repository contains data and code for Heidtman et al. (2027). The
 project is implemented using R code, and packages are managed using
