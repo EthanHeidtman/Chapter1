@@ -362,18 +362,18 @@ fit_gam <- function(data,
       
       log_file <- "task_log.txt"
       t0 <- Sys.time()
-      cat(sprintf("START k_index=%d fold=%d k_interaction=%d time=%s\n",
-                  task_row$k_index, j, task_row$k_interaction, t0),
-          file = log_file, append = TRUE)
+      # cat(sprintf("START k_index=%d fold=%d k_interaction=%d time=%s\n",
+      #             task_row$k_index, j, task_row$k_interaction, t0),
+      #     file = log_file, append = TRUE)
       
       # Pass timeout_sec down to fit_fold
       res <- fit_fold(formula, fd$train_data, fd$test_data, j, timeout_sec = timeout_sec)
       
       t1 <- Sys.time()
-      cat(sprintf("END   k_index=%d fold=%d k_interaction=%d time=%s elapsed=%.1fs\n",
-                  task_row$k_index, j, task_row$k_interaction, t1,
-                  as.numeric(difftime(t1, t0, units = "secs"))),
-          file = log_file, append = TRUE)
+      # cat(sprintf("END   k_index=%d fold=%d k_interaction=%d time=%s elapsed=%.1fs\n",
+      #             task_row$k_index, j, task_row$k_interaction, t1,
+      #             as.numeric(difftime(t1, t0, units = "secs"))),
+      #     file = log_file, append = TRUE)
       
       tibble(fold = j, !!!res, k_index = task_row$k_index)
    }

@@ -79,7 +79,15 @@ HIGH_SALINITY_THRESHOLD <- quantile(
 model_vars <- setdiff(all.vars(gam_unified$formula), "Response")
 group_vars <- discover_predictor_groups(model_vars)
 
-PAIRED_ROW_ORDER <- unname(group_vars)
+PAIRED_GROUP_ORDER <- c(
+   "LagSalinity",
+   "Wind",
+   "SustainedDischarge",
+   "FlushingDischarge",
+   "Tide"
+)
+
+PAIRED_ROW_ORDER <- unname(group_vars[PAIRED_GROUP_ORDER])
 smooth_grid_vars <- unname(group_vars[c("SustainedDischarge", "Wind", "FlushingDischarge", "Tide")])
 lag_salinity_var <- group_vars[["LagSalinity"]]
 wind_var_name    <- group_vars[["Wind"]]

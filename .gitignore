@@ -37,6 +37,9 @@ renv/local/
 *.json
 *.qs
 *.qs2
+*.gdb
+*.nc
+Outputs/Plots/CaseStudyMap.svg
 
 # ======================
 #  Python Artifacts
