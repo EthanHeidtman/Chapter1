@@ -40,7 +40,7 @@ predictor_colors <- list(
 gam_colors <- list(
    primary   = "#f58220",
    secondary = "#009bba",
-   tertiary  = "#fdb515",
+   tertiary  = "#fdb515", 
    dark      = "#002030",
    threshold = "#002030"
 )
@@ -168,23 +168,37 @@ stacked_train$Residual     <- stacked_train$Salinity_h - stacked_train$Predicted
 # =============================================================================
 
 perf_hold <- stacked_hold %>%
-   filter(!is.na(Salinity_h), !is.na(Predicted)) %>%
+   filter(!is.na(Salinity_h), !is.na(Predicted), !is.na(LagSalinity)) %>%
    group_by(h) %>%
    summarise(
-      RMSE      = sqrt(mean((Salinity_h - Predicted)^2)),
-      MAE       = mean(abs(Salinity_h - Predicted)),
-      Bias      = mean(Predicted - Salinity_h),
-      R2        = cor(Salinity_h, Predicted)^2,
-      NSE       = 1 - sum((Salinity_h - Predicted)^2) /
+      RMSE                  = sqrt(mean((Salinity_h - Predicted)^2)),
+      MAE                   = mean(abs(Salinity_h - Predicted)),
+      Bias                  = mean(Predicted - Salinity_h),
+      R2                    = cor(Salinity_h, Predicted)^2,
+      NSE                   = 1 - sum((Salinity_h - Predicted)^2) /
          sum((Salinity_h - mean(Salinity_h))^2),
-      RMSE_High = { hi <- Salinity_h > HIGH_SALINITY_THRESHOLD
+      
+      # High-salinity GAM performance
+      RMSE_High             = { hi <- Salinity_h > HIGH_SALINITY_THRESHOLD
       if (sum(hi) > 1) sqrt(mean((Salinity_h[hi] - Predicted[hi])^2))
       else NA_real_ },
-      MAE_High  = { hi <- Salinity_h > HIGH_SALINITY_THRESHOLD
+      MAE_High              = { hi <- Salinity_h > HIGH_SALINITY_THRESHOLD
       if (sum(hi) > 1) mean(abs(Salinity_h[hi] - Predicted[hi]))
       else NA_real_ },
-      N         = n(),
-      .groups   = "drop"
+      
+      # Baseline Persistence (Overall vs High-Salinity)
+      RMSE_Persistence      = sqrt(mean((Salinity_h - LagSalinity)^2)),
+      RMSE_Persistence_High = { hi <- Salinity_h > HIGH_SALINITY_THRESHOLD
+      if (sum(hi) > 1) sqrt(mean((Salinity_h[hi] - LagSalinity[hi])^2))
+      else NA_real_ },
+      
+      # Matched Skill Scores
+      Skill_Overall         = 1 - (RMSE / RMSE_Persistence),
+      Skill_High            = 1 - (RMSE_High / RMSE_Persistence_High),
+      
+      N                     = n(),
+      N_High                = sum(Salinity_h > HIGH_SALINITY_THRESHOLD, na.rm = TRUE),
+      .groups               = "drop"
    ) %>%
    rename(LeadTime = h)
 
@@ -200,6 +214,17 @@ plot_residual_diagnostics(stacked_hold, H_MAX, HIGH_SALINITY_THRESHOLD, gam_colo
 
 cat("\nPlotting calibration...\n")
 plot_calibration(stacked_hold, H_MAX, N_CAL_BINS, gam_colors, error_dir)
+
+cat("Generating combined Skill Score and Calibration plot...\n")
+skill_cal_plots <- plot_skill_and_calibration(
+   perf_hold     = perf_hold,
+   stacked_hold  = stacked_hold,
+   stacked_train = stacked_train,
+   H_MAX          = H_MAX,
+   N_CAL_BINS     = N_CAL_BINS,
+   gam_colors     = gam_colors,
+   dir            = error_dir
+)
 
 cat("\nPlotting ACF/PACF...\n")
 plot_acf_pacf(stacked_hold, H_MAX, gam_colors, acf_dir)

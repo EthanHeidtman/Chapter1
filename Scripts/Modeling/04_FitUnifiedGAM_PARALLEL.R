@@ -1,5 +1,5 @@
 # =============================================================================
-# Script Name:    04_BuildUnifiedGAM.R
+# Script Name:    04_FitUnifiedGAM_PARALLEL.R
 # Project:        Chapter1
 # Author:         Ethan Heidtman
 # Description:    Fits the unified multi-horizon salinity GAM on the stacked
@@ -9,12 +9,11 @@
 #                 for each selected predictor. K is tuned via expanding window
 #                 CV across grouped k-ranges (see FitGAM.R).
 #
-#                 Two-phase workflow:
-#                   Phase 1 — CV tunes k (parallelized across k-combos via
-#                             future/furrr), refits top N candidates to
-#                             extract EDF (serial), saves metadata + plots.
-#                   Phase 3 — After plot inspection, set SELECTED_CANDIDATE_RANK
-#                             and run from here to refit + save the final model.
+#                 Workflow:
+#                   Runs CV tuning (parallelized across k-combos via future/furrr),
+#                   refits top candidates to extract EDF (serial), and saves 
+#                   candidate metadata. Proceed to Script 05 for diagnostic
+#                   plotting, candidate selection, and final model refitting.
 #
 #                 PARALLELIZATION NOTES:
 #                   - plan() is set here, not inside fit_gam, so the same
@@ -26,10 +25,7 @@
 #                     was confirmed necessary by benchmarking; see project
 #                     notes on the k-combo-level parallelization decision.
 #                   - Convergence is tracked per fold (n_folds_converged) and
-#                     reported in candidate_summary as a diagnostic. It does
-#                     NOT filter candidates automatically. Inspect it
-#                     alongside the four selection plots before setting
-#                     SELECTED_CANDIDATE_RANK.
+#                     reported in candidate_summary as a diagnostic.
 # =============================================================================
 
 library(tidyverse)
@@ -109,10 +105,10 @@ folds <- make_expanding_folds(stacked_data, initial_train_length = 9)
 cat(sprintf("Number of CV folds: %d\n", length(folds)))
 
 # =============================================================================
-# PHASE 1: CV TUNING + CANDIDATE EDF EXTRACTION
+# CV TUNING + CANDIDATE EDF EXTRACTION
 # =============================================================================
 
-cat("\n=== Phase 1: Building Unified Multi-Horizon GAM Candidates ===\n")
+cat("\n=== Building Unified Multi-Horizon GAM Candidates ===\n")
 cat("Predictors:", paste(SELECTED_PREDICTORS, collapse = ", "), "\n\n")
 
 gam_fitting <- system.time({
@@ -126,15 +122,14 @@ gam_fitting <- system.time({
       high_salinity_threshold = HIGH_SALINITY_THRESHOLD,
       gam_levels              = GAM_LEVELS,
       nthreads                = 4,   # used only for the serial top-10 EDF refit stage
-      n_top_candidates        = 500,
-      plot_output_dir         = 'Outputs/Plots/UnifiedGAM/GAMSelection',
+      n_top_candidates        = 10000,
       n_workers               = N_WORKERS,
       show_progress           = TRUE,
       wind_ti_by              = TRUE
    )
 })
 
-cat(sprintf("\nPhase 1 wall time: %.1f min\n\n", gam_fitting["elapsed"] / 60))
+cat(sprintf("\nFitting wall time: %.1f min\n\n", gam_fitting["elapsed"] / 60))
 
 gc() # Clean the environment for stability in writing files
 
@@ -148,28 +143,9 @@ gc() # Clean the environment for stability in writing files
 
 write_qs_files(list(gam_candidates), 'Outputs/Models/UnifiedGAM', list('CandidateGAMs_Metadata'))
 
-# =============================================================================
-# PHASE 2: INSPECT PLOTS — stop here, do not run Phase 3 before reviewing 
-# candidate GAM plots and selecting a final GAM model
-# =============================================================================
-
-SELECTED_CANDIDATE_RANK <- 5  # <-- update after plot + convergence inspection
-
-# =============================================================================
-# PHASE 3: REFIT SELECTED CANDIDATE + SAVE FINAL MODEL
-# =============================================================================
-
-cat(sprintf("\n=== Phase 3: Refitting Candidate Rank %d ===\n", SELECTED_CANDIDATE_RANK))
-
-# Load metadata if starting a fresh session after plot inspection
-# gam_candidates <- read_qs_files('Outputs/Models/UnifiedGAM/CandidateGAMs_Metadata.qs')
-
-gam_unified <- select_gam_candidate(candidates_output = gam_candidates, rank = SELECTED_CANDIDATE_RANK)
-
-write_qs_files(list(gam_unified), 'Outputs/Models/UnifiedGAM', list('GamUnified'))
-
-cat("\nScript 04 complete. Final model saved to Outputs/Models/UnifiedGAM/GamUnified.qs\n")
-
 plan(sequential)  # release workers
+
+cat("\nScript 04 complete. Candidate metadata saved to Outputs/Models/UnifiedGAM/CandidateGAMs_Metadata.qs2\n")
+cat("Proceed to Script 05 for diagnostic plotting and model selection.\n")
 
 rm(list = ls())

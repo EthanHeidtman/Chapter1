@@ -135,7 +135,7 @@ nhd_gdb <- get_nhdplushr(
    layers = c('NHDArea', 'NHDFlowline', 'NHDWaterbody')
 )
 
-# Estuaries (493) and Reservoirs/Lakes (390) > 0.05 km2 (keeps Conowingo Pond and Bush River)
+# Estuaries (493) and Reservoirs/Lakes (390) > 0.05 km2
 nhd_main_waterbody <- nhd_gdb$NHDWaterbody %>%
    st_zm(drop = TRUE, what = 'ZM') %>%
    filter(FTYPE %in% c(493, 390), AreaSqKM > 0.05) %>%
@@ -226,7 +226,6 @@ cat("\nLoading bathymetry raster...\n")
 
 bathy_raw <- rast(BATHY_PATH)
 
-# Buffer crop area in 4326 so UTM reprojection fully covers plot rectangle without edge gaps
 bathy_crop_bbox <- st_bbox(st_buffer(st_as_sfc(main_bbox), 0.05))
 bathy_main <- crop(
    bathy_raw,
@@ -244,7 +243,7 @@ dem_main <- rast(dem_main_raw)
 
 cat("\nLoading land base layer for inset...\n")
 inset_land <- tigris::states(cb = TRUE) %>%
-   filter(STUSPS %in% c('MD', 'VA', 'DE', 'PA', 'NJ', 'WV', 'NC')) %>%
+   filter(STUSPS %in% c('MD', 'VA', 'DE', 'PA', 'NJ', 'WV', 'NC', 'DC')) %>%
    clip_to_utm(inset_bbox_utm_sf, TARGET_CRS)
 
 inset_land_union <- st_union(inset_land)
@@ -294,6 +293,13 @@ state_labels <- tibble::tribble(
    st_as_sf(coords = c('lon', 'lat'), crs = 4326) %>%
    st_transform(TARGET_CRS)
 
+bay_label_coords <- st_coordinates(
+   st_sfc(st_point(c(-75.05, 37.25)), crs = 4326) %>% st_transform(TARGET_CRS)
+)
+bay_target_coords <- st_coordinates(
+   st_sfc(st_point(c(-76.10, 37.35)), crs = 4326) %>% st_transform(TARGET_CRS)
+)
+
 # =============================================================================
 # RASTER PROCESSING
 # =============================================================================
@@ -314,7 +320,6 @@ project_to_template <- function(source_raster, utm_bbox, target_crs, res_m, meth
    project(source_raster, template, method = method)
 }
 
-# Project bathymetry directly at high native resolution (~10 m) across full plot template
 bathy_main_proj <- project_to_template(bathy_main, main_bbox_utm, TARGET_CRS, BATHY_NATIVE_RES_M, 'bilinear')
 bathy_main_df   <- as.data.frame(bathy_main_proj, xy = TRUE)
 names(bathy_main_df)[3] <- 'depth'
@@ -330,21 +335,13 @@ hillshade_main_df <- hillshade_main_df %>%
           y = round(y / RES_MAIN_M) * RES_MAIN_M)
 
 # =============================================================================
-# DAM & LABELS
+# LABELS
 # =============================================================================
-
-dam_sf <- st_sf(
-   feature = 'Conowingo Dam',
-   geometry = st_sfc(
-      st_linestring(matrix(c(-76.1739, 39.6577, -76.1685, 39.6605), ncol = 2, byrow = TRUE)),
-      crs = 4326
-   )
-) %>% st_transform(TARGET_CRS)
 
 place_labels <- tibble::tribble(
    ~name,               ~lon,      ~lat,
    'Havre de Grace',    -76.0942,  39.5487,
-   'Port Deposit',      -76.1244,  39.6087,
+   'Port Deposit',      -76.1140,  39.6075,
    'Conowingo Dam',     -76.1747,  39.6576
 ) %>%
    st_as_sf(coords = c('lon', 'lat'), crs = 4326) %>%
@@ -373,38 +370,46 @@ p_main <- ggplot() +
       low = '#08306b', high = '#c6dbef', name = 'Depth (m)',
       guide = guide_colorbar(
          direction = 'horizontal', title.position = 'top',
-         barwidth = unit(3, 'cm'), barheight = unit(0.3, 'cm')
+         barwidth = unit(7, 'cm'), barheight = unit(0.5, 'cm')
       )
    ) +
    geom_sf(data = nhd_main_streams_proj, color = STREAM_COLOR, linewidth = 0.4) +
    geom_sf(data = shoreline_lines, color = WATER_OUTLINE_COLOR, linewidth = WATER_OUTLINE_WIDTH) +
    geom_sf(data = state_line_proj, color = 'grey40', linewidth = 0.5) +
    annotate('text', x = label_x, y = state_line_y_at_left + 700,
-            label = 'Pennsylvania', size = 4, color = 'grey30', fontface = 'italic', hjust = 0) +
+            label = 'Pennsylvania', size = 5.5, color = 'grey30', fontface = 'italic', hjust = 0) +
    annotate('text', x = label_x, y = state_line_y_at_left - 700,
-            label = 'Maryland', size = 4, color = 'grey30', fontface = 'italic', hjust = 0) +
-   geom_sf(data = dam_sf, color = DAM_COLOR, linewidth = 5, lineend = 'round') +
-   geom_sf(data = place_labels %>% filter(name != 'Havre de Grace'),
-           size = 1.5, color = 'black') +
+            label = 'Maryland', size = 5.5, color = 'grey30', fontface = 'italic', hjust = 0) +
+   geom_sf(data = place_labels %>% filter(name == 'Port Deposit'),
+           size = 1.8, color = 'black') +
    geom_sf(data = place_labels %>% filter(name == 'Havre de Grace'),
-           size = 3, shape = 8, color = ACCENT_COLOR, stroke = 1.2) +
+           size = 3.5, shape = 8, color = ACCENT_COLOR, stroke = 1.2) +
    geom_text_repel(
       data = place_labels %>% filter(name == 'Havre de Grace'),
       aes(label = name, geometry = geometry), stat = 'sf_coordinates',
-      size = 4, fontface = 'bold', nudge_x = -label_nudge_m, direction = 'y', hjust = 1
+      size = 5.5, fontface = 'bold', nudge_x = -label_nudge_m, direction = 'y', hjust = 1,
+      segment.color = NA
    ) +
    geom_text_repel(
-      data = place_labels %>% filter(name != 'Havre de Grace'),
+      data = place_labels %>% filter(name == 'Conowingo Dam'),
       aes(label = name, geometry = geometry), stat = 'sf_coordinates',
-      size = 4, fontface = 'bold', nudge_x = label_nudge_m, direction = 'y', hjust = 0
+      size = 5.5, fontface = 'bold', nudge_x = -label_nudge_m * 1.2, nudge_y = -1200, direction = 'y', hjust = 1,
+      min.segment.length = 0, segment.color = 'black', linewidth = 0.5
+   ) +
+   geom_text_repel(
+      data = place_labels %>% filter(name == 'Port Deposit'),
+      aes(label = name, geometry = geometry), stat = 'sf_coordinates',
+      size = 5.5, fontface = 'bold', nudge_x = label_nudge_m, direction = 'y', hjust = 0,
+      segment.color = NA
    ) +
    annotation_scale(
       location = 'bl', pad_x = unit(0.3, 'cm'), pad_y = unit(0.3, 'cm'), width_hint = 0.2
    ) +
    annotation_north_arrow(
-      location = 'tr', which_north = 'true',
-      style = north_arrow_orienteering(text_size = 8),
-      height = unit(1.3, 'cm'), width = unit(1.3, 'cm')
+      location = 'bl', pad_x = unit(1.2, 'cm'), pad_y = unit(3.2, 'cm'),
+      which_north = 'true',
+      style = north_arrow_orienteering(text_size = 11),
+      height = unit(1.6, 'cm'), width = unit(1.6, 'cm')
    ) +
    coord_sf(
       crs = TARGET_CRS,
@@ -415,11 +420,13 @@ p_main <- ggplot() +
    theme_void() +
    theme(
       legend.position = 'inside',
-      legend.position.inside = c(0.075, 0.10),
-      legend.background = element_blank(),
+      legend.position.inside = c(0.84, 0.87),
+      # Translucent background card matching land color with 80% opacity
+      legend.background = element_rect(fill = alpha(LAND_COLOR_MAIN, 0.80), color = NA),
+      legend.margin = margin(5, 8, 5, 8),
       legend.key = element_blank(),
-      legend.title = element_text(size = 8),
-      legend.text = element_text(size = 7),
+      legend.title = element_text(size = 11, face = 'bold'),
+      legend.text = element_text(size = 9),
       panel.background = element_rect(fill = LAND_COLOR_MAIN, color = NA),
       plot.margin = margin(0, 0, 0, 0)
    )
@@ -434,17 +441,25 @@ main_extent_rect <- st_as_sfc(main_bbox_utm)
 INSET_LAND_COLOR <- '#c8d6b9'
 
 p_inset <- ggplot() +
-   geom_sf(data = inset_land_proj, fill = INSET_LAND_COLOR, color = 'grey40', linewidth = 0.3) +
-   geom_sf(data = inset_water_proj, fill = INSET_BAY_COLOR, color = 'grey40', linewidth = 0.3) +
-   geom_sf(data = nhd_inset_rivers_proj, color = 'grey40', linewidth = 0.4) +
+   geom_sf(data = inset_land_proj, fill = INSET_LAND_COLOR, color = 'grey50', linewidth = 0.3) +
+   geom_sf(data = inset_water_proj, fill = INSET_BAY_COLOR, color = 'grey50', linewidth = 0.3) +
+   geom_sf(data = nhd_inset_rivers_proj, color = 'grey50', linewidth = 0.25) +
    geom_sf(data = main_extent_rect, fill = NA, color = ACCENT_COLOR, linewidth = 0.9) +
-   geom_sf(data = inset_labels, size = 1.2, color = 'black') +
+   geom_sf(data = inset_labels, size = 1.5, color = 'black') +
    geom_text_repel(
       data = inset_labels, aes(label = name, geometry = geometry),
-      stat = 'sf_coordinates', size = 2.5, min.segment.length = 0
+      stat = 'sf_coordinates', size = 3.0, fontface = 'bold',
+      nudge_x = -20000, hjust = 1, direction = 'y',
+      box.padding = 0.25, point.padding = 0.2, min.segment.length = 0,
+      segment.color = 'grey40', linewidth = 0.3
    ) +
    geom_sf_text(data = state_labels, aes(label = name), size = 3.5,
                 fontface = 'italic', color = 'grey30') +
+   annotate('text', x = bay_label_coords[1, 'X'], y = bay_label_coords[1, 'Y'],
+            label = 'Chesapeake\nBay', size = 3.2, fontface = 'bold.italic', color = 'grey20', hjust = 0.5) +
+   annotate('segment', x = bay_label_coords[1, 'X'] - 12000, y = bay_label_coords[1, 'Y'] + 4000,
+            xend = bay_target_coords[1, 'X'], yend = bay_target_coords[1, 'Y'],
+            color = 'grey30', linewidth = 0.4) +
    coord_sf(
       crs = TARGET_CRS,
       xlim = c(inset_bbox_utm['xmin'], inset_bbox_utm['xmax']),

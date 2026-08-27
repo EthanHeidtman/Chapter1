@@ -58,7 +58,6 @@ fit_gam <- function(data,
                     
                     gam_levels       = 3,
                     n_top_candidates = 10,
-                    plot_output_dir  = 'Outputs/Plots/UnifiedGAM/GAMSelection',
                     
                     # Parallel & Timeout arguments
                     timeout_sec   = 20,   # Max seconds allowed per fold task
@@ -68,9 +67,7 @@ fit_gam <- function(data,
    library(mgcv)
    library(dplyr)
    library(purrr)
-   library(ggplot2)
    library(tidyr)
-   library(ggrepel)
    library(future)
    library(furrr)
    library(progressr)
@@ -79,13 +76,6 @@ fit_gam <- function(data,
    if (!('h' %in% predictors)) {
       stop("predictors must include 'h' for the unified multi-horizon GAM.")
    }
-   
-   gam_colors <- list(
-      primary   = "#f58220",
-      secondary = "#009bba",
-      tertiary  = "#fdb515",
-      dark      = "#002030"
-   )
    
    if (is.null(link)) {
       link <- switch(family_type,
@@ -264,17 +254,12 @@ fit_gam <- function(data,
       )
    })
    
-   # ============================================================================
-   # UPDATED: FOLD-FITTING UNIT (With timeout protection & capped maxit)
-   # ============================================================================
-   
    fit_fold <- function(formula, train_data, test_data, fold_num, timeout_sec = 20) {
       
       warning_msgs <- character(0)
       
       gam_fit <- tryCatch({
          withCallingHandlers({
-            # Enforce hard wall-clock timeout on low-level bam() optimization
             R.utils::withTimeout({
                mgcv::bam(
                   formula  = formula,
@@ -284,7 +269,7 @@ fit_gam <- function(data,
                   discrete = TRUE,
                   nthreads = 1L,
                   control  = mgcv::gam.control(
-                     maxit   = 50,    # Cap outer fREML iterations to stop infinite loops
+                     maxit   = 50,
                      epsilon = 1e-6,
                      trace   = FALSE,
                      nthreads = 1L
@@ -344,7 +329,6 @@ fit_gam <- function(data,
       )
    }
    
-   # Task List Setup
    task_grid <- tidyr::crossing(
       k_index  = k_grid$k_index,
       fold_num = seq_along(folds)
@@ -360,27 +344,10 @@ fit_gam <- function(data,
       j   <- task_row$fold_num
       fd  <- precomputed_folds[[j]]
       
-      log_file <- "task_log.txt"
-      t0 <- Sys.time()
-      # cat(sprintf("START k_index=%d fold=%d k_interaction=%d time=%s\n",
-      #             task_row$k_index, j, task_row$k_interaction, t0),
-      #     file = log_file, append = TRUE)
-      
-      # Pass timeout_sec down to fit_fold
       res <- fit_fold(formula, fd$train_data, fd$test_data, j, timeout_sec = timeout_sec)
-      
-      t1 <- Sys.time()
-      # cat(sprintf("END   k_index=%d fold=%d k_interaction=%d time=%s elapsed=%.1fs\n",
-      #             task_row$k_index, j, task_row$k_interaction, t1,
-      #             as.numeric(difftime(t1, t0, units = "secs"))),
-      #     file = log_file, append = TRUE)
       
       tibble(fold = j, !!!res, k_index = task_row$k_index)
    }
-   
-   # ============================================================================
-   # UPDATED: DYNAMIC PARALLEL SCHEDULING (scheduling = 1)
-   # ============================================================================
    
    cat("Running CV across", nrow(k_grid), "k combinations x", length(folds), "folds =",
        nrow(task_grid), "tasks (plan:", class(future::plan())[1], ")...\n\n")
@@ -393,11 +360,11 @@ fit_gam <- function(data,
                res <- fit_one_task(task_row)
                p(sprintf("k_index=%d fold=%d", task_row$k_index, task_row$fold_num))
                res
-            }, .options = furrr::furrr_options(seed = TRUE, scheduling = 1)) # Dynamic dispatch
+            }, .options = furrr::furrr_options(seed = TRUE, scheduling = 1))
          })
       } else {
          furrr::future_map(task_list, fit_one_task,
-                           .options = furrr::furrr_options(seed = TRUE, scheduling = 1)) # Dynamic dispatch
+                           .options = furrr::furrr_options(seed = TRUE, scheduling = 1))
       }
    }
    
@@ -406,7 +373,6 @@ fit_gam <- function(data,
    
    cat(sprintf("[CHECKPOINT] CV loop done: %s\n", Sys.time()))
    
-   # Aggregation
    tune_results <- fold_cv_all %>%
       group_by(k_index) %>%
       summarize(
@@ -452,7 +418,6 @@ fit_gam <- function(data,
                    mean_rmse, mean_high_rmse, sd_high_rmse, n_folds_converged))
    cat("\n")
    
-   # EDF Refit Loop
    cat("Refitting top", n_candidates, "candidates to extract EDF...\n\n")
    full_train_data <- data_clean %>% select(all_of(model_cols))
    
@@ -514,6 +479,7 @@ fit_gam <- function(data,
       if (is.null(edf_tbl)) return(NULL)
       tibble(
          candidate_rank    = meta$candidate_rank,
+         k_index           = meta$k_index,   # carried through for robust downstream joins
          total_edf         = sum(edf_tbl$edf),
          mean_high_rmse    = meta$mean_high_rmse,
          sd_high_rmse      = meta$sd_high_rmse,
@@ -525,173 +491,6 @@ fit_gam <- function(data,
       mutate(label = paste0("C", candidate_rank)) %>%
       arrange(mean_high_rmse) %>%
       mutate(candidate_rank = row_number())
-   
-   # Plotting Routine
-   dir.create(plot_output_dir, recursive = TRUE, showWarnings = FALSE)
-   gam_theme <- theme_bw() +
-      theme(
-         plot.title    = element_text(size = 16, face = "bold", color = gam_colors$dark),
-         plot.subtitle = element_text(size = 13,                color = gam_colors$dark),
-         axis.title    = element_text(size = 14, face = "bold", color = gam_colors$dark),
-         axis.text     = element_text(size = 12,                color = gam_colors$dark),
-         panel.border  = element_rect(colour = gam_colors$dark, fill = NA, linewidth = 1),
-         legend.title  = element_text(size = 12, face = "bold", color = gam_colors$dark)
-      )
-   
-   n_folds <- length(folds)
-   
-   pA <- candidate_summary %>%
-      mutate(se_high_rmse = sd_high_rmse / sqrt(n_folds)) %>%
-      ggplot(aes(x = total_edf, y = mean_high_rmse, label = label)) +
-      geom_errorbar(aes(ymin = mean_high_rmse - se_high_rmse, ymax = mean_high_rmse + se_high_rmse), width = 1.5, color = "grey60") +
-      geom_point(size = 3.5, color = gam_colors$primary) +
-      ggrepel::geom_text_repel(size = 4, color = gam_colors$dark, fontface = "bold") +
-      labs(title = "Accuracy vs Complexity", x = "Total EDF", y = "Mean High-Salinity RMSE (ppt)") +
-      gam_theme
-   
-   pB <- candidate_summary %>%
-      mutate(se_high_rmse = sd_high_rmse / sqrt(n_folds)) %>%
-      ggplot(aes(x = mean_high_rmse, y = se_high_rmse, color = total_edf, label = label)) +
-      geom_point(size = 3.5) +
-      ggrepel::geom_text_repel(size = 4, color = gam_colors$dark, fontface = "bold") +
-      scale_color_gradient(low = gam_colors$secondary, high = gam_colors$primary, name = "Total EDF") +
-      labs(title = "Accuracy vs Consistency", x = "Mean High-Salinity RMSE (ppt)", y = "SE of High-Salinity RMSE") +
-      gam_theme
-   
-   clean_term_label <- function(term) {
-      
-      # Wind interactions
-      if (grepl("^ti\\(h,RollingWindCross", term)) {
-         days <- sub(".*RollingWindCross([0-9]+).*", "\\1", term)
-         
-         if (grepl("WindDirLeftBank", term))
-            return(paste0("h x ", days, " Day Westerly Wind"))
-         
-         if (grepl("WindDirRightBank", term))
-            return(paste0("h x ", days, " Day Easterly Wind"))
-      }
-      
-      # Other h interactions
-      if (grepl("^ti\\(h,", term))
-         return(paste0("h x ", sub("^ti\\(h,([^,)]+).*$", "\\1", term)))
-      
-      # Ordinary smooths
-      if (grepl("^s\\(RollingWindCross", term)) {
-         days <- sub(".*RollingWindCross([0-9]+).*", "\\1", term)
-         
-         if (grepl("WindDirLeftBank", term))
-            return(paste0(days, " Day Westerly Wind"))
-         
-         if (grepl("WindDirRightBank", term))
-            return(paste0(days, " Day Easterly Wind"))
-      }
-      
-      sub("^s\\(([^)]+)\\)$", "\\1", term)
-   }
-   
-   edf_all <- bind_rows(candidate_edf_tables) %>%
-      filter(!is.na(edf)) %>%
-      mutate(term_short = vapply(term, clean_term_label, character(1)))
-   
-   pC <- ggplot(edf_all, aes(x = factor(candidate_rank, labels = paste0("C", sort(unique(candidate_rank)))),
-                             y = reorder(term_short, edf, FUN = mean), fill = edf)) +
-      geom_tile(color = "white") +
-      geom_text(aes(label = round(edf, 1)), size = 3, color = "white", fontface = "bold") +
-      scale_fill_gradient(low = gam_colors$secondary, high = gam_colors$primary) +
-      labs(title = "Per-Term EDF", x = "Candidate", y = "Smooth Term") +
-      gam_theme
-   
-   fold_profiles <- fold_cv_all %>%
-      inner_join(top_candidates_meta %>% select(k_index, candidate_rank), by = "k_index") %>%
-      filter(!is.na(high_rmse))
-   
-   candidate_summary_top10 <- candidate_summary %>%
-      slice_head(n = 10)
-   
-   edf_all_top10 <- edf_all %>%
-      filter(candidate_rank %in% candidate_summary_top10$candidate_rank)
-   
-   fold_profiles_top10 <- fold_profiles %>%
-      filter(candidate_rank %in% candidate_summary_top10$candidate_rank)
-   
-   pD <- ggplot(fold_profiles, aes(x = fold, y = high_rmse, color = factor(candidate_rank), group = factor(candidate_rank))) +
-      geom_line(linewidth = 1.1) +
-      geom_point(size = 2.8) +
-      labs(title = "High-Salinity RMSE by Fold", x = "CV Fold", y = "High-Salinity RMSE") +
-      scale_x_continuous(breaks = seq_along(folds)) +
-      gam_theme
-   
-   # =============================================================================
-   # TOP-10 PLOTS
-   # =============================================================================
-   
-   pA_top10 <- candidate_summary_top10 %>%
-      mutate(se_high_rmse = sd_high_rmse / sqrt(n_folds)) %>%
-      ggplot(aes(x = total_edf, y = mean_high_rmse, color = total_edf, label = label)) +
-      geom_errorbar(aes(ymin = mean_high_rmse - se_high_rmse, ymax = mean_high_rmse + se_high_rmse),
-                    width = 1.5, color = "grey60") +
-      geom_point(size = 3.5) +
-      ggrepel::geom_text_repel(size = 4, color = gam_colors$dark, fontface = "bold") +
-      scale_color_gradient(low = gam_colors$secondary, high = gam_colors$primary, name = "Total EDF") +
-      labs(title = "Accuracy vs Complexity (Top 10)",
-           x = "Total EDF",
-           y = "Mean High-Salinity RMSE (ppt)") +
-      gam_theme
-   
-   
-   pB_top10 <- candidate_summary_top10 %>%
-      mutate(se_high_rmse = sd_high_rmse / sqrt(n_folds)) %>%
-      ggplot(aes(x = mean_high_rmse, y = se_high_rmse, color = total_edf, label = label)) +
-      geom_point(size = 3.5) +
-      ggrepel::geom_text_repel(size = 4, color = gam_colors$dark, fontface = "bold") +
-      scale_color_gradient(low = gam_colors$secondary, high = gam_colors$primary, name = "Total EDF") +
-      labs(title = "Accuracy vs Consistency (Top 10)",
-           x = "Mean High-Salinity RMSE (ppt)",
-           y = "SE of High-Salinity RMSE") +
-      gam_theme
-   
-   
-   pC_top10 <- ggplot(
-      edf_all_top10,
-      aes(x = factor(candidate_rank, labels = paste0("C", sort(unique(candidate_rank)))),
-          y = reorder(term_short, edf, FUN = mean),
-          fill = edf)
-   ) +
-      geom_tile(color = "white") +
-      geom_text(aes(label = round(edf, 1)), size = 3, color = "white", fontface = "bold") +
-      scale_fill_gradient(low = gam_colors$secondary, high = gam_colors$primary) +
-      labs(title = "Per-Term EDF (Top 10)", x = "Candidate", y = "Smooth Term") +
-      gam_theme
-   
-   
-   pD_top10 <- ggplot(
-      fold_profiles_top10,
-      aes(x = fold, y = high_rmse, color = factor(candidate_rank), group = factor(candidate_rank))
-   ) +
-      geom_line(linewidth = 1.1) +
-      geom_point(size = 2.8) +
-      labs(title = "High-Salinity RMSE by Fold (Top 10)",
-           x = "CV Fold",
-           y = "High-Salinity RMSE") +
-      scale_x_continuous(breaks = seq_along(folds)) +
-      gam_theme
-   
-   for (p_info in list(
-      list(p = pA,       name = "AccuracyVsComplexity",       w = 8,  h = 6),
-      list(p = pB,       name = "AccuracyVsConsistency",      w = 8,  h = 6),
-      list(p = pC,       name = "EDFHeatmap",                 w = 10, h = max(6, n_distinct(edf_all$term_short) * 0.35 + 2)),
-      list(p = pD,       name = "FoldProfiles",               w = 10, h = 6),
-      list(p = pA_top10, name = "AccuracyVsComplexity_Top10", w = 8,  h = 6),
-      list(p = pB_top10, name = "AccuracyVsConsistency_Top10",w = 8,  h = 6),
-      list(p = pC_top10, name = "EDFHeatmap_Top10",           w = 10, h = max(6, n_distinct(edf_all_top10$term_short) * 0.35 + 2)),
-      list(p = pD_top10, name = "FoldProfiles_Top10",         w = 10, h = 6)
-   )) {
-      ggsave(file.path(plot_output_dir, paste0(p_info$name, ".png")),
-             p_info$p, width = p_info$w, height = p_info$h, dpi = 600)
-      
-      ggsave(file.path(plot_output_dir, paste0(p_info$name, ".svg")),
-             p_info$p, width = p_info$w, height = p_info$h)
-   }
    
    list(
       tune_grid           = tune_results,

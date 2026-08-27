@@ -471,6 +471,145 @@ plot_calibration <- function(stacked_hold, H_MAX, N_CAL_BINS, gam_colors, dir) {
 }
 
 # =============================================================================
+# FORECAST SKILL & CALIBRATION DUAL-PANEL FIGURE
+# Formatted for direct inclusion in GamEvaluationPlots.R
+# =============================================================================
+plot_skill_and_calibration <- function(perf_hold, stacked_hold, stacked_train, 
+                                       H_MAX, N_CAL_BINS, gam_colors, dir) {
+   library(dplyr)
+   library(tidyr)
+   library(ggplot2)
+   library(patchwork)
+   
+   # -------------------------------------------------------------------------
+   # PANEL A: Skill Score vs Lead Time (Holdout)
+   # -------------------------------------------------------------------------
+   p_skill <- perf_hold %>%
+      select(LeadTime, Skill_High, Skill_Overall) %>%
+      pivot_longer(-LeadTime, names_to = "Subset", values_to = "SkillScore") %>%
+      mutate(
+         Subset = ifelse(Subset == "Skill_High", "High Salinity (> Q75)", "Overall Holdout")
+      ) %>%
+      ggplot(aes(x = LeadTime, y = SkillScore, color = Subset, linetype = Subset, shape = Subset)) +
+      geom_hline(yintercept = 0, linetype = "dashed", color = gam_colors$dark, linewidth = 0.6) +
+      geom_line(linewidth = 1.2) +
+      geom_point(size = 2.5) +
+      scale_color_manual(values = c("High Salinity (> Q75)" = gam_colors$primary,
+                                    "Overall Holdout"      = gam_colors$secondary),
+                         name = "Subset") +
+      scale_linetype_manual(values = c("High Salinity (> Q75)" = "solid", 
+                                       "Overall Holdout"      = "dashed"),
+                            name = "Subset") +
+      scale_shape_manual(values = c("High Salinity (> Q75)" = 16, 
+                                    "Overall Holdout"      = 17),
+                         name = "Subset") +
+      scale_x_continuous(breaks = seq(2, H_MAX, 2)) +
+      scale_y_continuous(limits = c(-1.55, 0.45), 
+                         sec.axis = dup_axis(labels = NULL, name = NULL)) +
+      labs(title = "A)",
+           x     = "Forecast Horizon (days)",
+           y     = "Forecast Skill Score (SS)") +
+      theme_eval() +
+      theme(
+         legend.position   = "bottom",
+         legend.box        = "horizontal",
+         legend.key.width  = unit(1.2, "cm"),
+         plot.title        = element_text(face = "bold", size = 16, hjust = 0, margin = margin(b = 2))
+      )
+   
+   # -------------------------------------------------------------------------
+   # PANELS B–E: Dual-Dataset Calibration Curves
+   # -------------------------------------------------------------------------
+   h_breaks <- unique(round(seq(0, H_MAX, length.out = 5)))
+   h_labels <- sapply(seq_len(length(h_breaks) - 1), function(i) {
+      lo <- h_breaks[i] + 1
+      hi <- h_breaks[i + 1]
+      if (lo == hi) paste0("h = ", lo) else paste0("h = ", lo, "\u2013", hi)
+   })
+   
+   # Map facet strip titles to B), C), D), E) matching Panel A title styling
+   panel_strip_labels <- setNames(c("B)", "C)", "D)", "E)"), h_labels)
+   
+   # Force factor level ordering: Training first (bottom layer), Holdout second (top layer)
+   combined_df <- bind_rows(
+      stacked_train %>% mutate(Dataset = "Training"),
+      stacked_hold  %>% mutate(Dataset = "Holdout")
+   ) %>%
+      mutate(Dataset = factor(Dataset, levels = c("Training", "Holdout")))
+   
+   # Explicit physical salinity intervals (ppt)
+   sal_breaks <- c(0.08, 0.11, 0.14, 0.17, 0.21, 0.26, 0.35, 0.50, 0.80, 1.25, 1.80)
+   
+   cal_df <- combined_df %>%
+      filter(!is.na(Salinity_h), !is.na(Predicted)) %>%
+      mutate(HBin = cut(h, breaks = h_breaks, labels = h_labels)) %>%
+      filter(!is.na(HBin)) %>%
+      mutate(
+         PredBin = cut(Predicted, breaks = sal_breaks, include.lowest = TRUE)
+      ) %>%
+      filter(!is.na(PredBin)) %>%
+      group_by(Dataset, HBin, PredBin) %>%
+      summarise(
+         MeanPredicted = mean(Predicted,  na.rm = TRUE),
+         MeanObserved  = mean(Salinity_h, na.rm = TRUE),
+         N             = n(),
+         .groups       = "drop"
+      ) %>%
+      arrange(HBin, PredBin, Dataset) # Ensures Holdout renders on top
+   
+   # In-panel horizon labels (placed inside upper-left of each canvas)
+   in_panel_labels <- data.frame(
+      HBin  = factor(h_labels, levels = h_labels),
+      Label = h_labels
+   )
+   
+   p_cal <- ggplot(cal_df, aes(x = MeanPredicted, y = MeanObserved, 
+                               color = Dataset, linetype = Dataset, shape = Dataset)) +
+      geom_abline(slope = 1, intercept = 0, linetype = "dashed", color = gam_colors$dark, linewidth = 0.6) +
+      geom_line(linewidth = 1.0, alpha = 0.85) +
+      geom_point(aes(size = N), alpha = 0.85) +
+      geom_text(data = in_panel_labels, 
+                aes(x = -Inf, y = Inf, label = Label), 
+                inherit.aes = FALSE, 
+                hjust = -0.15, vjust = 1.4, 
+                size = 4.0, fontface = "italic", color = gam_colors$dark) +
+      facet_wrap(~ HBin, ncol = 2, scales = "free",
+                 labeller = labeller(HBin = panel_strip_labels)) +
+      scale_color_manual(values = c("Training" = gam_colors$dark, 
+                                    "Holdout"  = gam_colors$primary),
+                         name = "Dataset") +
+      scale_linetype_manual(values = c("Training" = "solid", 
+                                       "Holdout"  = "dashed"),
+                            name = "Dataset") +
+      scale_shape_manual(values = c("Training" = 16, 
+                                    "Holdout"  = 17),
+                         name = "Dataset") +
+      scale_size_continuous(range = c(1.5, 5.0), name = "n", trans = "log10") +
+      scale_y_continuous(sec.axis = dup_axis(labels = NULL, name = NULL)) +
+      labs(x = "Mean Predicted Salinity (ppt)",
+           y = "Mean Observed Salinity (ppt)") +
+      theme_eval() +
+      theme(
+         strip.background  = element_blank(),
+         strip.text        = element_text(face = "bold", size = 16, hjust = 0, margin = margin(b = 2)),
+         legend.position   = "bottom",
+         legend.box        = "horizontal",
+         legend.key.width  = unit(1.0, "cm")
+      )
+   
+   # -------------------------------------------------------------------------
+   # COMBINE & SAVE
+   # -------------------------------------------------------------------------
+   p_combined <- p_skill | p_cal
+   
+   save_plot_dir(p_skill,    dir, "Skill_ByLeadTime",            w = 8,  h = 6)
+   save_plot_dir(p_cal,      dir, "Calibration_DualDataset",     w = 8,  h = 7)
+   save_plot_dir(p_combined, dir, "Skill_Calibration_Combined",   w = 16, h = 7.5)
+   
+   invisible(list(skill = p_skill, calibration = p_cal, combined = p_combined))
+}
+
+# =============================================================================
 # ACF / PACF BY H-SLICE
 # =============================================================================
 plot_acf_pacf <- function(stacked_hold, H_MAX, gam_colors, acf_dir) {
