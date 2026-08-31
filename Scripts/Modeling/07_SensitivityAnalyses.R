@@ -85,18 +85,11 @@ FLUSH_THRESHOLD <- quantile(
    0.90, na.rm = TRUE
 )
 
-clim_discharge <- raw_data %>%
-   mutate(DayOfYear = as.numeric(format(DateTime, "%j"))) %>%
-   group_by(DayOfYear) %>%
-   summarise(ClimDischarge = mean(Discharge, na.rm = TRUE), .groups = "drop") %>%
-   mutate(ClimDischarge = zoo::rollmean(ClimDischarge, 15, fill = "extend", align = "center"))
-
 # Wind mapper factory initialization
 add_wind_dir_observed <- build_wind_direction_mapper(
    raw_data        = raw_data,
    gam_obj         = gam_obj,
    wind_var        = wind_var,
-   clim_discharge  = clim_discharge,
    flush_threshold = FLUSH_THRESHOLD,
    estuary_axis_deg = ESTUARY_AXIS_DEG
 )
@@ -156,12 +149,21 @@ wind_scenarios <- lapply(seq_along(WIND_SHIFTS), function(i) {
       label = SHIFT_LABELS[i],
       Shift = shift,
       modifier = function(d) {
-         d$WSPD[in_perturb(d$DateTime)] <- pmax(0, d$WSPD[in_perturb(d$DateTime)] - shift)
+         idx <- in_perturb(d$DateTime)
+         
+         # Vector wind speed magnitude derived from daily components
+         speed     <- sqrt(d$WindAlong[idx]^2 + d$WindCross[idx]^2)
+         new_speed <- pmax(0, speed - shift)
+         
+         # Scale factor preserves vector direction while reducing magnitude
+         scale_fac <- if_else(!is.na(speed) & speed > 0, new_speed / speed, 1)
+         
+         d$WindAlong[idx] <- d$WindAlong[idx] * scale_fac
+         d$WindCross[idx] <- d$WindCross[idx] * scale_fac
          d
       }
    )
 })
-
 # =============================================================================
 # RUN BOTH ANALYSES
 # =============================================================================
@@ -177,7 +179,6 @@ discharge_summary <- run_sensitivity_scenarios(
    event_end        = EVENT_END,
    add_wind_dir_fn  = add_wind_dir_observed,
    req_cols         = req_cols,
-   clim_discharge   = clim_discharge,
    flush_threshold  = FLUSH_THRESHOLD,
    estuary_axis_deg = ESTUARY_AXIS_DEG,
    extra_col_name   = "Group"
@@ -197,7 +198,6 @@ wind_summary <- run_sensitivity_scenarios(
    event_end        = EVENT_END,
    add_wind_dir_fn  = add_wind_dir_observed,
    req_cols         = req_cols,
-   clim_discharge   = clim_discharge,
    flush_threshold  = FLUSH_THRESHOLD,
    estuary_axis_deg = ESTUARY_AXIS_DEG,
    extra_col_name   = "Shift"

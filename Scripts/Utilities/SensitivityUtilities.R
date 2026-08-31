@@ -68,10 +68,10 @@ get_req_cols <- function(gam_obj) {
 # sensitivity scenarios stay inside training distribution for direction.
 # =============================================================================
 build_wind_direction_mapper <- function(raw_data, gam_obj, wind_var,
-                                        clim_discharge, flush_threshold,
+                                        flush_threshold,
                                         estuary_axis_deg = 0) {
    
-   obs_model_data    <- build_model_data(raw_data, clim_discharge, flush_threshold, estuary_axis_deg)
+   obs_model_data    <- build_model_data(raw_data, flush_threshold, estuary_axis_deg)
    obs_winddir_daily <- obs_model_data %>% dplyr::select(DateTime, !!sym(wind_var))
    
    is_along   <- grepl("Along", wind_var)
@@ -100,14 +100,14 @@ run_sensitivity_scenarios <- function(raw_data, gam_obj, scenarios,
                                       year, h_max, horizons,
                                       event_start, event_end,
                                       add_wind_dir_fn, req_cols,
-                                      clim_discharge, flush_threshold,
+                                      flush_threshold,
                                       estuary_axis_deg = 0,
                                       extra_col_name = NULL) {
    
    in_event_window <- function(dates) as.Date(dates) >= event_start & as.Date(dates) <= event_end
    
    build_stack <- function(daily_raw) {
-      build_model_data(daily_raw, clim_discharge, flush_threshold, estuary_axis_deg) %>%
+      build_model_data(daily_raw, flush_threshold, estuary_axis_deg) %>%
          stack_horizons(h_max) %>%
          add_wind_dir_fn() %>%
          filter(Year == year)

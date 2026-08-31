@@ -12,17 +12,6 @@
 #                 candidates by mean high-salinity RMSE. Intended for
 #                 supplemental figure iteration without re-running the ~15 min
 #                 CV fit in fit_gam.
-#
-#                 GATING (applied before any plotting below):
-#                   1. Majority of CV folds converged
-#                      (n_folds_converged > n_folds_total / 2)
-#                   2. total_edf below a sanity ceiling, to drop full-data
-#                      EDF-refit blowups (e.g. unstable reparameterization)
-#                      that the fold-convergence gate can't see, since that
-#                      refit is a single full-data bam() call, not run across
-#                      folds. Ceiling is a placeholder -- inspect the
-#                      distribution below and adjust EDF_CEILING before
-#                      trusting the plots.
 # =============================================================================
 
 library(tidyverse)
@@ -88,7 +77,8 @@ cat("\n")
 candidate_summary <- candidate_summary_raw %>%
    filter(
       n_folds_converged > n_folds_total / 2,
-      total_edf < EDF_CEILING
+      total_edf < EDF_CEILING,
+      mean_high_rmse < 2
    ) %>%
    arrange(mean_high_rmse) %>%
    mutate(candidate_rank = row_number(), label = paste0("C", candidate_rank))
@@ -99,11 +89,10 @@ cat("Candidates after gating:", nrow(candidate_summary),
 cat("total_edf range (gated):", paste(round(range(candidate_summary$total_edf), 1), collapse = " - "), "\n\n")
 
 # Re-key edf_tables and fold_cv_all to the re-ranked candidate_rank via the
-# original rank stored in candidate_summary_raw, keying on k_index primary key.
 rank_lookup <- candidate_summary_raw %>%
    select(candidate_rank_orig = candidate_rank, k_index) %>%
    inner_join(
-      candidate_summary %>% select(candidate_rank, k_index),
+      candidate_summary %>% select(candidate_rank_gated = candidate_rank, k_index),
       by = "k_index"
    )
 
@@ -111,18 +100,18 @@ edf_all <- bind_rows(edf_tables) %>%
    filter(!is.na(edf)) %>%
    inner_join(rank_lookup, by = c("candidate_rank" = "candidate_rank_orig")) %>%
    select(-candidate_rank) %>%
-   rename(candidate_rank = candidate_rank.y) %>%
+   rename(candidate_rank = candidate_rank_gated) %>%
    mutate(term_short = vapply(term, function(term) {
       if (grepl("^ti\\(h,RollingWindCross", term)) {
          days <- sub(".*RollingWindCross([0-9]+).*", "\\1", term)
-         if (grepl("WindDirLeftBank", term))  return(paste0("h x ", days, " Day Westerly Wind"))
-         if (grepl("WindDirRightBank", term)) return(paste0("h x ", days, " Day Easterly Wind"))
+         if (grepl("WindDirLeftBank", term))  return(paste0("h x ", days, " Day Easterly Wind"))
+         if (grepl("WindDirRightBank", term)) return(paste0("h x ", days, " Day Westerly Wind"))
       }
       if (grepl("^ti\\(h,", term)) return(paste0("h x ", sub("^ti\\(h,([^,)]+).*$", "\\1", term)))
       if (grepl("^s\\(RollingWindCross", term)) {
          days <- sub(".*RollingWindCross([0-9]+).*", "\\1", term)
-         if (grepl("WindDirLeftBank", term))  return(paste0(days, " Day Westerly Wind"))
-         if (grepl("WindDirRightBank", term)) return(paste0(days, " Day Easterly Wind"))
+         if (grepl("WindDirLeftBank", term))  return(paste0(days, " Day Easterly Wind"))
+         if (grepl("WindDirRightBank", term)) return(paste0(days, " Day Westerly Wind"))
       }
       sub("^s\\(([^)]+)\\)$", "\\1", term)
    }, character(1)))
@@ -131,7 +120,7 @@ fold_profiles <- fold_cv_all %>%
    inner_join(top_candidates_meta %>% select(k_index, candidate_rank), by = "k_index") %>%
    inner_join(rank_lookup, by = c("candidate_rank" = "candidate_rank_orig")) %>%
    select(-candidate_rank) %>%
-   rename(candidate_rank = candidate_rank.y) %>%
+   rename(candidate_rank = candidate_rank_gated) %>%
    filter(!is.na(high_rmse))
 
 candidate_summary_top10 <- candidate_summary %>% slice_head(n = 10)
@@ -210,7 +199,7 @@ pD_top10 <- ggplot(fold_profiles_top10, aes(x = fold, y = high_rmse, color = fac
    gam_theme
 
 # =============================================================================
-# NEW: 2-PANEL ACCURACY-VS-COMPLEXITY (full cloud + zoomed top 10)
+# 2-PANEL ACCURACY-VS-COMPLEXITY (full cloud + zoomed top 10)
 # =============================================================================
 
 pFull <- candidate_summary %>%
@@ -219,7 +208,7 @@ pFull <- candidate_summary %>%
    geom_errorbar(aes(ymin = mean_high_rmse - se_high_rmse, ymax = mean_high_rmse + se_high_rmse),
                  width = 0.3, color = "grey75", alpha = 0.5) +
    geom_point(size = 1.6, color = gam_colors$primary, alpha = 0.6) +
-   labs(title = "All Candidates", x = "Total EDF", y = "Mean High-Salinity RMSE (ppt)") +
+   labs(title = "A)", x = "Total EDF", y = "Mean High-Salinity RMSE (ppt)") +
    gam_theme
 
 pZoom <- candidate_summary_top10 %>%
@@ -229,7 +218,7 @@ pZoom <- candidate_summary_top10 %>%
                  width = 0.3, color = "grey60") +
    geom_point(size = 3.5, color = gam_colors$primary) +
    ggrepel::geom_text_repel(size = 4, color = gam_colors$dark, fontface = "bold") +
-   labs(title = "Top 10 by High-Salinity RMSE", x = "Total EDF", y = "Mean High-Salinity RMSE (ppt)") +
+   labs(title = "B)", x = "Total EDF", y = "Mean High-Salinity RMSE (ppt)") +
    gam_theme
 
 pParetoPanel <- patchwork::wrap_plots(pFull, pZoom, ncol = 2)
@@ -273,7 +262,7 @@ if (interactive()) {
    
    # Translate selected post-gate rank (1-10) to pre-gate candidate rank
    orig_rank <- rank_lookup %>%
-      filter(candidate_rank == selected_rank) %>%
+      filter(candidate_rank_gated == selected_rank) %>%
       pull(candidate_rank_orig)
    
    cat(sprintf("\n=== Refitting Candidate Rank %d (Original Rank %d) ===\n", selected_rank, orig_rank))

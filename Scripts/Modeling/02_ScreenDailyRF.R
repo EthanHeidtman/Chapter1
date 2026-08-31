@@ -25,23 +25,6 @@ source('Scripts/Utilities/MakeCVFolds.R')
 source('Scripts/Utilities/PerformRFCV.R')
 
 # =============================================================================
-# PARAMETERS
-# =============================================================================
-
-SEED             <- 123
-ntree            <- 300
-mtry             <- 10  
-N_STABLE_SEEDS   <- 10    
-N_REPEATS        <- 2    
-N_SCREEN         <- 10
-VARS_PER_CHUNK   <- 2
-N_WORKERS        <- 4
-N_THREADS_SERIAL <- max(1, parallel::detectCores(logical = FALSE) - 1)
-
-checkpoint_dir <- 'Outputs/Models/StackedRF/SeedCheckpoints'
-if (!dir.exists(checkpoint_dir)) dir.create(checkpoint_dir, recursive = TRUE)
-
-# =============================================================================
 # LOAD DATA
 # =============================================================================
 
@@ -49,16 +32,44 @@ stacked_data <- as.data.frame(
    read_qs_files('Data/Tidied/Final/Daily/StackedModelData.qs2')
 ) %>% arrange(DateTime, h)
 
-non_predictor_cols <- c('DateTime', 'Year', 'Month', 'Day', 'DayOfYear',
-                        'FERC', 'Discharge', 'Salinity_h',
-                        'Inflows', 'Gust', 'Tide')
+# Explicitly list all metadata and target columns to exclude from predictors
+non_predictor_cols <- c(
+   'DateTime', 'Year', 'Month', 'Day', 'DayOfYear',
+   'FERC', 'Inflows', 'Salinity', 'Salinity_h'
+)
+
+# Extract predictor columns (horizon 'h' is retained as a predictor)
 predictor_cols <- setdiff(names(stacked_data), non_predictor_cols)
-group_map      <- build_group_map(predictor_cols)
+
+# Build feature group map for grouped importance / regularized models
+group_map <- build_group_map(predictor_cols)
 
 cat(sprintf("Total predictors (including h): %d\n", length(predictor_cols)))
 
-set.seed(SEED)
-folds <- make_expanding_folds(stacked_data, initial_train_length = 9)
+# Ensure expanding window folds split on unique Date boundaries (not individual stacked rows)
+folds <- make_expanding_folds(
+   data                 = stacked_data, 
+   date_col             = "DateTime", 
+   initial_train_length = 9 # 9 years initial training set
+)
+
+# =============================================================================
+# PARAMETERS
+# =============================================================================
+
+SEED             <- 123 # random seed
+ntree            <- 300 # number of trees to build
+mtry             <- 10  # number of variables to split at each node (roughly ~sqrt(# variables))
+N_STABLE_SEEDS   <- 10  # number of seeds to try  
+N_REPEATS        <- 1   # number of times to repeat permutation for stability 
+N_SCREEN         <- 10  # number of predictors to select per group
+VARS_PER_CHUNK   <- 2   # number of variables to group together when permuting to save time
+N_WORKERS        <- 4   # number of parallel workers to employ
+N_THREADS_SERIAL <- max(1, parallel::detectCores(logical = FALSE) - 1)
+
+checkpoint_dir <- 'Outputs/Models/StackedRF/SeedCheckpoints'
+if (!dir.exists(checkpoint_dir)) dir.create(checkpoint_dir, recursive = TRUE)
+unlink(file.path(checkpoint_dir, "*"))
 
 # =============================================================================
 # MAIN RF RUN + SCREENING

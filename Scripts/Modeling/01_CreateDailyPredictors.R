@@ -5,7 +5,7 @@
 # Description:    Loads raw hourly data, tidies columns, and then creates a
 #                 large number of variables that predict salinity. Categories
 #                 include tide, wind, sustained discharge, flushing discharge.
-#                 Data is written to .qs format. Also stacks the daily data into 
+#                 Data is written to .qs2 format. Also stacks the daily data into 
 #                 a date-horizon format for the unified multi-horizon GAM.
 # =============================================================================
 
@@ -45,7 +45,7 @@ q_sal_data <- q_sal_data %>%
    dplyr::select(-c(9, 10)) %>%
    mutate(DateTime = as_datetime(DateTime)) %>%
    rename(Tide = Fitted_HdG) %>%
-   filter(DateTime < as_datetime('2024-11-01 00:00:00')) %>%
+   filter(DateTime < as_datetime('2024-11-01 00:00:00')) %>% # cap to October 2024
    mutate_if(is.character, as.factor)
 
 meteo <- combine_txt_files(dir2)
@@ -82,68 +82,67 @@ rm(meteo, q_sal_data, dir1, dir2)
 # All others:   daily mean
 # =============================================================================
 
-data <- data %>%
+# Decompose hourly wind vectors aligned with the estuary axis (0 deg = N-S)
+data_hourly <- data %>%
+   mutate(
+      direction_rad = WDIR * pi / 180,
+      axis_rad      = ESTUARY_AXIS_DEG * pi / 180,
+      WindAlong     = -WSPD * cos(direction_rad - axis_rad),
+      WindCross     = -WSPD * sin(direction_rad - axis_rad)
+   )
+
+# Aggregate explicitly to daily resolution
+data_daily <- data_hourly %>%
    mutate(DateTime = as.Date(DateTime)) %>%
    group_by(DateTime) %>%
    summarise(
-      Salinity     = max(Salinity,   na.rm = TRUE),
-      TideRange    = max(Tide,       na.rm = TRUE) - min(Tide, na.rm = TRUE),
-      TideMean     = mean(Tide,      na.rm = TRUE),
-      MaxDischarge = max(Discharge,  na.rm = TRUE),
-      across(
-         where(is.numeric) & !all_of(c('Salinity', 'Tide', 'TideMean', 'MaxDischarge')),
-         ~ mean(.x, na.rm = TRUE)
-      ),
-      .groups = 'drop') %>%
+      Salinity     = max(Salinity,     na.rm = TRUE),                          # Daily max salinity
+      TideRange    = max(Tide,         na.rm = TRUE) - min(Tide, na.rm = TRUE),# Daily tidal range
+      TideMean     = mean(Tide,        na.rm = TRUE),                          # Daily mean water level
+      MaxDischarge = max(Discharge,    na.rm = TRUE),                          # Daily peak discharge
+      Discharge    = mean(Discharge,   na.rm = TRUE),                          # Daily mean discharge
+      Inflows      = mean(Inflows,     na.rm = TRUE),                          # Daily mean inflows
+      FERC         = mean(FERC,        na.rm = TRUE),                          # Daily mean FERC flow
+      WindAlong    = mean(WindAlong,   na.rm = TRUE),                          # Daily mean along-estuary wind
+      WindCross    = mean(WindCross,   na.rm = TRUE),                          # Daily mean cross-estuary wind
+      .groups      = 'drop'
+   ) %>%
    mutate(
       Year      = as.numeric(format(DateTime, "%Y")),
       Month     = as.numeric(format(DateTime, "%m")),
       Day       = as.numeric(format(DateTime, "%d")),
       DayOfYear = as.numeric(format(DateTime, "%j"))
-   ) %>%
-   mutate(across(where(is.numeric), ~ round(.x, 3)))
+   )
 
-# Set NaNs and Infs to NA
-data[] <- lapply(data, function(x) { x[is.nan(x) | is.infinite(x)] <- NA; x })
+# Replace NaN / Inf with NA and round numeric values
+data_daily[] <- lapply(data_daily, function(x) { x[is.nan(x) | is.infinite(x)] <- NA; x })
+data_daily   <- data_daily %>% mutate(across(where(is.numeric), ~ round(.x, 3)))
 
 # Save pre-predictor dataframe for sensitivity analysis in scripts 06 and 07
-outputs    <- list(data)
-file_names <- c('DailyRawData')
-write_qs_files(outputs, 'Data/Tidied/Final/Daily', file_names)
-
+write_qs_files(list(data_daily), 'Data/Tidied/Final/Daily', 'DailyRawData')
 # =============================================================================
 # DERIVED PARAMETERS
 # =============================================================================
 
 # 90th percentile of max discharge in late summer/fall
 FLUSH_THRESHOLD <- quantile(
-   data$MaxDischarge[month(data$DateTime) %in% c(8, 9, 10, 11)],
+   data_daily$MaxDischarge[month(data_daily$DateTime) %in% c(8, 9, 10, 11)],
    0.90, na.rm = TRUE
 )
 
 cat(sprintf("Flush Threshold: %.1f m3s (%.1f%% of intrusion-season days exceed)\n", 
             FLUSH_THRESHOLD, 
-            100 * mean(data$MaxDischarge[month(data$DateTime) %in% c(8, 9, 10, 11)] > FLUSH_THRESHOLD, na.rm = TRUE)))
-
-# Smoothed climatological discharge baseline
-clim_discharge <- data %>%
-   group_by(DayOfYear) %>%
-   summarise(ClimDischarge = mean(Discharge, na.rm = TRUE), .groups = 'drop') %>%
-   mutate(ClimDischarge = zoo::rollmean(ClimDischarge, 15, fill = 'extend', align = 'center'))
+            100 * mean(data_daily$MaxDischarge[month(data_daily$DateTime) %in% c(8, 9, 10, 11)] > FLUSH_THRESHOLD, na.rm = TRUE)))
 
 # =============================================================================
 # MODEL DATA PREPARATION PIPELINE
 # =============================================================================
 
 model_data <- build_model_data(
-   daily_raw        = data,
-   clim_discharge   = clim_discharge,
+   daily_raw        = data_daily,
    flush_threshold  = FLUSH_THRESHOLD,
    estuary_axis_deg = ESTUARY_AXIS_DEG
 )
-
-# Clean up baseline helper
-rm(clim_discharge)
 
 # =============================================================================
 # STACKING FUNCTION

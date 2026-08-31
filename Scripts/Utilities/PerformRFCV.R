@@ -58,10 +58,10 @@ compute_h_importance <- function(rf_result, predictor_cols, group_map,
       
       inbag_mat <- do.call(cbind, rf_model$inbag.counts)
       oob_mask  <- (inbag_mat == 0)
-      n_all     <- nrow(train_data)
       
-      base_result <- get_oob_predictions(rf_model, train_data, oob_mask, num_threads)
-      valid       <- base_result$n_oob_trees >= 5
+      n_all       <- nrow(train_data)
+      n_oob_trees <- rowSums(oob_mask)
+      valid       <- n_oob_trees >= 5
       valid_idx   <- which(valid)
       
       obs_all     <- train_data[['Salinity_h']]
@@ -70,8 +70,7 @@ compute_h_importance <- function(rf_result, predictor_cols, group_map,
       obs_v       <- obs_all[valid_idx]
       h_v         <- h_all[valid_idx]
       
-      base_rmse_by_h <- tapply((obs_v - base_result$pred[valid_idx])^2, h_v, function(x) sqrt(mean(x)))
-      rm(base_result)
+      base_rmse_by_h <- tapply((obs_v - rf_model$predictions[valid_idx])^2, h_v, function(x) sqrt(mean(x)))
       
       var_chunks    <- split(predictor_cols, ceiling(seq_along(predictor_cols) / vars_per_chunk))
       fold_imp_list <- vector("list", length(var_chunks))

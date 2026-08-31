@@ -474,7 +474,7 @@ plot_calibration <- function(stacked_hold, H_MAX, N_CAL_BINS, gam_colors, dir) {
 # FORECAST SKILL & CALIBRATION DUAL-PANEL FIGURE
 # Formatted for direct inclusion in GamEvaluationPlots.R
 # =============================================================================
-plot_skill_and_calibration <- function(perf_hold, stacked_hold, stacked_train, 
+plot_skill_and_calibration <- function(csi_df, stacked_hold, stacked_train, 
                                        H_MAX, N_CAL_BINS, gam_colors, dir) {
    library(dplyr)
    library(tidyr)
@@ -482,39 +482,63 @@ plot_skill_and_calibration <- function(perf_hold, stacked_hold, stacked_train,
    library(patchwork)
    
    # -------------------------------------------------------------------------
-   # PANEL A: Skill Score vs Lead Time (Holdout)
+   # PANEL A: Critical Success Index (CSI) vs Lead Time
    # -------------------------------------------------------------------------
-   p_skill <- perf_hold %>%
-      select(LeadTime, Skill_High, Skill_Overall) %>%
-      pivot_longer(-LeadTime, names_to = "Subset", values_to = "SkillScore") %>%
-      mutate(
-         Subset = ifelse(Subset == "Skill_High", "High Salinity (> Q75)", "Overall Holdout")
-      ) %>%
-      ggplot(aes(x = LeadTime, y = SkillScore, color = Subset, linetype = Subset, shape = Subset)) +
-      geom_hline(yintercept = 0, linetype = "dashed", color = gam_colors$dark, linewidth = 0.6) +
-      geom_line(linewidth = 1.2) +
-      geom_point(size = 2.5) +
-      scale_color_manual(values = c("High Salinity (> Q75)" = gam_colors$primary,
-                                    "Overall Holdout"      = gam_colors$secondary),
-                         name = "Subset") +
-      scale_linetype_manual(values = c("High Salinity (> Q75)" = "solid", 
-                                       "Overall Holdout"      = "dashed"),
-                            name = "Subset") +
-      scale_shape_manual(values = c("High Salinity (> Q75)" = 16, 
-                                    "Overall Holdout"      = 17),
-                         name = "Subset") +
+   curve_levels <- levels(csi_df$Curve)
+   
+   csi_colors <- c(
+      gam_colors$dark,
+      gam_colors$secondary,
+      gam_colors$tertiary,
+      gam_colors$primary
+   )
+   names(csi_colors) <- curve_levels
+   
+   csi_linetypes <- c(
+      "solid",
+      "solid",
+      "solid",
+      "dashed"
+   )
+   names(csi_linetypes) <- curve_levels
+   
+   csi_shapes <- c(
+      16, # Closed circle
+      17, # Closed triangle
+      15, # Closed square
+      18  # Closed diamond
+   )
+   names(csi_shapes) <- curve_levels
+   
+   p_csi <- ggplot(csi_df, aes(x = LeadTime, y = CSI, color = Curve, 
+                               linetype = Curve, shape = Curve)) +
+      geom_line(linewidth = 1.1) +
+      geom_point(size = 2.4) +
+      scale_color_manual(values = csi_colors, name = "Tolerance") +
+      scale_linetype_manual(values = csi_linetypes, name = "Tolerance") +
+      scale_shape_manual(values = csi_shapes, name = "Tolerance") +
       scale_x_continuous(breaks = seq(2, H_MAX, 2)) +
-      scale_y_continuous(limits = c(-1.55, 0.45), 
+      scale_y_continuous(limits = c(0, 1), 
+                         breaks = seq(0, 1, 0.2),
                          sec.axis = dup_axis(labels = NULL, name = NULL)) +
       labs(title = "A)",
            x     = "Forecast Horizon (days)",
-           y     = "Forecast Skill Score (SS)") +
+           y     = "Critical Success Index (CSI)") +
+      guides(
+         color    = guide_legend(nrow = 1, title.position = "left", title.vjust = 0.5),
+         linetype = guide_legend(nrow = 1, title.position = "left", title.vjust = 0.5),
+         shape    = guide_legend(nrow = 1, title.position = "left", title.vjust = 0.5)
+      ) +
       theme_eval() +
       theme(
-         legend.position   = "bottom",
-         legend.box        = "horizontal",
-         legend.key.width  = unit(1.2, "cm"),
-         plot.title        = element_text(face = "bold", size = 16, hjust = 0, margin = margin(b = 2))
+         plot.title.position = "panel",
+         legend.position     = "bottom",
+         legend.direction    = "horizontal",
+         legend.box          = "horizontal",
+         legend.title        = element_text(size = 10, face = "bold"),
+         legend.text         = element_text(size = 8.5),
+         legend.key.width    = unit(0.8, "cm"),
+         plot.title          = element_text(face = "bold", size = 16, hjust = 0, margin = margin(b = -16, t = 0))
       )
    
    # -------------------------------------------------------------------------
@@ -527,17 +551,14 @@ plot_skill_and_calibration <- function(perf_hold, stacked_hold, stacked_train,
       if (lo == hi) paste0("h = ", lo) else paste0("h = ", lo, "\u2013", hi)
    })
    
-   # Map facet strip titles to B), C), D), E) matching Panel A title styling
    panel_strip_labels <- setNames(c("B)", "C)", "D)", "E)"), h_labels)
    
-   # Force factor level ordering: Training first (bottom layer), Holdout second (top layer)
    combined_df <- bind_rows(
       stacked_train %>% mutate(Dataset = "Training"),
       stacked_hold  %>% mutate(Dataset = "Holdout")
    ) %>%
       mutate(Dataset = factor(Dataset, levels = c("Training", "Holdout")))
    
-   # Explicit physical salinity intervals (ppt)
    sal_breaks <- c(0.08, 0.11, 0.14, 0.17, 0.21, 0.26, 0.35, 0.50, 0.80, 1.25, 1.80)
    
    cal_df <- combined_df %>%
@@ -555,9 +576,8 @@ plot_skill_and_calibration <- function(perf_hold, stacked_hold, stacked_train,
          N             = n(),
          .groups       = "drop"
       ) %>%
-      arrange(HBin, PredBin, Dataset) # Ensures Holdout renders on top
+      arrange(HBin, PredBin, Dataset)
    
-   # In-panel horizon labels (placed inside upper-left of each canvas)
    in_panel_labels <- data.frame(
       HBin  = factor(h_labels, levels = h_labels),
       Label = h_labels
@@ -600,13 +620,13 @@ plot_skill_and_calibration <- function(perf_hold, stacked_hold, stacked_train,
    # -------------------------------------------------------------------------
    # COMBINE & SAVE
    # -------------------------------------------------------------------------
-   p_combined <- p_skill | p_cal
+   p_combined <- p_csi | p_cal
    
-   save_plot_dir(p_skill,    dir, "Skill_ByLeadTime",            w = 8,  h = 6)
+   save_plot_dir(p_csi,      dir, "CSI_ByLeadTime",              w = 8,  h = 6)
    save_plot_dir(p_cal,      dir, "Calibration_DualDataset",     w = 8,  h = 7)
-   save_plot_dir(p_combined, dir, "Skill_Calibration_Combined",   w = 16, h = 7.5)
+   save_plot_dir(p_combined, dir, "CSI_Calibration_Combined",     w = 16, h = 7.5)
    
-   invisible(list(skill = p_skill, calibration = p_cal, combined = p_combined))
+   invisible(list(csi = p_csi, calibration = p_cal, combined = p_combined))
 }
 
 # =============================================================================
@@ -1274,7 +1294,7 @@ plot_salinity_forecast_panels <- function(data,
                                           threshold  = 0.5,
                                           title      = NULL,
                                           NCOL       = 2,
-                                          y_expand   = c(0.05, 0.05)) {
+                                          y_expand   = c(0.00, 0.05)) {
    
    observed_linewidth <- 0.9
    model_linewidth    <- 1.3
@@ -1306,14 +1326,15 @@ plot_salinity_forecast_panels <- function(data,
    
    shared_y_range <- base_data %>%
       dplyr::mutate(
-         Lower = Predicted - (1.96 * Predicted_SE),
-         Upper = Predicted + (1.96 * Predicted_SE)
+         Predicted = pmax(Predicted, 0),
+         Lower     = pmax(Predicted - (1.96 * Predicted_SE), 0),
+         Upper     = Predicted + (1.96 * Predicted_SE)
       ) %>%
       dplyr::summarise(
-         lo = min(c(Salinity_h, Lower, if (epa_line) threshold else NA), na.rm = TRUE),
+         lo = 0,
          hi = max(c(Salinity_h, Upper, if (epa_line) threshold else NA), na.rm = TRUE)
       )
-   shared_y_limits <- c(shared_y_range$lo, shared_y_range$hi)
+   shared_y_limits <- c(0, shared_y_range$hi)
    
    add_segments <- function(df) {
       df %>%
@@ -1336,14 +1357,20 @@ plot_salinity_forecast_panels <- function(data,
       
       obs_df <- h_data %>%
          dplyr::select(TargetDate, Value = Salinity_h) %>%
-         dplyr::mutate(Series = "Observed", Lower = NA_real_, Upper = NA_real_) %>%
+         dplyr::mutate(
+            Value = pmax(Value, 0),
+            Series = "Observed", 
+            Lower = NA_real_, 
+            Upper = NA_real_
+         ) %>%
          add_segments()
       
       mod_df <- h_data %>%
          dplyr::select(TargetDate, Value = Predicted, SE = Predicted_SE) %>%
          dplyr::mutate(
+            Value  = pmax(Value, 0),
             Series = series_label,
-            Lower  = Value - (1.96 * SE),
+            Lower  = pmax(Value - (1.96 * SE), 0),
             Upper  = Value + (1.96 * SE)
          ) %>%
          dplyr::select(-SE) %>%
@@ -1353,6 +1380,8 @@ plot_salinity_forecast_panels <- function(data,
          dplyr::mutate(Series = factor(Series, levels = c("Observed", series_label)),
                        .draw_order = ifelse(Series == "Observed", 2, 1)) %>%
          dplyr::arrange(.draw_order)
+      
+      top_expand <- if (length(y_expand) == 2) y_expand[2] else y_expand[1]
       
       p <- ggplot(plot_long, aes(x = TargetDate, y = Value, group = interaction(Series, segment)))
       p <- p + geom_ribbon(aes(ymin = Lower, ymax = Upper, fill = Series),
@@ -1378,7 +1407,7 @@ plot_salinity_forecast_panels <- function(data,
          scale_alpha_manual(values = c("Observed" = observed_alpha,
                                        setNames(model_alpha, series_label))) +
          scale_x_datetime(expand = c(0, 0)) +
-         scale_y_continuous(limits = shared_y_limits, expand = expansion(mult = y_expand)) +
+         scale_y_continuous(limits = shared_y_limits, expand = expansion(mult = c(0, top_expand))) +
          labs(x = if (show_x_axis) "Date" else NULL,
               y = if (show_y_title) "Daily Maximum Salinity (ppt)" else NULL,
               title = panel_title) +
@@ -1399,7 +1428,7 @@ plot_salinity_forecast_panels <- function(data,
       
       if (mirror_axis) {
          p <- p +
-            scale_y_continuous(limits = shared_y_limits, expand = expansion(mult = y_expand),
+            scale_y_continuous(limits = shared_y_limits, expand = expansion(mult = c(0, top_expand)),
                                sec.axis = dup_axis(name = NULL)) +
             theme(
                axis.text.y.left  = element_blank(),

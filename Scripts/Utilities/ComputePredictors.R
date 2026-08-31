@@ -1,18 +1,34 @@
-build_model_data <- function(daily_raw, clim_discharge, flush_threshold, estuary_axis_deg = 0) {
+# Helper function: Safe rolling mean enforcing minimum data completeness (>= 70% valid data)
+safe_rollmean <- function(x, k, min_prop = 0.70) {
+   min_obs <- ceiling(k * min_prop)
+   
+   # Count valid non-NA entries per rolling window
+   valid_counts <- zoo::rollapply(
+      !is.na(x), width = k, FUN = sum, fill = NA, align = "right"
+   )
+   
+   # Sum non-NA values per rolling window
+   roll_sums <- zoo::rollapply(
+      ifelse(is.na(x), 0, x), width = k, FUN = sum, fill = NA, align = "right"
+   )
+   
+   # Mask windows that fall below the completeness threshold
+   ifelse(valid_counts >= min_obs, roll_sums / valid_counts, NA_real_)
+}
+
+build_model_data <- function(daily_raw, flush_threshold, estuary_axis_deg = 0) {
    
    model_data <- daily_raw %>%
-      left_join(clim_discharge, by = "DayOfYear") %>%
-      mutate(DischargeAnomaly = Discharge / ClimDischarge) %>%
       arrange(DateTime) %>%
       
-      # =======================================================================
+   # =======================================================================
    # PART 0: SALINITY PREDICTORS
    # =======================================================================
    mutate(
-      LagSalinity = lag(Salinity, 1)
+      LagSalinity = lag(Salinity, 0)
    ) %>%
       
-      # =======================================================================
+   # =======================================================================
    # PART 1: TIDE PREDICTORS
    # =======================================================================
    mutate(
@@ -59,53 +75,46 @@ build_model_data <- function(daily_raw, clim_discharge, flush_threshold, estuary
       TideMean60  = zoo::rollmean(TideMean, 60, fill = NA, align = "right", na.rm = TRUE)
    ) %>%
       
-      # =======================================================================
+   # =======================================================================
    # PART 2: WIND PREDICTORS
    # =======================================================================
    mutate(
-      direction_radians = WDIR * pi / 180,
-      axis_rad          = estuary_axis_deg * pi / 180,
-      WindAlong         = -WSPD * cos(direction_radians - axis_rad),
-      WindCross         = -WSPD * sin(direction_radians - axis_rad)
-   ) %>%
-      select(-c(direction_radians, axis_rad, WDIR, WSPD)) %>%
-      mutate(
-         RollingWindAlong1  = zoo::rollmean(WindAlong, 1,  fill = NA, align = "right", na.rm = TRUE),
-         RollingWindAlong2  = zoo::rollmean(WindAlong, 2,  fill = NA, align = "right", na.rm = TRUE),
-         RollingWindAlong3  = zoo::rollmean(WindAlong, 3,  fill = NA, align = "right", na.rm = TRUE),
-         RollingWindAlong4  = zoo::rollmean(WindAlong, 4,  fill = NA, align = "right", na.rm = TRUE),
-         RollingWindAlong5  = zoo::rollmean(WindAlong, 5,  fill = NA, align = "right", na.rm = TRUE),
-         RollingWindAlong6  = zoo::rollmean(WindAlong, 6,  fill = NA, align = "right", na.rm = TRUE),
-         RollingWindAlong7  = zoo::rollmean(WindAlong, 7,  fill = NA, align = "right", na.rm = TRUE),
-         RollingWindAlong8  = zoo::rollmean(WindAlong, 8,  fill = NA, align = "right", na.rm = TRUE),
-         RollingWindAlong9  = zoo::rollmean(WindAlong, 9,  fill = NA, align = "right", na.rm = TRUE),
-         RollingWindAlong10 = zoo::rollmean(WindAlong, 10, fill = NA, align = "right", na.rm = TRUE),
-         RollingWindAlong11 = zoo::rollmean(WindAlong, 11, fill = NA, align = "right", na.rm = TRUE),
-         RollingWindAlong12 = zoo::rollmean(WindAlong, 12, fill = NA, align = "right", na.rm = TRUE),
-         RollingWindAlong13 = zoo::rollmean(WindAlong, 13, fill = NA, align = "right", na.rm = TRUE),
-         RollingWindAlong14 = zoo::rollmean(WindAlong, 14, fill = NA, align = "right", na.rm = TRUE),
-         RollingWindAlong21 = zoo::rollmean(WindAlong, 21, fill = NA, align = "right", na.rm = TRUE),
-         RollingWindAlong30 = zoo::rollmean(WindAlong, 30, fill = NA, align = "right", na.rm = TRUE),
-         
-         RollingWindCross1  = zoo::rollmean(WindCross, 1,  fill = NA, align = "right", na.rm = TRUE),
-         RollingWindCross2  = zoo::rollmean(WindCross, 2,  fill = NA, align = "right", na.rm = TRUE),
-         RollingWindCross3  = zoo::rollmean(WindCross, 3,  fill = NA, align = "right", na.rm = TRUE),
-         RollingWindCross4  = zoo::rollmean(WindCross, 4,  fill = NA, align = "right", na.rm = TRUE),
-         RollingWindCross5  = zoo::rollmean(WindCross, 5,  fill = NA, align = "right", na.rm = TRUE),
-         RollingWindCross6  = zoo::rollmean(WindCross, 6,  fill = NA, align = "right", na.rm = TRUE),
-         RollingWindCross7  = zoo::rollmean(WindCross, 7,  fill = NA, align = "right", na.rm = TRUE),
-         RollingWindCross8  = zoo::rollmean(WindCross, 8,  fill = NA, align = "right", na.rm = TRUE),
-         RollingWindCross9  = zoo::rollmean(WindCross, 9,  fill = NA, align = "right", na.rm = TRUE),
-         RollingWindCross10 = zoo::rollmean(WindCross, 10, fill = NA, align = "right", na.rm = TRUE),
-         RollingWindCross11 = zoo::rollmean(WindCross, 11, fill = NA, align = "right", na.rm = TRUE),
-         RollingWindCross12 = zoo::rollmean(WindCross, 12, fill = NA, align = "right", na.rm = TRUE),
-         RollingWindCross13 = zoo::rollmean(WindCross, 13, fill = NA, align = "right", na.rm = TRUE),
-         RollingWindCross14 = zoo::rollmean(WindCross, 14, fill = NA, align = "right", na.rm = TRUE),
-         RollingWindCross21 = zoo::rollmean(WindCross, 21, fill = NA, align = "right", na.rm = TRUE),
-         RollingWindCross30 = zoo::rollmean(WindCross, 30, fill = NA, align = "right", na.rm = TRUE)
-      ) %>%
+      RollingWindAlong1  = safe_rollmean(WindAlong, 1,  min_prop = 0.70),
+      RollingWindAlong2  = safe_rollmean(WindAlong, 2,  min_prop = 0.70),
+      RollingWindAlong3  = safe_rollmean(WindAlong, 3,  min_prop = 0.70),
+      RollingWindAlong4  = safe_rollmean(WindAlong, 4,  min_prop = 0.70),
+      RollingWindAlong5  = safe_rollmean(WindAlong, 5,  min_prop = 0.70),
+      RollingWindAlong6  = safe_rollmean(WindAlong, 6,  min_prop = 0.70),
+      RollingWindAlong7  = safe_rollmean(WindAlong, 7,  min_prop = 0.70),
+      RollingWindAlong8  = safe_rollmean(WindAlong, 8,  min_prop = 0.70),
+      RollingWindAlong9  = safe_rollmean(WindAlong, 9,  min_prop = 0.70),
+      RollingWindAlong10 = safe_rollmean(WindAlong, 10, min_prop = 0.70),
+      RollingWindAlong11 = safe_rollmean(WindAlong, 11, min_prop = 0.70),
+      RollingWindAlong12 = safe_rollmean(WindAlong, 12, min_prop = 0.70),
+      RollingWindAlong13 = safe_rollmean(WindAlong, 13, min_prop = 0.70),
+      RollingWindAlong14 = safe_rollmean(WindAlong, 14, min_prop = 0.70),
+      RollingWindAlong21 = safe_rollmean(WindAlong, 21, min_prop = 0.70),
+      RollingWindAlong30 = safe_rollmean(WindAlong, 30, min_prop = 0.70),
       
-      # =======================================================================
+      RollingWindCross1  = safe_rollmean(WindCross, 1,  min_prop = 0.70),
+      RollingWindCross2  = safe_rollmean(WindCross, 2,  min_prop = 0.70),
+      RollingWindCross3  = safe_rollmean(WindCross, 3,  min_prop = 0.70),
+      RollingWindCross4  = safe_rollmean(WindCross, 4,  min_prop = 0.70),
+      RollingWindCross5  = safe_rollmean(WindCross, 5,  min_prop = 0.70),
+      RollingWindCross6  = safe_rollmean(WindCross, 6,  min_prop = 0.70),
+      RollingWindCross7  = safe_rollmean(WindCross, 7,  min_prop = 0.70),
+      RollingWindCross8  = safe_rollmean(WindCross, 8,  min_prop = 0.70),
+      RollingWindCross9  = safe_rollmean(WindCross, 9,  min_prop = 0.70),
+      RollingWindCross10 = safe_rollmean(WindCross, 10, min_prop = 0.70),
+      RollingWindCross11 = safe_rollmean(WindCross, 11, min_prop = 0.70),
+      RollingWindCross12 = safe_rollmean(WindCross, 12, min_prop = 0.70),
+      RollingWindCross13 = safe_rollmean(WindCross, 13, min_prop = 0.70),
+      RollingWindCross14 = safe_rollmean(WindCross, 14, min_prop = 0.70),
+      RollingWindCross21 = safe_rollmean(WindCross, 21, min_prop = 0.70),
+      RollingWindCross30 = safe_rollmean(WindCross, 30, min_prop = 0.70)
+   ) %>%
+      
+   # =======================================================================
    # PART 3: DISCHARGE PREDICTORS
    # =======================================================================
    mutate(
@@ -151,13 +160,12 @@ build_model_data <- function(daily_raw, clim_discharge, flush_threshold, estuary
    # Set NaN and Inf values to NA
    model_data[] <- lapply(model_data, function(x) { x[is.nan(x) | is.infinite(x)] <- NA; x })
    
-   # Match precise final ordering, rounding, and column selections
+   # Clean up base variables that are fully superseded by rolling versions
    model_data <- model_data %>%
-      relocate(FERC, Salinity, Discharge, .after = DayOfYear) %>%
-      mutate_if(is.numeric, round, digits = 3) %>%
+      mutate(across(where(is.numeric), ~ round(.x, 3))) %>%
       relocate(Salinity, .after = DayOfYear) %>%
       relocate(FERC, .after = DayOfYear) %>%
-      dplyr::select(-c(MaxDischarge, WindAlong, WindCross, TideMean, DischargeAnomaly, ClimDischarge))
+      dplyr::select(-c(TideRange, TideMean, MaxDischarge, WindAlong, WindCross, Discharge))
    
    return(model_data)
 }

@@ -43,7 +43,7 @@ fit_gam <- function(data,
                     k_interaction_range    = c(6, 14),
                     k_sustained_flow_range = c(4, 10),
                     k_flushing_flow_range  = c(6, 12),
-                    k_wind_range           = c(5, 14),
+                    k_wind_range           = c(5, 16),
                     
                     interactions = list(),
                     wind_ti_by = FALSE,
@@ -60,7 +60,7 @@ fit_gam <- function(data,
                     n_top_candidates = 10,
                     
                     # Parallel & Timeout arguments
-                    timeout_sec   = 20,   # Max seconds allowed per fold task
+                    timeout_sec   = 30,   # Max seconds allowed per fold task
                     n_workers     = NULL,
                     show_progress = TRUE) {
    

@@ -3,29 +3,11 @@
 # Project:        Chapter1
 # Author:         Ethan Heidtman
 # Description:    Fits the unified multi-horizon salinity GAM on the stacked
-#                 date-horizon dataset. Predictors are manually selected based
-#                 on Script 02/03 RF screening and stability analysis. h is an
-#                 explicit smooth predictor, with ti(h, predictor) interactions
-#                 for each selected predictor. K is tuned via expanding window
-#                 CV across grouped k-ranges (see FitGAM.R).
-#
-#                 Workflow:
-#                   Runs CV tuning (parallelized across k-combos via future/furrr),
-#                   refits top candidates to extract EDF (serial), and saves 
-#                   candidate metadata. Proceed to Script 05 for diagnostic
-#                   plotting, candidate selection, and final model refitting.
-#
-#                 PARALLELIZATION NOTES:
-#                   - plan() is set here, not inside fit_gam, so the same
-#                     fit_gam works unmodified on a laptop, a Windows machine,
-#                     or a cluster -- only this block needs to change per
-#                     platform.
-#                   - nthreads inside every CV bam() call is forced to 1
-#                     inside fit_gam itself (not configurable here) -- this
-#                     was confirmed necessary by benchmarking; see project
-#                     notes on the k-combo-level parallelization decision.
-#                   - Convergence is tracked per fold (n_folds_converged) and
-#                     reported in candidate_summary as a diagnostic.
+#                 date-horizon dataset. Predictors are automatically selected
+#                 from Script 02 RF stability screening (top variable per
+#                 group). h is an explicit smooth predictor, with ti(h, predictor)
+#                 interactions for each selected predictor. K is tuned via
+#                 expanding window CV across grouped k-ranges.
 # =============================================================================
 
 library(tidyverse)
@@ -63,19 +45,33 @@ handlers(global = TRUE)
 # PARAMETERS
 # =============================================================================
 
-H_MAX <- 20
+H_MAX      <- 20
+GAM_LEVELS <- 6  # number of k combos to try when fitting
 
-# Manually selected predictors based on RF screening (Scripts 02/03)
-# LagSalinity:        snapshot at issue date, linear main effect
-# RollingDischarge:  sustained discharge, dominant across most horizons
-# MaxDischarge:      flushing discharge pulse signal
-# TideRange:         tide, weak but retained
-# RollingWindCross:  wind cross-estuary component, with WindDir by-variable
+# =============================================================================
+# DYNAMIC PREDICTOR SELECTION FROM SCRIPT 02 RF STABILITY
+# =============================================================================
 
-SELECTED_PREDICTORS <- c('h', 'LagSalinity', 'RollingDischarge35',
-                         'MaxDischarge9', 'TideRange30', 'RollingWindCross14')
+stability_summary <- read_qs_files('Outputs/Models/StackedRF/RFStabilitySummary.qs2')
 
-GAM_LEVELS          <- 6  # number of k combos to try when fitting
+target_groups <- c("LagSalinity", "SustainedDischarge", "Wind", 
+                   "FlushingDischarge", "Tide")
+
+# Extract top variable (lowest MeanRank) per group
+auto_selected_vars <- stability_summary %>%
+   filter(Group %in% target_groups) %>%
+   group_by(Group) %>%
+   slice_min(MeanRank, n = 1, with_ties = FALSE) %>%
+   ungroup() %>%
+   # Maintain consistent group ordering
+   mutate(Group = factor(Group, levels = target_groups)) %>%
+   arrange(Group) %>%
+   pull(Variable)
+
+SELECTED_PREDICTORS <- c('h', auto_selected_vars)
+
+cat("=== AUTOMATICALLY SELECTED PREDICTORS (Script 02 RF Stability) ===\n")
+cat(paste(sprintf("  - %s", SELECTED_PREDICTORS), collapse = "\n"), "\n\n")
 
 # =============================================================================
 # LOAD DATA

@@ -1,5 +1,5 @@
 # =============================================================================
-# Script Name:    05_EvaluateUnifiedGAM.R
+# Script Name:    06_EvaluateUnifiedGAM.R
 # Project:        Chapter1
 # Author:         Ethan Heidtman
 # Description:    First, adjusts the final GAM covariance structure to account 
@@ -215,15 +215,98 @@ plot_residual_diagnostics(stacked_hold, H_MAX, HIGH_SALINITY_THRESHOLD, gam_colo
 cat("\nPlotting calibration...\n")
 plot_calibration(stacked_hold, H_MAX, N_CAL_BINS, gam_colors, error_dir)
 
-cat("Generating combined Skill Score and Calibration plot...\n")
+cat("\nCalculating CSI metrics...\n")
+# Dynamic Q75 threshold calculated directly from training dataset
+q75_val   <- as.numeric(quantile(stacked_train$Salinity_h, 0.75, na.rm = TRUE))
+q75_label <- sprintf("Q75 (%.2f ppt)", q75_val)
+
+# Helper function for temporal CSI calculation across lead times
+compute_csi <- function(df_h, threshold, tol_days = 0) {
+   df_clean <- df_h %>% 
+      filter(!is.na(Salinity_h), !is.na(Predicted)) %>% 
+      arrange(DateTime)
+   
+   if (nrow(df_clean) == 0) return(NA_real_)
+   
+   obs_idx  <- which(df_clean$Salinity_h >= threshold)
+   pred_idx <- which(df_clean$Predicted >= threshold)
+   
+   if (length(obs_idx) == 0 && length(pred_idx) == 0) return(1.0)
+   if (length(obs_idx) == 0) return(0.0)
+   if (length(pred_idx) == 0) return(0.0)
+   
+   if (tol_days == 0) {
+      hits <- sum(df_clean$Salinity_h >= threshold & df_clean$Predicted >= threshold)
+      fa   <- sum(df_clean$Salinity_h <  threshold & df_clean$Predicted >= threshold)
+      miss <- sum(df_clean$Salinity_h >= threshold & df_clean$Predicted <  threshold)
+   } else {
+      times <- df_clean$DateTime
+      
+      pred_matched <- vapply(pred_idx, function(p) {
+         any(abs(as.numeric(difftime(times[obs_idx], times[p], units = "days"))) <= tol_days)
+      }, logical(1))
+      
+      obs_matched <- vapply(obs_idx, function(o) {
+         any(abs(as.numeric(difftime(times[pred_idx], times[o], units = "days"))) <= tol_days)
+      }, logical(1))
+      
+      hits <- sum(obs_matched)
+      fa   <- sum(!pred_matched)
+      miss <- sum(!obs_matched)
+   }
+   
+   denom <- hits + fa + miss
+   if (denom == 0) return(NA_real_)
+   hits / denom
+}
+
+# Construct pre-calculated CSI dataset for GamEvaluationPlots.R
+label_05_0day <- "0 Days"
+label_05_1day   <- "1 Day"
+label_05_2day  <- "2 Days"
+label_q75_hold  <- paste0(q75_label, " Holdout - 0 Days")
+
+curve_levels <- c(label_05_0day, label_05_1day, label_05_2day, label_q75_hold)
+
+csi_records <- list()
+for (h_val in 1:H_MAX) {
+   train_h <- stacked_train %>% filter(h == h_val)
+   hold_h  <- stacked_hold  %>% filter(h == h_val)
+   
+   csi_records[[length(csi_records) + 1]] <- data.frame(
+      LeadTime = h_val,
+      CSI      = compute_csi(train_h, threshold = 0.5, tol_days = 0),
+      Curve    = label_05_0day
+   )
+   csi_records[[length(csi_records) + 1]] <- data.frame(
+      LeadTime = h_val,
+      CSI      = compute_csi(train_h, threshold = 0.5, tol_days = 1),
+      Curve    = label_05_1day
+   )
+   csi_records[[length(csi_records) + 1]] <- data.frame(
+      LeadTime = h_val,
+      CSI      = compute_csi(train_h, threshold = 0.5, tol_days = 2),
+      Curve    = label_05_2day
+   )
+   csi_records[[length(csi_records) + 1]] <- data.frame(
+      LeadTime = h_val,
+      CSI      = compute_csi(hold_h, threshold = q75_val, tol_days = 0),
+      Curve    = label_q75_hold
+   )
+}
+
+csi_df <- bind_rows(csi_records) %>% 
+   mutate(Curve = factor(Curve, levels = curve_levels))
+
+cat("Generating combined CSI and Calibration plot...\n")
 skill_cal_plots <- plot_skill_and_calibration(
-   perf_hold     = perf_hold,
+   csi_df        = csi_df,
    stacked_hold  = stacked_hold,
    stacked_train = stacked_train,
-   H_MAX          = H_MAX,
-   N_CAL_BINS     = N_CAL_BINS,
-   gam_colors     = gam_colors,
-   dir            = error_dir
+   H_MAX         = H_MAX,
+   N_CAL_BINS    = N_CAL_BINS,
+   gam_colors    = gam_colors,
+   dir           = error_dir
 )
 
 cat("\nPlotting ACF/PACF...\n")
@@ -344,5 +427,5 @@ write_qs_files(
    list('HoldoutPerformanceByH')
 )
 
-cat("\nScript 05 complete. Plots saved to:", base_dir, "\n")
+cat("\nScript 06 complete. Plots saved to:", base_dir, "\n")
 rm(list = ls())
