@@ -33,10 +33,7 @@ stacked_data <- as.data.frame(
 ) %>% arrange(DateTime, h)
 
 # Explicitly list all metadata and target columns to exclude from predictors
-non_predictor_cols <- c(
-   'DateTime', 'Year', 'Month', 'Day', 'DayOfYear',
-   'FERC', 'Inflows', 'Salinity', 'Salinity_h'
-)
+non_predictor_cols <- c('DateTime', 'Year', 'Month', 'Day', 'DayOfYear', 'Salinity', 'Salinity_h')
 
 # Extract predictor columns (horizon 'h' is retained as a predictor)
 predictor_cols <- setdiff(names(stacked_data), non_predictor_cols)
@@ -58,13 +55,13 @@ folds <- make_expanding_folds(
 # =============================================================================
 
 SEED             <- 123 # random seed
-ntree            <- 300 # number of trees to build
+ntree            <- 250 # number of trees to build
 mtry             <- 10  # number of variables to split at each node (roughly ~sqrt(# variables))
 N_STABLE_SEEDS   <- 10  # number of seeds to try  
 N_REPEATS        <- 1   # number of times to repeat permutation for stability 
 N_SCREEN         <- 10  # number of predictors to select per group
 VARS_PER_CHUNK   <- 2   # number of variables to group together when permuting to save time
-N_WORKERS        <- 4   # number of parallel workers to employ
+N_WORKERS        <- 5   # number of parallel workers to employ
 N_THREADS_SERIAL <- max(1, parallel::detectCores(logical = FALSE) - 1)
 
 checkpoint_dir <- 'Outputs/Models/StackedRF/SeedCheckpoints'

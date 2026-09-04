@@ -163,8 +163,8 @@ build_model_data <- function(daily_raw, flush_threshold, estuary_axis_deg = 0) {
    # Clean up base variables that are fully superseded by rolling versions
    model_data <- model_data %>%
       mutate(across(where(is.numeric), ~ round(.x, 3))) %>%
-      relocate(Salinity, .after = DayOfYear) %>%
-      relocate(FERC, .after = DayOfYear) %>%
+      relocate(Salinity, .after = DateTime) %>%
+      #relocate(FERC, .after = DateTime) %>%
       dplyr::select(-c(TideRange, TideMean, MaxDischarge, WindAlong, WindCross, Discharge))
    
    return(model_data)

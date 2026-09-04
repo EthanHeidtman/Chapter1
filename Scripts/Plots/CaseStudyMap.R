@@ -25,6 +25,7 @@ library(ggspatial)
 library(ggrepel)
 library(ggnewscale)
 library(patchwork)
+library(ggrastr)  # Keeps SVG export under 5MB by rasterizing grid layers
 
 # =============================================================================
 # PARAMETERS
@@ -122,20 +123,13 @@ clip_to_utm <- function(x, utm_box_sf, target_crs) {
 # =============================================================================
 
 cat("\nPulling NHDPlus HR for the main panel...\n")
-
-huc_ids <- get_huc(AOI = main_bbox_sf, type = 'huc08')
-
-nhdplushr_dir <- download_nhdplushr(
-   nhd_dir = 'Data/MapData/NHDPlusHR',
-   hu_list = huc_ids$huc8
-)
+nhdplushr_dir <- 'Data/MapData/NHDPlusHR'
 
 nhd_gdb <- get_nhdplushr(
    nhdplushr_dir,
    layers = c('NHDArea', 'NHDFlowline', 'NHDWaterbody')
 )
 
-# Estuaries (493) and Reservoirs/Lakes (390) > 0.05 km2
 nhd_main_waterbody <- nhd_gdb$NHDWaterbody %>%
    st_zm(drop = TRUE, what = 'ZM') %>%
    filter(FTYPE %in% c(493, 390), AreaSqKM > 0.05) %>%
@@ -158,14 +152,16 @@ nhd_main_streams <- nhd_main_flowline_all %>%
    filter(any(StreamOrde >= STREAM_MIN_ORDER) | first(gnis_name) %in% STREAM_NAMES_INCLUDE_EXTRA) %>%
    ungroup()
 
-# Combine all water geometries and completely dissolve to remove interior seams
 water_mask <- st_union(st_geometry(nhd_main_waterbody), st_geometry(nhd_main_area)) %>%
    st_union() %>%
    st_make_valid()
 
-# Extract shorelines and remove border segments touching the frame edge
+water_mask_closed <- st_buffer(water_mask, 15) %>% 
+   st_buffer(-15) %>% 
+   st_make_valid()
+
 main_box_boundary <- st_boundary(main_bbox_utm_sf)
-water_boundary    <- st_boundary(water_mask)
+water_boundary    <- st_boundary(water_mask_closed)
 shoreline_lines   <- st_difference(water_boundary, st_buffer(main_box_boundary, 20))
 
 extend_toward_water <- function(line_sfg, water, extend_dist, gap_threshold) {
@@ -205,7 +201,13 @@ nhd_main_streams <- nhd_main_streams %>%
    st_difference(water_mask)
 
 nhd_main_streams <- nhd_main_streams[!st_is_empty(nhd_main_streams), ] %>%
-   st_collection_extract('LINESTRING')
+   st_collection_extract('LINESTRING') %>%
+   st_cast('LINESTRING', warn = FALSE)
+
+ARTIFACT_MAX_LEN_M <- 500
+stream_vertex_count <- sapply(st_geometry(nhd_main_streams), function(g) nrow(st_coordinates(g)))
+stream_length_m <- as.numeric(st_length(nhd_main_streams))
+nhd_main_streams <- nhd_main_streams[!(stream_vertex_count == 2 & stream_length_m < ARTIFACT_MAX_LEN_M), ]
 
 states_raw <- tigris::states(cb = TRUE) %>% st_transform(4326)
 
@@ -223,7 +225,6 @@ state_line <- st_intersection(md_boundary, pa_boundary) %>%
 # =============================================================================
 
 cat("\nLoading bathymetry raster...\n")
-
 bathy_raw <- rast(BATHY_PATH)
 
 bathy_crop_bbox <- st_bbox(st_buffer(st_as_sfc(main_bbox), 0.05))
@@ -249,9 +250,45 @@ inset_land <- tigris::states(cb = TRUE) %>%
 inset_land_union <- st_union(inset_land)
 inset_water <- st_difference(inset_bbox_utm_sf, inset_land_union) %>% st_make_valid()
 
-nhd_inset_rivers_raw <- get_nhdplus(AOI = inset_bbox_sf, realization = 'flowline') %>%
-   st_zm(drop = TRUE, what = 'ZM') %>%
-   filter(gnis_name %in% INSET_RIVER_NAMES, streamorde >= INSET_RIVER_MIN_STREAMORDE)
+nhd_inset_rivers_raw <- tryCatch({
+   get_nhdplus(
+      AOI = inset_bbox_sf, 
+      realization = 'flowline', 
+      streamorder = INSET_RIVER_MIN_STREAMORDE
+   )
+}, error = function(e) {
+   warning("USGS NHDPlus web query failed: ", e$message)
+   NULL
+})
+
+if (is.list(nhd_inset_rivers_raw) && !inherits(nhd_inset_rivers_raw, "sf")) {
+   if ("flowline" %in% names(nhd_inset_rivers_raw)) {
+      nhd_inset_rivers_raw <- nhd_inset_rivers_raw[["flowline"]]
+   } else if (length(nhd_inset_rivers_raw) > 0) {
+      nhd_inset_rivers_raw <- nhd_inset_rivers_raw[[1]]
+   } else {
+      nhd_inset_rivers_raw <- NULL
+   }
+}
+
+if (!is.null(nhd_inset_rivers_raw) && inherits(nhd_inset_rivers_raw, "sf") && nrow(nhd_inset_rivers_raw) > 0) {
+   nhd_inset_rivers_raw <- nhd_inset_rivers_raw %>%
+      st_zm(drop = TRUE, what = 'ZM') %>%
+      filter(gnis_name %in% INSET_RIVER_NAMES)
+} else {
+   cat("\nUSGS web service unavailable. Falling back to Natural Earth dataset for inset rivers...\n")
+   clean_river_names <- gsub(" River$", "", INSET_RIVER_NAMES)
+   
+   nhd_inset_rivers_raw <- rnaturalearth::ne_download(
+      scale = 10, 
+      type = 'rivers_lake_centerlines', 
+      category = 'physical', 
+      returnclass = 'sf'
+   ) %>%
+      st_zm(drop = TRUE, what = 'ZM') %>%
+      filter(name %in% clean_river_names | name %in% INSET_RIVER_NAMES | name_en %in% clean_river_names) %>%
+      mutate(gnis_name = ifelse(grepl("River$", name), name, paste(name, "River")))
+}
 
 potomac_south_box <- st_bbox(
    c(xmin = unname(inset_bbox['xmin']), xmax = unname(inset_bbox['xmax']),
@@ -276,18 +313,19 @@ nhd_inset_rivers <- nhd_inset_rivers[!st_is_empty(nhd_inset_rivers), ] %>%
 
 inset_labels <- tibble::tribble(
    ~name,              ~lon,      ~lat,
-   'Baltimore',        -76.6122,  39.2904,
+   'Baltimore',        -76.6122,  39.2904, 
    'Washington, DC',   -77.0369,  38.9072,
    'Philadelphia',     -75.1652,  39.9526
 ) %>%
    st_as_sf(coords = c('lon', 'lat'), crs = 4326) %>%
    st_transform(TARGET_CRS)
 
+# MD state label positioned inland (west of bay) to avoid water overlap
 state_labels <- tibble::tribble(
-   ~name, ~lon,  ~lat,
-   'PA',  -77.3, 40.0,
-   'MD',  -77.2, 39.4,
-   'VA',  -77.8, 37.7,
+   ~name, ~lon,   ~lat,
+   'PA',  -77.3,  40.0,
+   'MD',  -76.8,  39.0,
+   'VA',  -77.8,  37.85,
    'DE',  -75.55, 38.9
 ) %>%
    st_as_sf(coords = c('lon', 'lat'), crs = 4326) %>%
@@ -297,7 +335,7 @@ bay_label_coords <- st_coordinates(
    st_sfc(st_point(c(-75.05, 37.25)), crs = 4326) %>% st_transform(TARGET_CRS)
 )
 bay_target_coords <- st_coordinates(
-   st_sfc(st_point(c(-76.10, 37.35)), crs = 4326) %>% st_transform(TARGET_CRS)
+   st_sfc(st_point(c(-76.10, 37.75)), crs = 4326) %>% st_transform(TARGET_CRS)
 )
 
 # =============================================================================
@@ -358,28 +396,40 @@ state_line_y_at_left <- st_coordinates(state_line_proj)[1, 'Y']
 panel_width_m <- as.numeric(main_bbox_utm['xmax'] - main_bbox_utm['xmin'])
 label_nudge_m <- panel_width_m * 0.01
 
+# Scale bar background box coordinates tightly fitted around scale bar
+scale_bg_xmin <- main_bbox_utm['xmin'] + 300
+scale_bg_xmax <- main_bbox_utm['xmin'] + 12900
+scale_bg_ymin <- main_bbox_utm['ymin'] + 200
+scale_bg_ymax <- main_bbox_utm['ymin'] + 1200
+
 p_main <- ggplot() +
-   geom_tile(data = hillshade_main_df, aes(x, y, fill = shade),
-             show.legend = FALSE, alpha = HILLSHADE_ALPHA) +
+   rasterise(
+      geom_tile(data = hillshade_main_df, aes(x, y, fill = shade),
+                show.legend = FALSE, alpha = HILLSHADE_ALPHA),
+      dpi = 600
+   ) +
    scale_fill_gradient(low = 'grey20', high = 'grey90', guide = 'none') +
    ggnewscale::new_scale_fill() +
    geom_sf(data = water_mask, fill = '#c6dbef', color = NA) +
-   geom_raster(data = bathy_main_df, aes(x = x, y = y, fill = depth), 
-               interpolate = TRUE, alpha = 0.9) +
+   rasterise(
+      geom_raster(data = bathy_main_df, aes(x = x, y = y, fill = depth), 
+                  interpolate = TRUE, alpha = 0.9),
+      dpi = 600
+   ) +
    scale_fill_gradient(
       low = '#08306b', high = '#c6dbef', name = 'Depth (m)',
       guide = guide_colorbar(
          direction = 'horizontal', title.position = 'top',
-         barwidth = unit(7, 'cm'), barheight = unit(0.5, 'cm')
+         barwidth = unit(9.1, 'cm'), barheight = unit(0.65, 'cm')
       )
    ) +
    geom_sf(data = nhd_main_streams_proj, color = STREAM_COLOR, linewidth = 0.4) +
    geom_sf(data = shoreline_lines, color = WATER_OUTLINE_COLOR, linewidth = WATER_OUTLINE_WIDTH) +
    geom_sf(data = state_line_proj, color = 'grey40', linewidth = 0.5) +
    annotate('text', x = label_x, y = state_line_y_at_left + 700,
-            label = 'Pennsylvania', size = 5.5, color = 'grey30', fontface = 'italic', hjust = 0) +
+            label = 'Pennsylvania', size = 4.5, color = 'grey30', fontface = 'italic', hjust = 0) +
    annotate('text', x = label_x, y = state_line_y_at_left - 700,
-            label = 'Maryland', size = 5.5, color = 'grey30', fontface = 'italic', hjust = 0) +
+            label = 'Maryland', size = 4.5, color = 'grey30', fontface = 'italic', hjust = 0) +
    geom_sf(data = place_labels %>% filter(name == 'Port Deposit'),
            size = 1.8, color = 'black') +
    geom_sf(data = place_labels %>% filter(name == 'Havre de Grace'),
@@ -387,29 +437,34 @@ p_main <- ggplot() +
    geom_text_repel(
       data = place_labels %>% filter(name == 'Havre de Grace'),
       aes(label = name, geometry = geometry), stat = 'sf_coordinates',
-      size = 5.5, fontface = 'bold', nudge_x = -label_nudge_m, direction = 'y', hjust = 1,
+      size = 7.0, fontface = 'bold', nudge_x = -label_nudge_m, direction = 'y', hjust = 1,
       segment.color = NA
    ) +
    geom_text_repel(
       data = place_labels %>% filter(name == 'Conowingo Dam'),
       aes(label = name, geometry = geometry), stat = 'sf_coordinates',
-      size = 5.5, fontface = 'bold', nudge_x = -label_nudge_m * 1.2, nudge_y = -1200, direction = 'y', hjust = 1,
+      size = 7.0, fontface = 'bold', nudge_x = -label_nudge_m * 4.5, nudge_y = -1500, direction = 'both', hjust = 1,
       min.segment.length = 0, segment.color = 'black', linewidth = 0.5
    ) +
    geom_text_repel(
       data = place_labels %>% filter(name == 'Port Deposit'),
       aes(label = name, geometry = geometry), stat = 'sf_coordinates',
-      size = 5.5, fontface = 'bold', nudge_x = label_nudge_m, direction = 'y', hjust = 0,
+      size = 7.0, fontface = 'bold', nudge_x = label_nudge_m, direction = 'y', hjust = 0,
       segment.color = NA
    ) +
+   # Tight translucent tan background box wrapping the scale bar
+   annotate('rect', xmin = scale_bg_xmin, xmax = scale_bg_xmax,
+            ymin = scale_bg_ymin, ymax = scale_bg_ymax,
+            fill = alpha(LAND_COLOR_MAIN, 0.80), color = NA) +
    annotation_scale(
-      location = 'bl', pad_x = unit(0.3, 'cm'), pad_y = unit(0.3, 'cm'), width_hint = 0.2
+      location = 'bl', pad_x = unit(0.3, 'cm'), pad_y = unit(0.3, 'cm'), 
+      width_hint = 0.30, height = unit(0.35, 'cm'), text_cex = 1.1
    ) +
    annotation_north_arrow(
-      location = 'bl', pad_x = unit(1.2, 'cm'), pad_y = unit(3.2, 'cm'),
+      location = 'bl', pad_x = unit(1.0, 'cm'), pad_y = unit(3.6, 'cm'),
       which_north = 'true',
-      style = north_arrow_orienteering(text_size = 11),
-      height = unit(1.6, 'cm'), width = unit(1.6, 'cm')
+      style = north_arrow_orienteering(text_size = 9),
+      height = unit(1.3, 'cm'), width = unit(1.3, 'cm')
    ) +
    coord_sf(
       crs = TARGET_CRS,
@@ -420,13 +475,12 @@ p_main <- ggplot() +
    theme_void() +
    theme(
       legend.position = 'inside',
-      legend.position.inside = c(0.84, 0.87),
-      # Translucent background card matching land color with 80% opacity
+      legend.position.inside = c(0.81, 0.86),
       legend.background = element_rect(fill = alpha(LAND_COLOR_MAIN, 0.80), color = NA),
-      legend.margin = margin(5, 8, 5, 8),
+      legend.margin = margin(6, 10, 6, 10),
       legend.key = element_blank(),
-      legend.title = element_text(size = 11, face = 'bold'),
-      legend.text = element_text(size = 9),
+      legend.title = element_text(size = 14, face = 'bold'),
+      legend.text = element_text(size = 11),
       panel.background = element_rect(fill = LAND_COLOR_MAIN, color = NA),
       plot.margin = margin(0, 0, 0, 0)
    )
@@ -446,18 +500,33 @@ p_inset <- ggplot() +
    geom_sf(data = nhd_inset_rivers_proj, color = 'grey50', linewidth = 0.25) +
    geom_sf(data = main_extent_rect, fill = NA, color = ACCENT_COLOR, linewidth = 0.9) +
    geom_sf(data = inset_labels, size = 1.5, color = 'black') +
+   # City labels nudged to target label locations while city dots stay anchored at actual coordinates
    geom_text_repel(
-      data = inset_labels, aes(label = name, geometry = geometry),
-      stat = 'sf_coordinates', size = 3.0, fontface = 'bold',
-      nudge_x = -20000, hjust = 1, direction = 'y',
+      data = inset_labels %>% filter(name == 'Washington, DC'), aes(label = name, geometry = geometry),
+      stat = 'sf_coordinates', size = 4.0, fontface = 'bold',
+      nudge_x = -18000, nudge_y = -15000, hjust = 1, direction = 'both',
+      box.padding = 0.25, point.padding = 0.2, min.segment.length = 0,
+      segment.color = 'grey40', linewidth = 0.3
+   ) +
+   geom_text_repel(
+      data = inset_labels %>% filter(name == 'Philadelphia'), aes(label = name, geometry = geometry),
+      stat = 'sf_coordinates', size = 4.0, fontface = 'bold',
+      nudge_x = -20000, nudge_y = 2000, hjust = 1, direction = 'both',
+      box.padding = 0.25, point.padding = 0.2, min.segment.length = 0,
+      segment.color = 'grey40', linewidth = 0.3
+   ) +
+   geom_text_repel(
+      data = inset_labels %>% filter(name == 'Baltimore'), aes(label = name, geometry = geometry),
+      stat = 'sf_coordinates', size = 4.0, fontface = 'bold',
+      nudge_x = -15000, nudge_y = 12000, hjust = 1, direction = 'both',
       box.padding = 0.25, point.padding = 0.2, min.segment.length = 0,
       segment.color = 'grey40', linewidth = 0.3
    ) +
    geom_sf_text(data = state_labels, aes(label = name), size = 3.5,
                 fontface = 'italic', color = 'grey30') +
    annotate('text', x = bay_label_coords[1, 'X'], y = bay_label_coords[1, 'Y'],
-            label = 'Chesapeake\nBay', size = 3.2, fontface = 'bold.italic', color = 'grey20', hjust = 0.5) +
-   annotate('segment', x = bay_label_coords[1, 'X'] - 12000, y = bay_label_coords[1, 'Y'] + 4000,
+            label = 'Chesapeake\nBay', size = 3.9, fontface = 'bold.italic', color = 'grey20', hjust = 0.5) +
+   annotate('segment', x = bay_label_coords[1, 'X'] - 45000, y = bay_label_coords[1, 'Y'] + 22000,
             xend = bay_target_coords[1, 'X'], yend = bay_target_coords[1, 'Y'],
             color = 'grey30', linewidth = 0.4) +
    coord_sf(
@@ -504,6 +573,7 @@ final_map <- p_main +
 
 ggsave(file.path(fig_dir, 'CaseStudyMap.png'), final_map,
        width = EXPORT_WIDTH_IN, height = EXPORT_HEIGHT_IN, dpi = 600, bg = 'white')
+
 ggsave(file.path(fig_dir, 'CaseStudyMap.svg'), final_map,
        width = EXPORT_WIDTH_IN, height = EXPORT_HEIGHT_IN, dpi = 600, bg = 'white')
 

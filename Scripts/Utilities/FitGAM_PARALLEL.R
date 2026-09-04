@@ -43,7 +43,7 @@ fit_gam <- function(data,
                     k_interaction_range    = c(6, 14),
                     k_sustained_flow_range = c(4, 10),
                     k_flushing_flow_range  = c(6, 12),
-                    k_wind_range           = c(5, 16),
+                    k_wind_range           = c(5, 14),
                     
                     interactions = list(),
                     wind_ti_by = FALSE,

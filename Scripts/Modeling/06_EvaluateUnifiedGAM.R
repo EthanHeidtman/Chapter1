@@ -264,9 +264,10 @@ compute_csi <- function(df_h, threshold, tol_days = 0) {
 label_05_0day <- "0 Days"
 label_05_1day   <- "1 Day"
 label_05_2day  <- "2 Days"
-label_q75_hold  <- paste0(q75_label, " Holdout - 0 Days")
+#label_q75_hold  <- paste0(q75_label, " Holdout - 0 Days")
+label_05_hold <- '0.5 ppt Holdout - 0 Days'
 
-curve_levels <- c(label_05_0day, label_05_1day, label_05_2day, label_q75_hold)
+curve_levels <- c(label_05_0day, label_05_1day, label_05_2day, label_05_hold)
 
 csi_records <- list()
 for (h_val in 1:H_MAX) {
@@ -290,8 +291,10 @@ for (h_val in 1:H_MAX) {
    )
    csi_records[[length(csi_records) + 1]] <- data.frame(
       LeadTime = h_val,
-      CSI      = compute_csi(hold_h, threshold = q75_val, tol_days = 0),
-      Curve    = label_q75_hold
+      #CSI      = compute_csi(hold_h, threshold = q75_vl, tol_days = 0),
+      #Curve    = label_q75_hold
+      CSI      = compute_csi(hold_h, threshold = 0.5, tol_days = 0),
+      Curve    = label_05_hold
    )
 }
 

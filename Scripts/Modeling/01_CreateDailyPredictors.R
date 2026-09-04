@@ -9,7 +9,6 @@
 #                 a date-horizon format for the unified multi-horizon GAM.
 # =============================================================================
 
-source('Scripts/Utilities/LoadTextFiles.R')
 source('Scripts/Utilities/WriteQS.R')
 source('Scripts/Utilities/ComputePredictors.R')
 
@@ -33,45 +32,29 @@ ESTUARY_AXIS_DEG <- 0
 H_MAX <- 20
 
 # =============================================================================
-# LOAD AND TIDY DATA
+# LOAD DATA
 # =============================================================================
 
-dir1 <- 'Data/Tidied/Processed/HourlyDataFinal.csv'
-dir2 <- "Data/Raw/Text/SusquehannaBuoy/Meteo"
-
-q_sal_data <- read.csv(dir1,
-                       colClasses = c('NULL', NA, NA, NA, NA, NA, NA, NA, NA, NA, NA, NA, NA))
-q_sal_data <- q_sal_data %>%
-   dplyr::select(-c(9, 10)) %>%
+data <- read.csv('Data/Tidied/Hourly/HourlyDataFinal.csv') %>%
    mutate(DateTime = as_datetime(DateTime)) %>%
-   rename(Tide = Fitted_HdG) %>%
-   filter(DateTime < as_datetime('2024-11-01 00:00:00')) %>% # cap to October 2024
-   mutate_if(is.character, as.factor)
-
-meteo <- combine_txt_files(dir2)
-meteo <- meteo %>%
-   mutate(DateTime = make_datetime(YY, MM, DD, hh, mm)) %>%
-   dplyr::select(-c(YY, MM, DD, hh, mm)) %>%
-   relocate(DateTime) %>%
-   mutate(across(
-      where(is.numeric),
-      ~ if_else(grepl("^9+\\.?9*$", as.character(.x)), NA_real_, .x)
-   )) %>%
-   dplyr::select(1:4) %>%
-   mutate(Year  = year(DateTime),
-          Month = month(DateTime),
-          Day   = day(DateTime)) %>%
-   relocate(Year, Month, Day, .after = DateTime) %>%
-   arrange(DateTime)
-
-data <- merge(q_sal_data, meteo, by = c('DateTime', 'Year', 'Month', 'Day'), all.x = TRUE)
-data <- data %>%
    filter(Year > 2006 & Year < 2025) %>%
    mutate_if(is.numeric, round, digits = 2) %>%
-   rename(Gust = GST)
+   mutate_if(is.character, as.factor)
 
-# Clean environment
-rm(meteo, q_sal_data, dir1, dir2)
+# =============================================================================
+# DECOMPOSE HOURLY WIND ALONG ESTUARY AXIS
+# =============================================================================
+# ESTUARY_AXIS_DEG: degrees clockwise from North (e.g., 0 = North-South)
+data_hourly <- data %>%
+   mutate(
+      direction_rad = WDIR * pi / 180,
+      axis_rad      = ESTUARY_AXIS_DEG * pi / 180,
+      # Negative sign preserves oceanographic convention:
+      # WindAlong > 0 = wind blowing UP the estuary (toward headwaters)
+      # WindAlong < 0 = wind blowing DOWN the estuary (toward ocean)
+      WindAlong     = -WSPD * cos(direction_rad - axis_rad),
+      WindCross     = -WSPD * sin(direction_rad - axis_rad)
+   )
 
 # =============================================================================
 # AGGREGATE TO DAILY RESOLUTION
@@ -81,38 +64,27 @@ rm(meteo, q_sal_data, dir1, dir2)
 # MaxDischarge: daily maximum (for pulse detection in flushing features)
 # All others:   daily mean
 # =============================================================================
-
-# Decompose hourly wind vectors aligned with the estuary axis (0 deg = N-S)
-data_hourly <- data %>%
-   mutate(
-      direction_rad = WDIR * pi / 180,
-      axis_rad      = ESTUARY_AXIS_DEG * pi / 180,
-      WindAlong     = -WSPD * cos(direction_rad - axis_rad),
-      WindCross     = -WSPD * sin(direction_rad - axis_rad)
-   )
-
-# Aggregate explicitly to daily resolution
 data_daily <- data_hourly %>%
    mutate(DateTime = as.Date(DateTime)) %>%
    group_by(DateTime) %>%
    summarise(
-      Salinity     = max(Salinity,     na.rm = TRUE),                          # Daily max salinity
-      TideRange    = max(Tide,         na.rm = TRUE) - min(Tide, na.rm = TRUE),# Daily tidal range
-      TideMean     = mean(Tide,        na.rm = TRUE),                          # Daily mean water level
-      MaxDischarge = max(Discharge,    na.rm = TRUE),                          # Daily peak discharge
-      Discharge    = mean(Discharge,   na.rm = TRUE),                          # Daily mean discharge
-      Inflows      = mean(Inflows,     na.rm = TRUE),                          # Daily mean inflows
-      FERC         = mean(FERC,        na.rm = TRUE),                          # Daily mean FERC flow
-      WindAlong    = mean(WindAlong,   na.rm = TRUE),                          # Daily mean along-estuary wind
-      WindCross    = mean(WindCross,   na.rm = TRUE),                          # Daily mean cross-estuary wind
+      Salinity     = max(Salinity,     na.rm = TRUE),                           # Daily max salinity
+      TideRange    = max(Tide,         na.rm = TRUE) - min(Tide, na.rm = TRUE), # Daily tidal range
+      TideMean     = mean(Tide,        na.rm = TRUE),                           # Daily mean water level
+      MaxDischarge = max(Discharge,    na.rm = TRUE),                           # Daily peak discharge
+      Discharge    = mean(Discharge,   na.rm = TRUE),                           # Daily mean discharge
+      WindAlong    = mean(WindAlong,   na.rm = TRUE),                           # Daily net along-estuary wind
+      WindCross    = mean(WindCross,   na.rm = TRUE),                           # Daily net cross-estuary wind
       .groups      = 'drop'
    ) %>%
    mutate(
-      Year      = as.numeric(format(DateTime, "%Y")),
-      Month     = as.numeric(format(DateTime, "%m")),
-      Day       = as.numeric(format(DateTime, "%d")),
-      DayOfYear = as.numeric(format(DateTime, "%j"))
+      Year      = year(DateTime),
+      Month     = month(DateTime),
+      Day       = day(DateTime),
+      DayOfYear = yday(DateTime),
+      .after    = DateTime
    )
+
 
 # Replace NaN / Inf with NA and round numeric values
 data_daily[] <- lapply(data_daily, function(x) { x[is.nan(x) | is.infinite(x)] <- NA; x })

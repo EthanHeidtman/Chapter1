@@ -8,10 +8,11 @@
 #                 original 8 diagnostic plots (moved here unchanged from
 #                 fit_gam), plus a new 2-panel accuracy-vs-complexity figure:
 #                 Panel 1 shows the full candidate cloud (all k-combos passing
-#                 the convergence/sanity gate), Panel 2 zooms to the top ~10
-#                 candidates by mean high-salinity RMSE. Intended for
-#                 supplemental figure iteration without re-running the ~15 min
-#                 CV fit in fit_gam.
+#                 the convergence/sanity gate), with the top 10 candidates by
+#                 mean high-salinity RMSE highlighted in blue against the rest
+#                 in orange. Panel 2 zooms to those top 10 candidates.
+#                 Intended for supplemental figure iteration without
+#                 re-running the ~15 min CV fit in fit_gam.
 # =============================================================================
 
 library(tidyverse)
@@ -89,6 +90,7 @@ cat("Candidates after gating:", nrow(candidate_summary),
 cat("total_edf range (gated):", paste(round(range(candidate_summary$total_edf), 1), collapse = " - "), "\n\n")
 
 # Re-key edf_tables and fold_cv_all to the re-ranked candidate_rank via the
+# robust k_index join
 rank_lookup <- candidate_summary_raw %>%
    select(candidate_rank_orig = candidate_rank, k_index) %>%
    inner_join(
@@ -200,14 +202,25 @@ pD_top10 <- ggplot(fold_profiles_top10, aes(x = fold, y = high_rmse, color = fac
 
 # =============================================================================
 # 2-PANEL ACCURACY-VS-COMPLEXITY (full cloud + zoomed top 10)
+# Full cloud: top-10 candidates highlighted in secondary blue, rest in
+# primary orange. Zoomed panel: consistently blue to match the highlight.
 # =============================================================================
 
-pFull <- candidate_summary %>%
-   mutate(se_high_rmse = sd_high_rmse / sqrt(n_folds)) %>%
+candidate_summary_flagged <- candidate_summary %>%
+   mutate(
+      se_high_rmse = sd_high_rmse / sqrt(n_folds),
+      is_top10     = candidate_rank %in% candidate_summary_top10$candidate_rank
+   ) %>%
+   arrange(is_top10)  # plot top-10 points last so the cloud doesn't cover them
+
+pFull <- candidate_summary_flagged %>%
    ggplot(aes(x = total_edf, y = mean_high_rmse)) +
    geom_errorbar(aes(ymin = mean_high_rmse - se_high_rmse, ymax = mean_high_rmse + se_high_rmse),
                  width = 0.3, color = "grey75", alpha = 0.5) +
-   geom_point(size = 1.6, color = gam_colors$primary, alpha = 0.6) +
+   geom_point(aes(color = is_top10, size = is_top10, alpha = is_top10)) +
+   scale_color_manual(values = c(`FALSE` = gam_colors$primary, `TRUE` = gam_colors$secondary), guide = "none") +
+   scale_size_manual(values = c(`FALSE` = 1.6, `TRUE` = 2.4), guide = "none") +
+   scale_alpha_manual(values = c(`FALSE` = 0.6, `TRUE` = 1), guide = "none") +
    labs(title = "A)", x = "Total EDF", y = "Mean High-Salinity RMSE (ppt)") +
    gam_theme
 
@@ -216,7 +229,7 @@ pZoom <- candidate_summary_top10 %>%
    ggplot(aes(x = total_edf, y = mean_high_rmse, label = label)) +
    geom_errorbar(aes(ymin = mean_high_rmse - se_high_rmse, ymax = mean_high_rmse + se_high_rmse),
                  width = 0.3, color = "grey60") +
-   geom_point(size = 3.5, color = gam_colors$primary) +
+   geom_point(size = 3.5, color = gam_colors$secondary) +
    ggrepel::geom_text_repel(size = 4, color = gam_colors$dark, fontface = "bold") +
    labs(title = "B)", x = "Total EDF", y = "Mean High-Salinity RMSE (ppt)") +
    gam_theme
